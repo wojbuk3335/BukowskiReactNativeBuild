@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 
-const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
+const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -20,7 +20,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"];
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false); // State for currency modal
   const [currentCurrencyPairIndex, setCurrentCurrencyPairIndex] = useState(null); // Track the index of the pair being edited
-  const [cameraActive, setCameraActive] = useState(false); // Zarządzanie aktywnością kamery
+  const [cameraActive, setCameraActive] = useState(true); // Zarządzanie aktywnością kamery - rozpoczynamy z aktywną kamerą
   const [cameraVisible, setCameraVisible] = useState(true); // Widoczność kamery
 
   const openSellingPointMenu = () => {
@@ -36,16 +36,95 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
     setSellingPointMenuVisible(true);
   };
 
-  const selectSellingPointFromModal = (point) => {
-    setSelectedOption(point);
+  const selectSellingPointFromModal = (symbol) => {
+    setSelectedOption(symbol);
     setSellingPointMenuVisible(false);
   };
 
   const getMatchingSymbols = () => {
-    return stateData
-        ?.filter((item) => item.barcode === barcode) // Filter items by matching barcode
-        .map((item) => item.symbol) || []; // Extract symbols
-};
+    if (!stateData || !barcode || !users || !user) {
+      return [];
+    }
+
+    // 1. Znajdź wszystkie produkty z tym kodem kreskowym
+    const matchingProducts = stateData.filter((item) => item.barcode === barcode);
+    
+    // 2. Wyciągnij symbole z tych produktów
+    const matchingSymbols = matchingProducts.map((item) => item.symbol);
+    
+    // 3. Filtruj użytkowników z tej samej lokalizacji co zalogowany użytkownik
+    const sameLocationUsers = users.filter(u => 
+      u.location === user.location && 
+      u.role !== 'admin' && 
+      u.role !== 'magazyn' &&
+      u.sellingPoint && 
+      u.sellingPoint.trim() !== ''
+    );
+    
+    // 4. Zwróć tylko tych użytkowników, których symbole pasują do znalezionych produktów
+    const availableSellingPoints = sameLocationUsers.filter(u => 
+      matchingSymbols.includes(u.symbol)
+    );
+    
+    console.log('🔍 Kod kreskowy:', barcode);
+    console.log('📦 Znalezione produkty:', matchingProducts.length);
+    console.log('🏪 Symbole z produktów:', matchingSymbols);
+    console.log('🌍 Użytkownicy z tej samej lokalizacji:', sameLocationUsers.map(u => `${u.sellingPoint}(${u.symbol})`));
+    console.log('✅ Dostępne punkty sprzedaży dla tego produktu:', availableSellingPoints.map(u => `${u.sellingPoint}(${u.symbol})`));
+    
+    return availableSellingPoints;
+  };
+
+  // Helper function to build jacket name from barcode segments
+  const buildJacketNameFromBarcode = (barcodeData) => {
+    try {
+      // Check if barcode has four zeros before the last digit (e.g., 0020600100009)
+      const regex = /^(\d{3})(\d{2})(\d{3})0000(\d)$/;
+      const match = barcodeData.match(regex);
+      
+      if (!match) {
+        return null; // Not the expected pattern
+      }
+
+      const [, stockCode, colorCode, sizeCode] = match;
+      
+      // Try to extract arrays from the objects
+      const stocksArray = Array.isArray(stocks) ? stocks : (stocks?.data || stocks?.stocks || []);
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const sizesArray = Array.isArray(sizes) ? sizes : (sizes?.data || sizes?.sizes || []);
+      
+      // Ensure we have arrays before proceeding
+      if (!Array.isArray(stocksArray) || !Array.isArray(colorsArray) || !Array.isArray(sizesArray)) {
+        return null;
+      }
+      
+      // Look up stock (Tow_Opis) from first 3 digits
+      const stockItem = stocksArray.find(stock => stock.Tow_Kod === stockCode);
+      const stockName = stockItem?.Tow_Opis || `Kod_${stockCode}`;
+      
+      // Look up color (Kol_Opis) from next 2 digits  
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      // Look up size name from next 3 digits
+      const sizeItem = sizesArray.find(size => size.Roz_Kod === sizeCode);
+      const sizeName = sizeItem?.Roz_Opis || `Rozmiar_${sizeCode}`;
+      
+      // Build the jacket name with proper fallbacks
+      const jacketName = `${stockName || 'Nieznany'} ${colorName || 'Nieznany'} ${sizeName || 'Nieznany'}`;
+      
+      console.log('🏗️ Budowanie nazwy produktu:');
+      console.log('  Stock:', stockCode, '->', stockName);
+      console.log('  Color:', colorCode, '->', colorName);
+      console.log('  Size:', sizeCode, '->', sizeName);
+      console.log('  Final name:', jacketName);
+      
+      return jacketName;
+    } catch (error) {
+      console.error("Error building jacket name from barcode:", error);
+      return null;
+    }
+  };
 
   const openCurrencyModal = (index) => {
     setCurrentCurrencyPairIndex(index);
@@ -60,6 +139,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
   useEffect(() => {
     if (isActive) {
       setCameraActive(true); // Aktywuj kamerę, gdy zakładka jest aktywna
+      setCameraVisible(true); // Pokaż kamerę
     } else {
       setCameraActive(false); // Dezaktywuj kamerę, gdy zakładka jest nieaktywna
       setCameraVisible(false); // Ukryj kamerę
@@ -117,23 +197,37 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
 
   const handleScan = ({ data, type }) => {
     if (!scanned) {
+      console.log('✅ Skanowanie kodu:', data);
       setScanned(true);
       setBarcode(data); // Set the scanned barcode
 
-      // Match the scanned barcode with the stateData
-      const matchedItem = stateData?.find(item => item.barcode === data);
-
-      if (matchedItem) {
-        setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
-        setSelectedOption(matchedItem.symbol); // Set default selected symbol
+      // First, try to build jacket name from barcode pattern (four zeros before last digit)
+      const builtJacketName = buildJacketNameFromBarcode(data);
+      
+      if (builtJacketName) {
+        console.log('📝 Znaleziono jacket name:', builtJacketName);
+        // Use the built jacket name for barcodes with four zeros pattern
+        setModalMessage(builtJacketName);
+        setSelectedOption(""); // Clear selected option since we don't have a symbol from stateData
       } else {
-        setModalMessage("Nie ma takiej kurtki"); // No match found
-        setSelectedOption(""); // Clear selected option if no match
+        // Fall back to original logic - match the scanned barcode with the stateData
+        const matchedItem = stateData?.find(item => item.barcode === data);
+
+        if (matchedItem) {
+          console.log('📦 Znaleziono w stateData:', matchedItem.fullName);
+          setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+          setSelectedOption(matchedItem.symbol); // Set default selected symbol
+        } else {
+          console.log('❌ Nie znaleziono produktu dla:', data);
+          setModalMessage("Nie ma takiej kurtki"); // No match found
+          setSelectedOption(""); // Clear selected option if no match
+        }
       }
 
       setModalVisible(true); // Show the modal
-      setTimeout(() => setScanned(false), 3000);
+      // Usuwamy automatyczny timeout - reset będzie tylko przy zamykaniu modala
     }
+    // Usuwamy log o ignorowaniu skanów żeby nie spamować
   };
 
   const toggleCameraFacing = () => {
@@ -191,16 +285,45 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
 
   const handleSubmit = async () => {
     const matchedItems = stateData?.filter(item => item.barcode === barcode);
+    
+    let fullName, size, symbol;
 
-    if (!matchedItems || matchedItems.length === 0) {
-      console.warn("No matched items found for the scanned barcode.");
+    // Sprawdź czy mamy dane z stateData czy z buildJacketNameFromBarcode
+    if (matchedItems && matchedItems.length > 0) {
+      // Dane z stateData
+      fullName = matchedItems[0].fullName;
+      size = matchedItems[0].size;
+      symbol = selectedOption || matchedItems[0].symbol || "Unknown";
+    } else {
+      // Dane z buildJacketNameFromBarcode (modalMessage zawiera pełną nazwę)
+      const builtJacketName = buildJacketNameFromBarcode(barcode);
+      if (builtJacketName) {
+        // Spróbuj wyodrębnić nazwę i rozmiar z modalMessage
+        const parts = modalMessage.split(' ');
+        const sizePart = parts[parts.length - 1]; // Ostatnia część to rozmiar
+        const namePart = parts.slice(0, -1).join(' '); // Reszta to nazwa
+        
+        fullName = namePart || modalMessage;
+        size = sizePart || "Unknown";
+        symbol = selectedOption || "Generated";
+      } else {
+        // Fallback dla nieznanych produktów
+        fullName = modalMessage || "Unknown Product";
+        size = "Unknown";
+        symbol = selectedOption || "Unknown";
+      }
     }
 
-    const fullName = matchedItems?.[0]?.fullName || null; // Use the first matched item's fullName
-    const size = matchedItems?.[0]?.size || null; // Use the first matched item's size
-    const symbol = selectedOption || matchedItems?.[0]?.symbol || "Unknown"; // Use selected symbol or fallback
-
     const sellingPoint = user?.sellingPoint || "Unknown";
+
+    // Filtruj tylko ceny które nie są puste
+    const validCashPrices = cashPriceCurrencyPairs
+      .filter(pair => pair.price && pair.price.trim() !== "")
+      .map(pair => ({ price: pair.price, currency: pair.currency }));
+    
+    const validCardPrices = cardPriceCurrencyPairs
+      .filter(pair => pair.price && pair.price.trim() !== "")
+      .map(pair => ({ price: pair.price, currency: pair.currency }));
 
     const payload = {
       fullName,
@@ -208,14 +331,27 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
       barcode,
       size,
       sellingPoint,
-      from: selectedOption,
-      cash: cashPriceCurrencyPairs.map(pair => ({ price: pair.price, currency: pair.currency })),
-      card: cardPriceCurrencyPairs.map(pair => ({ price: pair.price, currency: pair.currency })),
+      from: sellingPoint, // Poprawione: używamy sellingPoint zamiast selectedOption
+      cash: validCashPrices,
+      card: validCardPrices,
       symbol // Add symbol field
     };
 
+    console.log('📤 Wysyłanie danych:', payload);
+
+    // Walidacja wymaganych pól
+    if (!payload.fullName || !payload.size || !payload.from) {
+      console.error('❌ Brakuje wymaganych pól:', {
+        fullName: payload.fullName,
+        size: payload.size,
+        from: payload.from
+      });
+      Alert.alert("Błąd", "Brakuje wymaganych informacji o produkcie");
+      return;
+    }
+
     try {
-      const response = await axios.post("https://bukowskiapp.pl/api/sales/save-sales", payload);
+      const response = await axios.post("http://192.168.1.32:3000/api/sales/save-sales", payload);
       Alert.alert("Success", "Dane zostały zapisane pomyślnie!");
 
       // Reset modal state
@@ -230,9 +366,11 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
     }
 
     setModalVisible(false);
+    setScanned(false); // Reset stanu skanowania po submit
   };
 
-  if (!isActive) return null; // Render nothing if the tab is not active
+  // Usuńmy to sprawdzenie - komponent powinien się renderować zawsze
+  // if (!isActive) return null; // Render nothing if the tab is not active
 
   return (
     <View style={styles.container}>
@@ -249,6 +387,27 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
         <View style={[styles.overlay, { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }]}>
           <View style={styles.scanArea} />
         </View>
+        
+        {/* Przycisk do resetowania skanowania - pokazuje się tylko gdy scanned=true */}
+        {scanned && (
+          <View style={{ position: "absolute", bottom: 100, left: 0, right: 0, alignItems: "center" }}>
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#0d6efd",
+                paddingVertical: 12,
+                paddingHorizontal: 24,
+                borderRadius: 8,
+                opacity: 0.9
+              }}
+              onPress={() => {
+                console.log('🔄 Resetowanie stanu skanowania');
+                setScanned(false);
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Skanuj ponownie</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {modalVisible && (
@@ -258,7 +417,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
               <View style={[styles.modalContent, { flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
                 <Pressable
                   style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
+                  onPress={() => {
+                    setModalVisible(false);
+                    setScanned(false); // Reset stanu skanowania gdy zamykamy modal
+                  }}
                 >
                   <Text style={styles.closeButtonText}>X</Text>
                 </Pressable>
@@ -319,18 +481,29 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
                     <View style={styles.currencyModalContainer}>
                       <View style={styles.currencyModalContent}>
                         <Text style={styles.currencyModalTitle}>Wybierz punkt sprzedaży</Text>
-                        <FlatList
-                          data={getMatchingSymbols()}
-                          keyExtractor={(item) => item}
-                          renderItem={({ item }) => (
-                            <TouchableOpacity
-                              style={styles.currencyModalItem}
-                              onPress={() => selectSellingPointFromModal(item)}
-                            >
-                              <Text style={styles.currencyModalItemText}>{item}</Text>
-                            </TouchableOpacity>
-                          )}
-                        />
+                        {getMatchingSymbols().length > 0 ? (
+                          <FlatList
+                            data={getMatchingSymbols()}
+                            keyExtractor={(item) => item._id}
+                            renderItem={({ item }) => (
+                              <TouchableOpacity
+                                style={styles.currencyModalItem}
+                                onPress={() => selectSellingPointFromModal(item.symbol)}
+                              >
+                                <Text style={styles.currencyModalItemText}>
+                                  {item.symbol}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          />
+                        ) : (
+                          <Text style={styles.currencyModalItemText}>
+                            {barcode ? 
+                              `Brak tego produktu w punktach sprzedaży w lokalizacji "${user?.location || 'nieznana'}"` :
+                              'Zeskanuj kod kreskowy aby zobaczyć dostępne punkty sprzedaży'
+                            }
+                          </Text>
+                        )}
                         <Pressable
                           style={styles.currencyModalCloseButton}
                           onPress={() => setSellingPointMenuVisible(false)}
@@ -518,7 +691,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, isActive }) => {
                 <View style={styles.modalButtons}>
                   <Pressable
                     style={[styles.button, styles.cancelButton]}
-                    onPress={() => setModalVisible(false)}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setScanned(false); // Reset stanu skanowania
+                    }}
                   >
                     <Text style={styles.buttonText}>Anuluj</Text>
                   </Pressable>

@@ -1,40 +1,41 @@
 {
   "expo": {
-    "name": "Bukowski",
-    "slug": "my-app",
-    "version": "7.0.0",
+    "name": "Bukowski 2025",
+    "slug": "bukowski-mobile-2025",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/logo2.png",
     "scheme": "bukowski",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
-    }, 
+    },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
+        "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.wojbuk3335.bukowskiapp"
+      "package": "com.wojbuk3335.bukowskiapp2025"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "/assets/images/logo.png"
+      "favicon": "/assets/images/logo2.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
+          "image": "./assets/images/logo2.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

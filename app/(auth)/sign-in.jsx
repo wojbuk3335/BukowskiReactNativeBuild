@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useNavigation } from "expo-router";
 import { useContext, useEffect, useState } from "react";
-import { Alert, Dimensions, Image, ScrollView, StyleSheet, View } from "react-native";
+import { Dimensions, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import CustomButton from "../../components/CustomButton";
@@ -14,6 +14,7 @@ const SignIn = () => {
     email: "",
     password: "",
   });
+  const [error, setError] = useState("");
   const navigation = useNavigation();
   const { setUser, bukowski_login, isLoading, user } = useContext(GlobalStateContext); // Access global state
 
@@ -36,11 +37,13 @@ const SignIn = () => {
 
   const submit = async () => {
     try {
+      setError(""); // Clear any previous errors
       const response = await bukowski_login(form.email, form.password, navigation);
       setUser(response); // Update global state with user data
+      
       router.replace("/home") // Redirect to home screen
     } catch (error) {
-      Alert.alert("Login Failed", error.message);
+      setError("Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
     }
   };
 
@@ -58,7 +61,10 @@ const SignIn = () => {
           <FormField
             title="Email"
             value={form.email}
-            handleChangeText={(e) => setForm({ ...form, email: e.trim() })}
+            handleChangeText={(e) => {
+              setForm({ ...form, email: e.trim() });
+              if (error) setError(""); // Clear error when user starts typing
+            }}
             otherStyles="mt-7"
             keyboardType="email-address"
           />
@@ -66,7 +72,10 @@ const SignIn = () => {
           <FormField
             title="Hasło"
             value={form.password}
-            handleChangeText={(e) => setForm({ ...form, password: e.trim() })}
+            handleChangeText={(e) => {
+              setForm({ ...form, password: e.trim() });
+              if (error) setError(""); // Clear error when user starts typing
+            }}
             otherStyles="mt-7"
             secureTextEntry={true} // Explicitly enable secure text entry
           />
@@ -77,6 +86,12 @@ const SignIn = () => {
             containerStyles={styles.button}
             isLoading={isLoading} // Use global isLoading state
           />
+
+          {error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
             
           <Image
             source={bukowskiLogo} // Use the imported image
@@ -110,6 +125,19 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginTop: 16,
     marginBottom: 20,
+  },
+  errorContainer: {
+    backgroundColor: "#dc2626",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    marginHorizontal: 4,
+  },
+  errorText: {
+    color: "#fff",
+    fontSize: 14,
+    textAlign: "center",
+    fontWeight: "500",
   },
 });
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { icons } from "../constants";
 
@@ -9,6 +9,7 @@ const FormField = ({
   placeholder,
   handleChangeText,
   otherStyles,
+  secureTextEntry,
   ...props
 }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -30,20 +31,29 @@ const FormField = ({
           placeholder={placeholder}
           placeholderTextColor="#0d6efd"
           onChangeText={handleChangeText}
-          secureTextEntry={props.secureTextEntry && !showPassword}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...props}
+          secureTextEntry={secureTextEntry ? !showPassword : false}
+          testID="text-input"
         />
 
-        {props.secureTextEntry && (
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+        {secureTextEntry && (
+          <Pressable 
+            onPress={() => setShowPassword(!showPassword)}
+            style={({ pressed }) => [
+              styles.iconTouchable,
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+            testID="password-toggle-button"
+          >
             <Image
               source={!showPassword ? icons.eye : icons.eyeHide}
               style={styles.icon}
               resizeMode="contain"
+              testID="eye-icon"
             />
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
     </View>
@@ -80,6 +90,12 @@ const styles = StyleSheet.create({
   icon: {
     width: 24,
     height: 24,
+  },
+  iconTouchable: {
+    padding: 12,
+    marginRight: -12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

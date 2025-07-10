@@ -31,7 +31,7 @@ const Home = () => {
 
   const fetchSalesData = async () => {
     try {
-      const response = await fetch('https://bukowskiapp.pl/api/sales/get-all-sales');
+      const response = await fetch('http://192.168.1.32:3000/api/sales/get-all-sales');
       const data = await response.json();
       setSalesData(data); // Update state with API data
 
@@ -65,7 +65,7 @@ const Home = () => {
 
   const fetchItemData = async (id) => {
     try {
-      const response = await fetch(`https://bukowskiapp.pl/api/sales/${id}`);
+      const response = await fetch(`http://192.168.1.32:3000/api/sales/${id}`);
       if (!response.ok) {
         throw new Error("Failed to fetch item data.");
       }
@@ -96,7 +96,7 @@ const Home = () => {
         };
 
         const response = await fetch(
-          `https://bukowskiapp.pl/api/sales/update-sales/${editData._id}`,
+          `http://192.168.1.32:3000/api/sales/update-sales/${editData._id}`,
           {
             method: "PATCH",
             headers: {
@@ -140,7 +140,7 @@ const Home = () => {
 
   const fetchTransferredItems = async () => {
     try {
-      const response = await fetch("https://bukowskiapp.pl/api/transfer");
+      const response = await fetch("http://192.168.1.32:3000/api/transfer");
       const data = await response.json();
       setTransferredItems(data.filter((item) => item.transfer_from === user.symbol)); // Filter items by transfer_from
     } catch (error) {
@@ -150,7 +150,7 @@ const Home = () => {
 
   const fetchReceivedItems = async () => {
     try {
-      const response = await fetch("https://bukowskiapp.pl/api/transfer");
+      const response = await fetch("http://192.168.1.32:3000/api/transfer");
       const data = await response.json();
       setReceivedItems(data.filter((item) => item.transfer_to === user.symbol)); // Filter items by transfer_to
     } catch (error) {
@@ -179,7 +179,7 @@ const Home = () => {
       if (selectedItem?._id) {
         const updatedItem = { ...selectedItem, from: newFromValue }; // Update the 'from' field
         const response = await fetch(
-          `https://bukowskiapp.pl/api/sales/update-sales/${selectedItem._id}`,
+          `http://192.168.1.32:3000/api/sales/update-sales/${selectedItem._id}`,
           {
             method: "PATCH",
             headers: {
@@ -811,7 +811,7 @@ const Home = () => {
                             onPress: async () => {
                               try {
                                 const response = await fetch(
-                                  `https://bukowskiapp.pl/api/sales/delete-sale/${selectedItem._id}`,
+                                  `http://192.168.1.32:3000/api/sales/delete-sale/${selectedItem._id}`,
                                   { method: "DELETE" }
                                 );
                                 if (!response.ok) {

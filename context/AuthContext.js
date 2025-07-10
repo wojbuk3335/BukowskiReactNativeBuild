@@ -6,16 +6,14 @@ export const AuthProvider = ({ children }) => {
     const [authData, setAuthData] = useState(null);
 
     const login = (data) => {
-        console.log('Login data received in AuthContext:', data); // Debug log
         if (data && data.email) {
             setAuthData(data); // Set authData with the received fields
         } else {
-            console.error('Invalid data passed to login:', data); // Debug log
+            console.error('Invalid data passed to login:', data);
         }
     };
 
     const logout = () => {
-        console.log('Logging out from AuthContext'); // Debug log
         setAuthData(null); // Clear authData
     };
 
