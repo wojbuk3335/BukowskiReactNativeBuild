@@ -66,12 +66,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       matchingSymbols.includes(u.symbol)
     );
     
-    console.log('🔍 Kod kreskowy:', barcode);
-    console.log('📦 Znalezione produkty:', matchingProducts.length);
-    console.log('🏪 Symbole z produktów:', matchingSymbols);
-    console.log('🌍 Użytkownicy z tej samej lokalizacji:', sameLocationUsers.map(u => `${u.sellingPoint}(${u.symbol})`));
-    console.log('✅ Dostępne punkty sprzedaży dla tego produktu:', availableSellingPoints.map(u => `${u.sellingPoint}(${u.symbol})`));
-    
     return availableSellingPoints;
   };
 
@@ -112,12 +106,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       
       // Build the jacket name with proper fallbacks
       const jacketName = `${stockName || 'Nieznany'} ${colorName || 'Nieznany'} ${sizeName || 'Nieznany'}`;
-      
-      console.log('🏗️ Budowanie nazwy produktu:');
-      console.log('  Stock:', stockCode, '->', stockName);
-      console.log('  Color:', colorCode, '->', colorName);
-      console.log('  Size:', sizeCode, '->', sizeName);
-      console.log('  Final name:', jacketName);
       
       return jacketName;
     } catch (error) {
@@ -197,7 +185,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
 
   const handleScan = ({ data, type }) => {
     if (!scanned) {
-      console.log('✅ Skanowanie kodu:', data);
       setScanned(true);
       setBarcode(data); // Set the scanned barcode
 
@@ -205,7 +192,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       const builtJacketName = buildJacketNameFromBarcode(data);
       
       if (builtJacketName) {
-        console.log('📝 Znaleziono jacket name:', builtJacketName);
         // Use the built jacket name for barcodes with four zeros pattern
         setModalMessage(builtJacketName);
         setSelectedOption(""); // Clear selected option since we don't have a symbol from stateData
@@ -214,11 +200,9 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
         const matchedItem = stateData?.find(item => item.barcode === data);
 
         if (matchedItem) {
-          console.log('📦 Znaleziono w stateData:', matchedItem.fullName);
           setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
           setSelectedOption(matchedItem.symbol); // Set default selected symbol
         } else {
-          console.log('❌ Nie znaleziono produktu dla:', data);
           setModalMessage("Nie ma takiej kurtki"); // No match found
           setSelectedOption(""); // Clear selected option if no match
         }
@@ -331,13 +315,11 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       barcode,
       size,
       sellingPoint,
-      from: sellingPoint, // Poprawione: używamy sellingPoint zamiast selectedOption
+      from: selectedOption || symbol, // Use the selected symbol, not the default sellingPoint
       cash: validCashPrices,
       card: validCardPrices,
       symbol // Add symbol field
     };
-
-    console.log('📤 Wysyłanie danych:', payload);
 
     // Walidacja wymaganych pól
     if (!payload.fullName || !payload.size || !payload.from) {
@@ -400,7 +382,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
                 opacity: 0.9
               }}
               onPress={() => {
-                console.log('🔄 Resetowanie stanu skanowania');
                 setScanned(false);
               }}
             >

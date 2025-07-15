@@ -53,28 +53,30 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchState = async () => {
         try {
-            console.log('🌐 Wywołuję API /api/state...');
             const response = await fetchWithTimeout("http://192.168.1.32:3000/api/state");
             
             if (!response || !response.ok) {
-                console.log('❌ Response nie OK:', response?.status, response?.statusText);
                 setStateData([]); // Set fallback immediately
                 return []; // Return empty array instead of throwing
             }
             const data = await response.json();
-            console.log('📦 Raw data z API:', data);
-            console.log('📦 Data type:', typeof data);
-            console.log('📦 Data is array:', Array.isArray(data));
             
-            // API returns object with state_data array
-            const stateArray = data?.state_data && Array.isArray(data.state_data) ? data.state_data : [];
-            console.log('✅ Processed stateArray:', stateArray);
-            console.log('✅ StateArray length:', stateArray.length);
+            // Handle both cases: direct array or object with state_data property
+            let stateArray;
+            if (Array.isArray(data)) {
+                // API returns direct array
+                stateArray = data;
+            } else if (data?.state_data && Array.isArray(data.state_data)) {
+                // API returns object with state_data array
+                stateArray = data.state_data;
+            } else {
+                // Fallback to empty array
+                stateArray = [];
+            }
             
             setStateData(stateArray); // Set the array into state
             return stateArray; // Return fetched state as array
         } catch (error) {
-            console.log('💥 Error w fetchState:', error.message);
             setStateData([]); // Fallback to an empty array in case of error
             return []; // Return empty array instead of throwing
         }
@@ -142,7 +144,6 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchUsers = async () => {
         try {
-            console.log('🔍 Pobieranie użytkowników z API...');
             const response = await fetchWithTimeout("http://192.168.1.32:3000/api/user");
             
             if (!response || !response.ok) {
@@ -153,11 +154,9 @@ export const GlobalStateProvider = ({ children }) => {
             
             // Extract users array from the response object
             const usersArray = Array.isArray(data?.users) ? data.users : [];
-            console.log('👥 Pobrano użytkowników:', usersArray.length);
             setUsers(usersArray); // Set the fetched users into state
             return usersArray; // Return fetched users as array
         } catch (error) {
-            console.log('💥 Error w fetchUsers:', error.message);
             setUsers([]); // Fallback to an empty array in case of error
             return []; // Return empty array instead of throwing
         }
@@ -235,7 +234,6 @@ export const GlobalStateProvider = ({ children }) => {
     // Funkcja do filtrowania punktów sprzedaży na podstawie lokalizacji zalogowanego użytkownika
     const getFilteredSellingPoints = () => {
         if (!user || !user.location || !users || users.length === 0) {
-            console.log('⚠️ Brak danych do filtrowania punktów sprzedaży');
             return [];
         }
 
@@ -247,10 +245,6 @@ export const GlobalStateProvider = ({ children }) => {
             u.role !== 'magazyn' &&
             u.sellingPoint && 
             u.sellingPoint.trim() !== ''
-        );
-
-        console.log(`🏪 Punkty sprzedaży dla lokalizacji "${user.location}":`, 
-            filteredUsers.map(u => u.sellingPoint)
         );
 
         return filteredUsers;

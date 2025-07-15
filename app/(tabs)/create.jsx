@@ -85,8 +85,6 @@ export default function Create() {
   }, [isLoading]);
 
   const fetchAllRequiredData = async () => {
-    console.log('🔄 Rozpoczynam pobieranie danych z backendu...');
-    
     // Ensure loading state is set first and give it time to render
     setIsLoading(true);
     setErrorMessage("");
@@ -118,34 +116,11 @@ export default function Create() {
         timeoutPromise
       ]);
 
-      // Sprawdź i zabezpiecz wyniki (mogą być undefined)
-      const sizesArray = Array.isArray(sizesResult) ? sizesResult : [];
-      const colorsArray = Array.isArray(colorsResult) ? colorsResult : [];
-      const goodsArray = Array.isArray(goodsResult) ? goodsResult : [];
-      const stocksArray = Array.isArray(stocksResult) ? stocksResult : [];
       const stateArray = Array.isArray(stateResult) ? stateResult : [];
       const usersArray = Array.isArray(usersResult) ? usersResult : [];
       
-      // Console.log dla danych ze state API
-      console.log('=== DANE Z API /api/state/ ===');
-      console.log('State Result:', stateResult);
-      console.log('State Result type:', typeof stateResult);
-      console.log('State Result length:', stateResult?.length);
-      console.log('State Array:', stateArray);
-      console.log('State Array length:', stateArray?.length);
-      console.log('=============================');
-      
-      // Console.log dla użytkowników i filtrowanych punktów sprzedaży
-      console.log('=== DANE UŻYTKOWNIKÓW I PUNKTY SPRZEDAŻY ===');
-      console.log('Users Result:', usersResult);
-      console.log('Users Array length:', usersArray?.length);
-      console.log('Zalogowany użytkownik:', user);
-      console.log('Lokalizacja użytkownika:', user?.location);
-      
       // Sprawdź filtrowane punkty sprzedaży
       const filteredPoints = getFilteredSellingPoints();
-      console.log('Filtrowane punkty sprzedaży:', filteredPoints);
-      console.log('==========================================');
       
     } catch (error) {
       
