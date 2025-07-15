@@ -238,30 +238,26 @@ export default function Create() {
       {/* Modal błędu */}
       <Modal
         visible={showErrorModal}
-        transparent={true}
-        animationType="fade"
+        transparent
+        animationType="slide"
         onRequestClose={handleCloseError}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Błąd połączenia</Text>
             <Text style={styles.modalMessage}>{errorMessage}</Text>
-            
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.retryButton]} 
-                onPress={handleRetry}
-              >
-                <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.closeButton]} 
-                onPress={handleCloseError}
-              >
-                <Text style={styles.closeButtonText}>Zamknij</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity 
+              style={styles.optionButton} 
+              onPress={handleRetry}
+            >
+              <Text style={styles.optionText}>Spróbuj ponownie</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.optionButton, styles.closeButton]} 
+              onPress={handleCloseError}
+            >
+              <Text style={styles.closeText}>Zamknij</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -314,64 +310,52 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgb(13, 110, 253)',
     marginHorizontal: 6,
   },
+  // Unified modal styles from search.jsx
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Ciemniejsze tło modala
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContainer: {
-    backgroundColor: 'black', // Ciemne tło modala
-    margin: 20,
-    padding: 24,
-    borderRadius: 12,
-    minWidth: 300,
-    maxWidth: '90%',
-    borderWidth: 1,
-    borderColor: '#444',
+  modalContent: {
+    backgroundColor: 'black',
+    borderRadius: 10,
+    padding: 16,
+    alignItems: 'center',
+    width: '70%',
+    color: '#fff',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff', // Biały tekst tytułu
-    marginBottom: 12,
+    marginBottom: 16,
+    color: '#fff',
     textAlign: 'center',
   },
   modalMessage: {
-    fontSize: 16,
-    color: '#cccccc', // Jasnoszary tekst wiadomości
-    lineHeight: 22,
+    fontSize: 14,
+    color: '#fff',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
+    paddingHorizontal: 8,
   },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  optionButton: {
+    backgroundColor: '#0d6efd',
+    padding: 8,
     borderRadius: 8,
+    marginVertical: 6,
+    width: '90%',
     alignItems: 'center',
   },
-  retryButton: {
-    backgroundColor: '#0066cc',
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
+  optionText: {
+    fontSize: 14,
+    color: '#fff',
   },
   closeButton: {
-    backgroundColor: '#444444', // Ciemny przycisk
-    borderWidth: 1,
-    borderColor: '#666',
+    backgroundColor: 'red',
   },
-  closeButtonText: {
-    color: '#ffffff', // Biały tekst przycisku
-    fontSize: 12,
-    fontWeight: '600',
+  closeText: {
+    color: 'white',
+    fontSize: 14,
   },
 });

@@ -9,8 +9,9 @@ const SearchScreen = () => {
   const [showQR, setShowQR] = useState(false);
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false); // Dodano stan dla pull-to-refresh
   const isFocused = useIsFocused();
-  const { stateData, user, sizes, colors, goods } = useContext(GlobalStateContext);
+  const { stateData, user, sizes, colors, goods, fetchState } = useContext(GlobalStateContext);
 
   useFocusEffect(
     useCallback(() => {
@@ -24,6 +25,18 @@ const SearchScreen = () => {
       };
     }, [])
   );
+
+  // Funkcja odświeżania dla pull-to-refresh
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchState(); // Odświeżenie danych z backendu
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filteredData = stateData?.filter(item => {
     const search = searchText.trim().toLowerCase();
@@ -101,14 +114,22 @@ const SearchScreen = () => {
           <Text style={styles.optionText}>Powrót</Text>
         </TouchableOpacity>
         <FlatList
+          testID="search-flatlist"
           data={filteredData}
           keyExtractor={item => item.id}
+          onRefresh={handleRefresh} // Dodano funkcję odświeżania
+          refreshing={isRefreshing} // Dodano stan odświeżania
           renderItem={({ item }) => (
             <View style={styles.writeoffItem}>
               <View style={styles.writeoffRow}>
-                <Text style={styles.writeoffName}>
-                  {item.fullName} <Text style={styles.writeoffSize}> {item.size} </Text>
-                </Text>
+                <View style={styles.nameContainer}>
+                  <Text style={styles.writeoffName} numberOfLines={1} ellipsizeMode="tail">
+                    {item.fullName}
+                  </Text>
+                  <Text style={styles.writeoffSize} numberOfLines={1}>
+                    {item.size}
+                  </Text>
+                </View>
                 <Text style={styles.writeoffSymbol}>{item.symbol}</Text>
                 <Text style={styles.barcode}>{item.barcode}</Text>
               </View>
@@ -271,11 +292,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     position: 'relative', // ensure children can be absolutely positioned if needed
   },
+  nameContainer: {
+    flex: 1,
+    marginRight: 100, // Zwiększono z 80 na 100px dla większego odstępu
+    maxWidth: '70%', // Dodano maksymalną szerokość 70% ekranu
+  },
   writeoffName: {
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 13, // było 16
-    flex: 1,
   },
   writeoffSymbol: {
     position: 'absolute',

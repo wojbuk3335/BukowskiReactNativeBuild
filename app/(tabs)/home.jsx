@@ -256,6 +256,7 @@ const Home = () => {
     <>
       <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
         <FlatList
+          testID="home-flatlist"
           data={filteredData}
           keyExtractor={(item, index) => item?._id?.toString() || index.toString()}
           refreshControl={
@@ -754,142 +755,102 @@ const Home = () => {
         </Modal>
         {/* Options Modal */}
         <Modal
-          transparent={true}
+          transparent
           visible={modalVisible}
-          animationType="fade"
+          animationType="slide"
           onRequestClose={() => setModalVisible(false)}
         >
-          <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-            <View
-              className="w-3/4 rounded-lg shadow-lg"
-              style={{
-                backgroundColor: "black",
-                borderWidth: 1,
-                borderColor: "white",
-              }}
-            >
-              <View
-                className="p-4 rounded-t-lg"
-                style={{
-                  backgroundColor: "black",
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Opcje</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (selectedItem?._id) {
+                    fetchItemData(selectedItem._id); // Fetch data and open edit modal
+                    setModalVisible(false); // Close options modal
+                  }
                 }}
+                style={styles.optionButton}
               >
-                <Text className="text-lg font-bold text-white text-center">Opcje</Text>
-              </View>
-              <View className="p-6">
-                <Pressable
-                  onPress={() => {
-                    if (selectedItem?._id) {
-                      fetchItemData(selectedItem._id); // Fetch data and open edit modal
-                      setModalVisible(false); // Close options modal
-                    }
-                  }}
-                  style={{
-                    backgroundColor: "#0d6efd",
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Edytuj</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    if (selectedItem?._id) {
-                      Alert.alert(
-                        "Potwierdzenie usunięcia",
-                        "Czy na pewno chcesz usunąć kurtkę? Kurtka wróci automatycznie do stanu, z którego została sprzedana.",
-                        [
-                          {
-                            text: "Anuluj",
-                            style: "cancel",
-                          },
-                          {
-                            text: "Usuń",
-                            style: "destructive",
-                            onPress: async () => {
-                              try {
-                                const response = await fetch(
-                                  `http://192.168.1.32:3000/api/sales/delete-sale/${selectedItem._id}`,
-                                  { method: "DELETE" }
-                                );
-                                if (!response.ok) {
-                                  throw new Error("Failed to delete the sale.");
-                                }
-                                setFilteredData((prev) =>
-                                  prev.filter((item) => item._id !== selectedItem._id)
-                                ); // Remove the item from the list
-                                setModalVisible(false); // Close the modal
-                              } catch (error) {
-                                console.error("Error deleting item:", error.message);
+                <Text style={styles.optionText}>Edytuj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  if (selectedItem?._id) {
+                    Alert.alert(
+                      "Potwierdzenie usunięcia",
+                      "Czy na pewno chcesz usunąć kurtkę? Kurtka wróci automatycznie do stanu, z którego została sprzedana.",
+                      [
+                        {
+                          text: "Anuluj",
+                          style: "cancel",
+                        },
+                        {
+                          text: "Usuń",
+                          style: "destructive",
+                          onPress: async () => {
+                            try {
+                              const response = await fetch(
+                                `http://192.168.1.32:3000/api/sales/delete-sale/${selectedItem._id}`,
+                                { method: "DELETE" }
+                              );
+                              if (!response.ok) {
+                                throw new Error("Failed to delete the sale.");
                               }
-                            },
+                              setFilteredData((prev) =>
+                                prev.filter((item) => item._id !== selectedItem._id)
+                              ); // Remove the item from the list
+                              setModalVisible(false); // Close the modal
+                            } catch (error) {
+                              console.error("Error deleting item:", error.message);
+                            }
                           },
-                        ]
-                      );
-                    } else {
-                      console.error("No valid ID found for the selected item.");
-                    }
-                  }}
-                  style={{
-                    backgroundColor: "#dc3545", // Bootstrap danger color
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Usuń</Text>
-                </Pressable>
-              </View>
-              <View
-                className="p-4 rounded-b-lg flex-row justify-end"
-                style={{
-                  backgroundColor: "black", // Set footer background to black
+                        },
+                      ]
+                    );
+                  } else {
+                    console.error("No valid ID found for the selected item.");
+                  }
                 }}
+                style={[styles.optionButton, styles.deleteButton]}
               >
-                <Pressable
-                  onPress={() => setModalVisible(false)}
-                  style={{
-                    backgroundColor: "#0d6efd", // Set button background to #0d6efd
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Zamknij</Text>
-                </Pressable>
-              </View>
+                <Text style={styles.optionText}>Usuń</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                style={[styles.optionButton, styles.closeButton]}
+              >
+                <Text style={styles.closeText}>Zamknij</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
         {/* Currency Modal */}
         {currencyModalVisible && (
           <Modal
-            transparent={true}
+            transparent
             animationType="slide"
             visible={currencyModalVisible}
             onRequestClose={() => setCurrencyModalVisible(false)}
           >
-            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.5)" }}>
-              <View style={{ width: "80%", backgroundColor: "black", borderRadius: 10, padding: 20, alignItems: "center" }}>
-                <Text style={{ fontSize: 18, fontWeight: "bold", color: "white", marginBottom: 15 }}>Wybierz walutę</Text>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Wybierz walutę</Text>
                 {availableCurrencies.map((currency, index) => (
                   <TouchableOpacity
                     key={index}
-                    style={{ paddingVertical: 10, paddingHorizontal: 20, backgroundColor: "rgb(13, 110, 253)", borderRadius: 5, marginBottom: 10 }}
+                    style={styles.optionButton}
                     onPress={() => selectCurrencyFromModal(currency)}
                   >
-                    <Text style={{ color: "white", fontSize: 16 }}>{currency}</Text>
+                    <Text style={styles.optionText}>{currency}</Text>
                   </TouchableOpacity>
                 ))}
-                <Pressable
-                  style={{ marginTop: 15, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: "red", borderRadius: 5, alignItems: "center" }}
+                <TouchableOpacity
+                  style={[styles.optionButton, styles.closeButton]}
                   onPress={() => setCurrencyModalVisible(false)}
                 >
-                  <Text style={{ color: "white", fontSize: 16 }}>Zamknij</Text>
-                </Pressable>
+                  <Text style={styles.closeText}>Zamknij</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </Modal>
@@ -995,6 +956,50 @@ const styles = StyleSheet.create({
     fontSize: 13, // Match font size from writeoff.jsx
     fontWeight: "bold", // Bold text for emphasis
     textAlign: "right", // Align text to the right
+  },
+  // Unified modal styles from search.jsx
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'black',
+    borderRadius: 10,
+    padding: 16,
+    alignItems: 'center',
+    width: '70%',
+    color: '#fff',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  optionButton: {
+    backgroundColor: '#0d6efd',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 6,
+    width: '90%',
+    alignItems: 'center',
+  },
+  optionText: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  deleteButton: {
+    backgroundColor: '#dc3545',
+  },
+  closeButton: {
+    backgroundColor: 'red',
+  },
+  closeText: {
+    color: 'white',
+    fontSize: 14,
   },
 });
 export default Home; // Export the Home component
