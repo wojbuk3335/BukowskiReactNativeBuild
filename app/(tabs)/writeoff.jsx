@@ -24,7 +24,10 @@ const WriteOff = () => {
     const [showErrorModal, setShowErrorModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [customReason, setCustomReason] = useState(""); // Stan dla niestandardowego powodu
-    const [selectedReasonOption, setSelectedReasonOption] = useState(null); // Radio button selection
+    const [selectedReason, setSelectedReason] = useState(""); // Stan dla wybranego radio button powodu
+    const [advanceAmount, setAdvanceAmount] = useState(""); // Stan dla kwoty zaliczki
+    const [selectedCurrency, setSelectedCurrency] = useState("PLN"); // Stan dla waluty zaliczki
+    const [showCurrencyModal, setShowCurrencyModal] = useState(false); // Modal wyboru waluty
     
     // Animacje dla kropek ładowania
     const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -235,12 +238,11 @@ const fetchTransfers = async () => {
             
             setUsers(finalFilteredUsers);
         } catch (error) {
-            console.error('❌ Error in fetchUsersData:', error);
             throw error; // Re-throw to be caught by fetchAllRequiredData
         }
     };
 
-    const initiateTransfer = async (toSymbol, reason = null) => {
+    const initiateTransfer = async (toSymbol, reason = null, advance = null) => {
         if (!selectedItem) {
             Alert.alert("Error", "No item selected for transfer.");
             return;
@@ -263,7 +265,10 @@ const fetchTransfers = async () => {
             transfer_from: user.symbol,
             transfer_to: toSymbol,
             productId: selectedItem.id,
-            reason: reason || null, // Dodaj powód do transferu
+            reason: reason || null,
+            // Dostosuj format zaliczki do backendu
+            advancePayment: advance ? advance.amount : 0,
+            advancePaymentCurrency: advance ? advance.currency : 'PLN',
         };
 
         try {
@@ -283,8 +288,10 @@ const fetchTransfers = async () => {
             fetchAllRequiredData(false);
             setTransferModalVisible(false);
             setDomReasonModalVisible(false);
-            setCustomReason(""); // Wyczyść niestandardowy powód
-            setSelectedReasonOption(null); // Wyczyść wybór radio button
+            setCustomReason("");
+            setSelectedReason("");
+            setAdvanceAmount("");
+            setSelectedCurrency("PLN");
         } catch (error) {
             Alert.alert("Error", "An unexpected error occurred while creating the transfer.");
         }
@@ -296,13 +303,47 @@ const fetchTransfers = async () => {
             return;
         }
         
+        setSelectedReason(reason);
+    };
+
+    const handleCustomReasonSubmit = () => {
+        if (!customReason.trim()) {
+            Alert.alert("Error", "Proszę podać powód.");
+            return;
+        }
+        
+        setSelectedReason(customReason.trim());
+    };
+
+    const handleFinalSubmit = () => {
+        if (!selectedReason) {
+            Alert.alert("Error", "Proszę wybrać powód.");
+            return;
+        }
+
+        // Sprawdź czy to custom reason i czy tekst został podany
+        if (selectedReason === 'custom' && !customReason.trim()) {
+            Alert.alert("Error", "Proszę podać powód.");
+            return;
+        }
+
+        // Przygotuj dane zaliczki jeśli została wprowadzona
+        let advanceData = null;
+        if (advanceAmount && parseFloat(advanceAmount) > 0) {
+            advanceData = {
+                amount: parseFloat(advanceAmount),
+                currency: selectedCurrency,
+                date: new Date().toISOString()
+            };
+        }
+
+        // Użyj odpowiedniego powodu
+        const finalReason = selectedReason === 'custom' ? customReason.trim() : selectedReason;
+
         // Znajdź użytkownika Dom
         const domUser = users.find(u => u.role && u.role.toLowerCase() === 'dom');
         if (domUser) {
-            initiateTransfer(domUser.symbol, reason);
-            // Wyczyść state po udanym transferze
-            setSelectedReasonOption(null);
-            setCustomReason("");
+            initiateTransfer(domUser.symbol, finalReason, advanceData);
         } else {
             Alert.alert("Error", "Nie znaleziono użytkownika Dom.");
         }
@@ -560,81 +601,158 @@ const fetchTransfers = async () => {
                 onRequestClose={() => {
                     setDomReasonModalVisible(false);
                     setCustomReason("");
-                    setSelectedReasonOption(null);
+                    setSelectedReason("");
+                    setAdvanceAmount("");
+                    setSelectedCurrency("PLN");
                 }}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { width: '85%' }]}>
                         <Text style={styles.modalTitle}>Powód przepisania do domu</Text>
                         
-                        {/* Radio button - Skracanie rękawów */}
-                        <TouchableOpacity
-                            style={styles.radioOptionContainer}
-                            onPress={() => setSelectedReasonOption('skracanie rękawów')}
-                        >
-                            <View style={styles.radioButton}>
-                                {selectedReasonOption === 'skracanie rękawów' && <View style={styles.radioButtonInner} />}
-                            </View>
-                            <Text style={styles.optionText}>Skracanie rękawów</Text>
-                        </TouchableOpacity>
+                        {/* Radio buttons dla powodów */}
+                        <View style={styles.radioContainer}>
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => setSelectedReason('skracanie rękawów')}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'skracanie rękawów' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Skracanie rękawów</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => setSelectedReason('przeróbka')}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'przeróbka' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Przeróbka</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => setSelectedReason('wysyłka')}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'wysyłka' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Wysyłka</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => {
+                                    setSelectedReason('custom');
+                                    setCustomReason(''); // Wyczyść poprzedni tekst
+                                }}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'custom' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Inny powód</Text>
+                            </TouchableOpacity>
+                        </View>
                         
-                        {/* Radio button - Wysyłka */}
-                        <TouchableOpacity
-                            style={styles.radioOptionContainer}
-                            onPress={() => setSelectedReasonOption('wysyłka')}
-                        >
-                            <View style={styles.radioButton}>
-                                {selectedReasonOption === 'wysyłka' && <View style={styles.radioButtonInner} />}
-                            </View>
-                            <Text style={styles.optionText}>Wysyłka</Text>
-                        </TouchableOpacity>
-                        
-                        {/* Radio button - Inny powód */}
-                        <TouchableOpacity
-                            style={styles.radioOptionContainer}
-                            onPress={() => setSelectedReasonOption('custom')}
-                        >
-                            <View style={styles.radioButton}>
-                                {selectedReasonOption === 'custom' && <View style={styles.radioButtonInner} />}
-                            </View>
-                            <Text style={styles.optionText}>Inny powód</Text>
-                        </TouchableOpacity>
-                        
-                        {/* Pole tekstowe dla niestandardowego powodu - pokazuje się automatycznie */}
-                        {selectedReasonOption === 'custom' && (
+                        {/* Pole tekstowe dla niestandardowego powodu */}
+                        {selectedReason === 'custom' && (
                             <View style={styles.customReasonContainer}>
                                 <TextInput
                                     style={styles.customReasonInput}
-                                    placeholder="Wpisz powód..."
-                                    placeholderTextColor="#ccc"
+                                    placeholder="Wpisz powód (max 12 znaków)..."
+                                    placeholderTextColor="#999"
                                     value={customReason}
-                                    onChangeText={setCustomReason}
-                                    multiline={true}
-                                    numberOfLines={3}
+                                    onChangeText={(text) => {
+                                        // Ograniczenie do 12 znaków
+                                        if (text.length <= 12) {
+                                            setCustomReason(text);
+                                        }
+                                    }}
+                                    maxLength={12}
+                                    multiline={false}
+                                    numberOfLines={1}
                                 />
+                                <Text style={styles.characterCount}>
+                                    {customReason.length}/12
+                                </Text>
                             </View>
                         )}
                         
-                        {/* Przycisk Zatwierdź - pokazuje się gdy wybrano opcję */}
-                        {selectedReasonOption && (selectedReasonOption !== 'custom' || customReason.trim().length > 0) && (
+                        {/* Sekcja zaliczki */}
+                        <View style={styles.advanceSection}>
+                            <Text style={styles.advanceTitle}>Zaliczka (opcjonalnie)</Text>
+                            <View style={styles.advanceRow}>
+                                <TextInput
+                                    style={styles.advanceInput}
+                                    placeholder="0.00"
+                                    placeholderTextColor="#ccc"
+                                    value={advanceAmount}
+                                    onChangeText={setAdvanceAmount}
+                                    keyboardType="numeric"
+                                />
+                                <TouchableOpacity
+                                    style={styles.currencyButton}
+                                    onPress={() => setShowCurrencyModal(true)}
+                                >
+                                    <Text style={styles.currencyButtonText}>{selectedCurrency}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        
+                        {/* Przyciski akcji */}
+                        <View style={styles.actionButtons}>
                             <TouchableOpacity
-                                style={[styles.optionButton, styles.submitButton]}
-                                onPress={() => {
-                                    const finalReason = selectedReasonOption === 'custom' ? customReason.trim() : selectedReasonOption;
-                                    handleDomReasonSelect(finalReason);
-                                }}
+                                style={[styles.optionButton, styles.submitButton, !selectedReason && styles.disabledButton]}
+                                onPress={handleFinalSubmit}
+                                disabled={!selectedReason}
                             >
                                 <Text style={styles.optionText}>Zatwierdź</Text>
                             </TouchableOpacity>
-                        )}
-                        
+                            
+                            <TouchableOpacity
+                                style={[styles.optionButton, styles.closeButton]}
+                                onPress={() => {
+                                    setDomReasonModalVisible(false);
+                                    setCustomReason("");
+                                    setSelectedReason("");
+                                    setAdvanceAmount("");
+                                    setSelectedCurrency("PLN");
+                                }}
+                            >
+                                <Text style={styles.closeText}>Anuluj</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal wyboru waluty */}
+            <Modal
+                visible={showCurrencyModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowCurrencyModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Wybierz walutę</Text>
+                        {['PLN', 'EUR', 'USD', 'CZK'].map((currency) => (
+                            <TouchableOpacity
+                                key={currency}
+                                style={styles.optionButton}
+                                onPress={() => {
+                                    setSelectedCurrency(currency);
+                                    setShowCurrencyModal(false);
+                                }}
+                            >
+                                <Text style={styles.optionText}>{currency}</Text>
+                            </TouchableOpacity>
+                        ))}
                         <TouchableOpacity
                             style={[styles.optionButton, styles.closeButton]}
-                            onPress={() => {
-                                setDomReasonModalVisible(false);
-                                setCustomReason("");
-                                setSelectedReasonOption(null);
-                            }}
+                            onPress={() => setShowCurrencyModal(false)}
                         >
                             <Text style={styles.closeText}>Anuluj</Text>
                         </TouchableOpacity>
@@ -704,6 +822,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         width: '70%',
         color: '#fff',
+        borderWidth: 1,
+        borderColor: 'white',
     },
     modalTitle: {
         fontSize: 16,
@@ -796,36 +916,105 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: 'white',
         textAlignVertical: 'top',
-        marginBottom: 10,
-        minHeight: 80,
+        marginBottom: 5,
+        minHeight: 45,
         borderWidth: 1,
-        borderColor: '#333',
+        borderColor: 'white',
+    },
+    characterCount: {
+        color: '#999',
+        fontSize: 12,
+        textAlign: 'right',
+        marginBottom: 10,
     },
     submitButton: {
         backgroundColor: '#28a745',
     },
-    radioOptionContainer: {
+    disabledButton: {
+        backgroundColor: '#6c757d',
+        opacity: 0.6,
+    },
+    radioContainer: {
+        width: '100%',
+        marginVertical: 15,
+    },
+    radioOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        width: '100%',
+        marginVertical: 8,
+        paddingHorizontal: 10,
     },
     radioButton: {
         width: 20,
         height: 20,
         borderRadius: 10,
         borderWidth: 2,
-        borderColor: '#007bff',
+        borderColor: '#0d6efd',
         marginRight: 12,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    radioButtonInner: {
+    radioButtonSelected: {
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: '#007bff',
+        backgroundColor: '#0d6efd',
+    },
+    radioText: {
+        color: '#fff',
+        fontSize: 16,
+        flex: 1,
+    },
+    advanceSection: {
+        width: '100%',
+        marginVertical: 15,
+        paddingVertical: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#333',
+    },
+    advanceTitle: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 10,
+        textAlign: 'center',
+        backgroundColor: 'black',
+    },
+    advanceRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+    },
+    advanceInput: {
+        flex: 1,
+        backgroundColor: 'black',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: 'white',
+        marginRight: 10,
+        borderWidth: 1,
+        borderColor: 'white',
+        textAlign: 'center',
+    },
+    currencyButton: {
+        backgroundColor: '#0d6efd',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 8,
+        minWidth: 80,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'white',
+    },
+    currencyButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    actionButtons: {
+        width: '100%',
+        marginTop: 10,
     },
 });
 

@@ -27,6 +27,14 @@ const Home = () => {
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false); // State for currency modal
   const [currentCurrencyPairIndex, setCurrentCurrencyPairIndex] = useState(null); // Track the index of the pair being edited
   const [currentCurrencyType, setCurrentCurrencyType] = useState(""); // "cash" or "card"
+  const [advancesData, setAdvancesData] = useState([]); // State for advances/zaliczki
+  const [deductionsData, setDeductionsData] = useState([]); // State for deductions/odpisane kwoty
+  const [deductionModalVisible, setDeductionModalVisible] = useState(false); // State for deduction modal
+  const [deductionAmount, setDeductionAmount] = useState(""); // State for deduction amount
+  const [deductionCurrency, setDeductionCurrency] = useState("PLN"); // State for deduction currency
+  const [deductionReason, setDeductionReason] = useState(""); // State for deduction reason
+  const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
+  const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
   const fetchSalesData = async () => {
@@ -161,12 +169,190 @@ const Home = () => {
     }
   };
 
+  const fetchAdvances = async () => {
+    try {
+      const response = await fetch("http://192.168.1.32:3000/api/transfer");
+      const data = await response.json();
+      
+      // Filtruj tylko te transfery które mają zaliczki i są od obecnego użytkownika
+      const advancesFiltered = data.filter((item) => 
+        item.transfer_from === user.symbol && 
+        item.advancePayment && 
+        item.advancePayment > 0
+      );
+      
+      setAdvancesData(advancesFiltered);
+    } catch (error) {
+      console.error("Error fetching advances:", error);
+    }
+  };
+
+  const fetchDeductions = async () => {
+    try {
+      const response = await fetch("http://192.168.1.32:3000/api/deductions");
+      const data = await response.json();
+      
+      // Filtruj odpisane kwoty dla obecnego użytkownika
+      const deductionsFiltered = data.filter((item) => 
+        item.userSymbol === user.symbol
+      );
+      
+      setDeductionsData(deductionsFiltered);
+    } catch (error) {
+      console.error("Error fetching deductions:", error);
+      setDeductionsData([]); // Fallback to empty array if API doesn't exist yet
+    }
+  };
+
+  // Function to calculate available funds by currency
+  const calculateAvailableFunds = () => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Calculate total sales by currency
+    const salesTotals = {};
+    filteredData.forEach(item => {
+      [...(item.cash || []), ...(item.card || [])]
+        .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
+        .forEach(({ price, currency }) => {
+          salesTotals[currency] = (salesTotals[currency] || 0) + parseFloat(price);
+        });
+    });
+    
+    // Calculate total advances by currency
+    const advancesTotals = {};
+    transferredItems
+      .filter(item => item.date && item.date.startsWith(today) && item.advancePayment > 0)
+      .forEach(item => {
+        const currency = item.advancePaymentCurrency;
+        advancesTotals[currency] = (advancesTotals[currency] || 0) + item.advancePayment;
+      });
+    
+    // Calculate total deductions by currency
+    const deductionsTotals = {};
+    deductionsData
+      .filter(item => item.date && item.date.startsWith(today))
+      .forEach(item => {
+        const currency = item.currency;
+        deductionsTotals[currency] = (deductionsTotals[currency] || 0) + item.amount;
+      });
+    
+    // Calculate available funds by currency
+    const allCurrencies = new Set([
+      ...Object.keys(salesTotals),
+      ...Object.keys(advancesTotals),
+      ...Object.keys(deductionsTotals)
+    ]);
+    
+    const availableFunds = {};
+    allCurrencies.forEach(currency => {
+      const sales = salesTotals[currency] || 0;
+      const advances = advancesTotals[currency] || 0;
+      const deductions = deductionsTotals[currency] || 0;
+      availableFunds[currency] = sales + advances - deductions;
+    });
+    
+    return availableFunds;
+  };
+
+  const submitDeduction = async () => {
+    if (!deductionAmount || parseFloat(deductionAmount) <= 0) {
+      Alert.alert("Błąd", "Proszę wprowadzić prawidłową kwotę.");
+      return;
+    }
+    
+    if (!deductionReason.trim()) {
+      Alert.alert("Błąd", "Proszę wprowadzić powód odpisania.");
+      return;
+    }
+    
+    // Check if there are sufficient funds
+    const availableFunds = calculateAvailableFunds();
+    const requestedAmount = parseFloat(deductionAmount);
+    const currentAvailable = availableFunds[deductionCurrency] || 0;
+    
+    if (requestedAmount > currentAvailable) {
+      Alert.alert(
+        "Niewystarczające środki", 
+        `Nie można odpisać ${requestedAmount} ${deductionCurrency}.\n\nDostępne środki w ${deductionCurrency}: ${currentAvailable.toFixed(2)}\n\nSprawdź "Zamknięcie dnia" na dole ekranu, aby zobaczyć wszystkie dostępne środki.`,
+        [{ text: "OK", style: "default" }]
+      );
+      return;
+    }
+    
+    try {
+      const deductionData = {
+        userSymbol: user.symbol,
+        amount: parseFloat(deductionAmount),
+        currency: deductionCurrency,
+        reason: deductionReason.trim(),
+        date: new Date().toISOString(),
+      };
+      
+      const response = await fetch("http://192.168.1.32:3000/api/deductions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(deductionData),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to submit deduction");
+      }
+      
+      // Reset form and refresh data
+      setDeductionAmount("");
+      setDeductionCurrency("PLN");
+      setDeductionReason("");
+      setDeductionModalVisible(false);
+      await fetchDeductions();
+      
+      Alert.alert("Sukces", "Kwota została odpisana.");
+    } catch (error) {
+      console.error("Error submitting deduction:", error);
+      Alert.alert("Błąd", "Nie udało się odpisać kwoty. Spróbuj ponownie.");
+    }
+  };
+
+  const cancelDeduction = async () => {
+    if (!selectedDeductionItem) {
+      Alert.alert("Błąd", "Nie wybrano pozycji do anulowania.");
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://192.168.1.32:3000/api/deductions/${selectedDeductionItem._id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to cancel deduction");
+      }
+      
+      // Close modal and refresh data
+      setCancelDeductionModalVisible(false);
+      setSelectedDeductionItem(null);
+      await fetchDeductions();
+      
+      Alert.alert("Sukces", "Odpisana kwota została anulowana.");
+    } catch (error) {
+      console.error("Error canceling deduction:", error);
+      Alert.alert("Błąd", "Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
+    }
+  };
+
+  const openCancelDeductionModal = (item) => {
+    setSelectedDeductionItem(item);
+    setCancelDeductionModalVisible(true);
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       fetchSalesData(); // Fetch sales data when the tab is focused
       if (user?.symbol) { // Ensure user exists before fetching items
         fetchTransferredItems(); // Fetch transferred items when the tab is focused
         fetchReceivedItems(); // Fetch received items when the tab is focused
+        fetchAdvances(); // Fetch advances when the tab is focused
+        fetchDeductions(); // Fetch deductions when the tab is focused
       }
     }, [user?.symbol]) // Refetch when the user's symbol changes
   );
@@ -174,6 +360,12 @@ const Home = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchSalesData(); // Fetch data on pull-to-refresh
+    if (user?.symbol) {
+      await fetchTransferredItems();
+      await fetchReceivedItems();
+      await fetchAdvances();
+      await fetchDeductions();
+    }
     setRefreshing(false);
   };
 
@@ -312,6 +504,23 @@ const Home = () => {
                       })}
                     </Text>
                   </View>
+                  
+                  {/* Button to add deduction - moved to top right */}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#dc3545',
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                    }}
+                    onPress={() => setDeductionModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                      Odpisz kwotę
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ color: "#d1d5db", fontSize: 14, fontWeight: "bold", marginRight: 8 }}>Sprzedaż:</Text>
@@ -406,6 +615,257 @@ const Home = () => {
                     ))}
                   </View>
                 )}
+                {/* Section for advances/zaliczki */}
+                {(() => {
+                  const advancesToday = advancesData.filter(
+                    item => item.date && item.date.startsWith(today)
+                  );
+                  
+                  return advancesToday.length > 0 && (
+                    <View style={{ marginTop: 24 }}>
+                      <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Zaliczki wzięte dzisiaj:</Text>
+                      {advancesToday.map((item, index) => (
+                        <View
+                          key={item.productId || index}
+                          style={styles.advanceItem}
+                        >
+                          <Text style={styles.advanceItemTextLeft}>
+                            {index + 1}. {item.fullName} {item.size}
+                          </Text>
+                          <Text style={styles.advanceItemTextRight}>
+                            Zaliczka: {item.advancePayment} {item.advancePaymentCurrency}
+                            {item.reason && (
+                              <Text style={{ fontSize: 11, color: "#fbbf24" }}>
+                                {' '}({item.reason.length > 15 ? item.reason.substring(0, 15) + '...' : item.reason})
+                              </Text>
+                            )}
+                          </Text>
+                        </View>
+                      ))}
+                      {/* Suma zaliczek pogrupowana według walut */}
+                      <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#374151" }}>
+                        <Text style={{ fontSize: 12, color: "#9ca3af", fontWeight: "bold", textAlign: "right" }}>
+                          Suma zaliczek: {' '}
+                          {(() => {
+                            const advanceTotals = {};
+                            advancesToday.forEach(item => {
+                              const currency = item.advancePaymentCurrency;
+                              advanceTotals[currency] = (advanceTotals[currency] || 0) + item.advancePayment;
+                            });
+                            return Object.entries(advanceTotals)
+                              .map(([currency, total]) => `${total} ${currency}`)
+                              .join(', ');
+                          })()}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+                
+                {/* Section for deductions/odpisane kwoty */}
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const deductionsToday = deductionsData.filter(
+                    item => item.date && item.date.startsWith(today)
+                  );
+                  
+                  return deductionsToday.length > 0 && (
+                    <View style={{ marginTop: 24 }}>
+                      <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Odpisane kwoty dzisiaj:</Text>
+                      {deductionsToday.map((item, index) => (
+                        <View
+                          key={item._id || index}
+                          style={styles.deductionItem}
+                        >
+                          <Text style={styles.deductionItemTextLeft}>
+                            {index + 1}. {item.reason}
+                          </Text>
+                          <Text style={styles.deductionItemTextRight}>
+                            -{item.amount} {item.currency}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => openCancelDeductionModal(item)}
+                            style={{
+                              paddingLeft: 8,
+                              paddingVertical: 4,
+                            }}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Text style={{ color: "white", fontSize: 16 }}>⋮</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                      {/* Suma odpisanych kwot pogrupowana według walut */}
+                      <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#374151" }}>
+                        <Text style={{ fontSize: 12, color: "#9ca3af", fontWeight: "bold", textAlign: "right" }}>
+                          Suma odpisanych kwot: {' '}
+                          {(() => {
+                            const deductionTotals = {};
+                            deductionsToday.forEach(item => {
+                              const currency = item.currency;
+                              deductionTotals[currency] = (deductionTotals[currency] || 0) + item.amount;
+                            });
+                            return Object.entries(deductionTotals)
+                              .map(([currency, total]) => `-${total} ${currency}`)
+                              .join(', ');
+                          })()}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+                
+                {/* Financial Summary Section - Zamknięcie Dnia */}
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  
+                  // Calculate total sales by currency
+                  const salesTotals = {};
+                  filteredData.forEach(item => {
+                    [...(item.cash || []), ...(item.card || [])]
+                      .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
+                      .forEach(({ price, currency }) => {
+                        salesTotals[currency] = (salesTotals[currency] || 0) + parseFloat(price);
+                      });
+                  });
+                  
+                  // Calculate total advances by currency
+                  const advancesTotals = {};
+                  transferredItems
+                    .filter(item => item.date && item.date.startsWith(today) && item.advancePayment > 0)
+                    .forEach(item => {
+                      const currency = item.advancePaymentCurrency;
+                      advancesTotals[currency] = (advancesTotals[currency] || 0) + item.advancePayment;
+                    });
+                  
+                  // Calculate total deductions by currency
+                  const deductionsTotals = {};
+                  deductionsData
+                    .filter(item => item.date && item.date.startsWith(today))
+                    .forEach(item => {
+                      const currency = item.currency;
+                      deductionsTotals[currency] = (deductionsTotals[currency] || 0) + item.amount;
+                    });
+                  
+                  // Calculate final totals by currency
+                  const allCurrencies = new Set([
+                    ...Object.keys(salesTotals),
+                    ...Object.keys(advancesTotals),
+                    ...Object.keys(deductionsTotals)
+                  ]);
+                  
+                  const finalTotals = {};
+                  allCurrencies.forEach(currency => {
+                    const sales = salesTotals[currency] || 0;
+                    const advances = advancesTotals[currency] || 0;
+                    const deductions = deductionsTotals[currency] || 0;
+                    finalTotals[currency] = sales + advances - deductions;
+                  });
+                  
+                  return allCurrencies.size > 0 && (
+                    <View style={{ 
+                      marginTop: 32, 
+                      paddingTop: 20, 
+                      borderTopWidth: 2, 
+                      borderTopColor: "#fbbf24", // Golden border
+                      backgroundColor: "#1f2937", // Dark gray background
+                      padding: 16,
+                      borderRadius: 8,
+                      marginHorizontal: 8
+                    }}>
+                      <Text style={{ 
+                        fontSize: 16, 
+                        color: "#fbbf24", // Golden text
+                        fontWeight: "bold", 
+                        marginBottom: 16, 
+                        textAlign: "center" 
+                      }}>
+                        🏦 ZAMKNIĘCIE DNIA
+                      </Text>
+                      
+                      {/* Sales */}
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 14, color: "#10b981", fontWeight: "bold", marginBottom: 4 }}>
+                          📈 UTARG (Sprzedaż):
+                        </Text>
+                        {Object.entries(salesTotals).map(([currency, total]) => (
+                          <Text key={`sales-${currency}`} style={{ fontSize: 13, color: "#d1fae5", marginLeft: 16 }}>
+                            +{total.toFixed(2)} {currency}
+                          </Text>
+                        ))}
+                      </View>
+                      
+                      {/* Advances */}
+                      {Object.keys(advancesTotals).length > 0 && (
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ fontSize: 14, color: "#3b82f6", fontWeight: "bold", marginBottom: 4 }}>
+                            💰 ZALICZKI (od klientów):
+                          </Text>
+                          {Object.entries(advancesTotals).map(([currency, total]) => (
+                            <Text key={`advances-${currency}`} style={{ fontSize: 13, color: "#dbeafe", marginLeft: 16 }}>
+                              +{total.toFixed(2)} {currency}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+                      
+                      {/* Deductions */}
+                      {Object.keys(deductionsTotals).length > 0 && (
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ fontSize: 14, color: "#ef4444", fontWeight: "bold", marginBottom: 4 }}>
+                            📉 ODPISANE KWOTY:
+                          </Text>
+                          {Object.entries(deductionsTotals).map(([currency, total]) => (
+                            <Text key={`deductions-${currency}`} style={{ fontSize: 13, color: "#fecaca", marginLeft: 16 }}>
+                              -{total.toFixed(2)} {currency}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+                      
+                      {/* Final Total */}
+                      <View style={{ 
+                        marginTop: 16, 
+                        paddingTop: 12, 
+                        borderTopWidth: 1, 
+                        borderTopColor: "#fbbf24" 
+                      }}>
+                        <Text style={{ 
+                          fontSize: 15, 
+                          color: "#fbbf24", 
+                          fontWeight: "bold", 
+                          marginBottom: 8,
+                          textAlign: "center" 
+                        }}>
+                          💳 KWOTA DO ROZLICZENIA:
+                        </Text>
+                        {Object.entries(finalTotals).map(([currency, total]) => (
+                          <Text 
+                            key={`final-${currency}`} 
+                            style={{ 
+                              fontSize: 16, 
+                              color: total >= 0 ? "#10b981" : "#ef4444", 
+                              fontWeight: "bold",
+                              textAlign: "center",
+                              marginBottom: 2
+                            }}
+                          >
+                            {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
+                          </Text>
+                        ))}
+                        <Text style={{ 
+                          fontSize: 11, 
+                          color: "#9ca3af", 
+                          textAlign: "center",
+                          marginTop: 8,
+                          fontStyle: "italic" 
+                        }}>
+                          Kwota jaką powinieneś mieć w kasie na koniec dnia
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
               </View>
             );
           }}
@@ -863,6 +1323,196 @@ const Home = () => {
             </View>
           </Modal>
         )}
+        
+        {/* Deduction Modal */}
+        <Modal
+          transparent={true}
+          visible={deductionModalVisible}
+          animationType="fade"
+          onRequestClose={() => setDeductionModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '85%' }]}>
+              <Text style={styles.modalTitle}>Odpisz kwotę</Text>
+              
+              {/* Available funds display */}
+              {(() => {
+                const availableFunds = calculateAvailableFunds();
+                const currentAvailable = availableFunds[deductionCurrency] || 0;
+                return (
+                  <View style={{ 
+                    width: '100%', 
+                    marginBottom: 15, 
+                    backgroundColor: '#374151', 
+                    padding: 10, 
+                    borderRadius: 6 
+                  }}>
+                    <Text style={{ 
+                      color: '#10b981', 
+                      fontSize: 13, 
+                      textAlign: 'center', 
+                      fontWeight: 'bold' 
+                    }}>
+                      💰 Dostępne środki w {deductionCurrency}: {currentAvailable.toFixed(2)}
+                    </Text>
+                    {Object.keys(availableFunds).length > 1 && (
+                      <Text style={{ 
+                        color: '#9ca3af', 
+                        fontSize: 11, 
+                        textAlign: 'center', 
+                        marginTop: 4 
+                      }}>
+                        Inne waluty: {Object.entries(availableFunds)
+                          .filter(([currency]) => currency !== deductionCurrency)
+                          .map(([currency, amount]) => `${amount.toFixed(2)} ${currency}`)
+                          .join(', ')}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })()}
+              
+              {/* Amount input */}
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Kwota:</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: 'black',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 16,
+                    color: 'white',
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    textAlign: 'center',
+                  }}
+                  placeholder="0.00"
+                  placeholderTextColor="#ccc"
+                  value={deductionAmount}
+                  onChangeText={setDeductionAmount}
+                  keyboardType="numeric"
+                />
+              </View>
+              
+              {/* Currency selection */}
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta:</Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#0d6efd',
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={() => {/* Currency selection logic can be added here */}}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
+                    {deductionCurrency}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Reason input */}
+              <View style={{ width: '100%', marginBottom: 20 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Powód odpisania:</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: 'black',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 14,
+                    color: 'white',
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    minHeight: 80,
+                    textAlignVertical: 'top',
+                  }}
+                  placeholder="Wpisz powód odpisania kwoty..."
+                  placeholderTextColor="#ccc"
+                  value={deductionReason}
+                  onChangeText={setDeductionReason}
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+              
+              {/* Action buttons */}
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#28a745', marginBottom: 10 }]}
+                onPress={submitDeduction}
+              >
+                <Text style={styles.optionText}>Odpisz kwotę</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.optionButton, styles.closeButton]}
+                onPress={() => {
+                  setDeductionModalVisible(false);
+                  setDeductionAmount("");
+                  setDeductionCurrency("PLN");
+                  setDeductionReason("");
+                }}
+              >
+                <Text style={styles.closeText}>Anuluj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        
+        {/* Cancel Deduction Modal */}
+        <Modal
+          transparent={true}
+          visible={cancelDeductionModalVisible}
+          animationType="fade"
+          onRequestClose={() => setCancelDeductionModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%' }]}>
+              <Text style={styles.modalTitle}>Anuluj odpisaną kwotę</Text>
+              
+              {selectedDeductionItem && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginBottom: 8 }}>
+                    Czy na pewno chcesz anulować tę odpisaną kwotę?
+                  </Text>
+                  <View style={{ 
+                    backgroundColor: '#374151', 
+                    padding: 12, 
+                    borderRadius: 8, 
+                    marginBottom: 15 
+                  }}>
+                    <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: 'bold', textAlign: 'center' }}>
+                      {selectedDeductionItem.reason}
+                    </Text>
+                    <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginTop: 4 }}>
+                      -{selectedDeductionItem.amount} {selectedDeductionItem.currency}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#ef4444', marginBottom: 10 }]}
+                onPress={cancelDeduction}
+              >
+                <Text style={styles.optionText}>Tak, anuluj odpisaną kwotę</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.optionButton, styles.closeButton]}
+                onPress={() => {
+                  setCancelDeductionModalVisible(false);
+                  setSelectedDeductionItem(null);
+                }}
+              >
+                <Text style={styles.closeText}>Nie, zostaw</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -979,6 +1629,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '70%',
     color: '#fff',
+    borderWidth: 1,
+    borderColor: 'white',
   },
   modalTitle: {
     fontSize: 16,
@@ -1008,6 +1660,50 @@ const styles = StyleSheet.create({
   closeText: {
     color: 'white',
     fontSize: 14,
+  },
+  advanceItem: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: "#10b981", // Green background for advances
+    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  advanceItemTextLeft: {
+    color: "white", // White text for left-aligned content
+    fontSize: 13, // Match font size from writeoff.jsx
+    fontWeight: "bold", // Bold text for emphasis
+    flex: 1, // Allow text to take available space
+    textAlign: "left", // Align text to the left
+  },
+  advanceItemTextRight: {
+    color: "white", // White text for right-aligned content
+    fontSize: 13, // Match font size from writeoff.jsx
+    fontWeight: "bold", // Bold text for emphasis
+    textAlign: "right", // Align text to the right
+  },
+  deductionItem: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: "#dc3545", // Red background for deductions
+    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  deductionItemTextLeft: {
+    color: "white", // White text for left-aligned content
+    fontSize: 13, // Match font size from writeoff.jsx
+    fontWeight: "bold", // Bold text for emphasis
+    flex: 1, // Allow text to take available space
+    textAlign: "left", // Align text to the left
+  },
+  deductionItemTextRight: {
+    color: "white", // White text for right-aligned content
+    fontSize: 13, // Match font size from writeoff.jsx
+    fontWeight: "bold", // Bold text for emphasis
+    textAlign: "right", // Align text to the right
   },
 });
 export default Home; // Export the Home component
