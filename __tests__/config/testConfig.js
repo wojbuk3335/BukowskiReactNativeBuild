@@ -7,10 +7,15 @@
 // Export test suite configurations
 export const testSuites = {
   unit: [
-    'context/GlobalState.test.js'
+    'context/GlobalState.test.js',
+    'unit/UserFiltering.test.js'
   ],
   integration: [
-    'integration/SignInDataLoading.test.js'
+    'integration/SignInDataLoading.test.js',
+    'integration/WriteOffUserTransfer.test.js'
+  ],
+  components: [
+    'components/WriteOff.test.js'
   ],
   performance: [
     'performance/APIPerformance.test.js'
@@ -23,6 +28,7 @@ export const testSuites = {
 // Test execution order (recommended)
 export const executionOrder = [
   'unit',
+  'components',
   'integration', 
   'performance',
   'e2e'

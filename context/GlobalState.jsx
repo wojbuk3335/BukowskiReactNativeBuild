@@ -153,7 +153,16 @@ export const GlobalStateProvider = ({ children }) => {
             const data = await response.json();
             
             // Extract users array from the response object
-            const usersArray = Array.isArray(data?.users) ? data.users : [];
+            // API może zwracać { users: [...] } lub bezpośrednio [...]
+            let usersArray;
+            if (Array.isArray(data)) {
+                usersArray = data; // API zwraca bezpośrednio tablicę
+            } else if (Array.isArray(data?.users)) {
+                usersArray = data.users; // API zwraca { users: [...] }
+            } else {
+                usersArray = []; // Fallback do pustej tablicy
+            }
+            
             setUsers(usersArray); // Set the fetched users into state
             return usersArray; // Return fetched users as array
         } catch (error) {
@@ -239,13 +248,21 @@ export const GlobalStateProvider = ({ children }) => {
 
         // Filtruj użytkowników tylko z tej samej lokalizacji co zalogowany użytkownik
         // Wykluczamy admin i magazyn (role: admin, magazyn)
-        const filteredUsers = users.filter(u => 
-            u.location === user.location && 
-            u.role !== 'admin' && 
-            u.role !== 'magazyn' &&
-            u.sellingPoint && 
-            u.sellingPoint.trim() !== ''
-        );
+        // Dodajemy rolę "dom" do listy dostępnych użytkowników (niezależnie od lokalizacji)
+        const filteredUsers = users.filter(u => {
+            // Zawsze uwzględniaj użytkowników z rolą "dom"
+            if (u.role && u.role.toLowerCase() === 'dom') {
+                return true;
+            }
+            
+            // Dla pozostałych użytkowników stosuj standardowe filtrowanie
+            return u.location && user.location &&
+                u.location.trim().toLowerCase() === user.location.trim().toLowerCase() && 
+                u.role !== 'admin' && 
+                u.role !== 'magazyn' &&
+                u.sellingPoint && 
+                u.sellingPoint.trim() !== '';
+        });
 
         return filteredUsers;
     };

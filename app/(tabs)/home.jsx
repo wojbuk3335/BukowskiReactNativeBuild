@@ -142,7 +142,10 @@ const Home = () => {
     try {
       const response = await fetch("http://192.168.1.32:3000/api/transfer");
       const data = await response.json();
-      setTransferredItems(data.filter((item) => item.transfer_from === user.symbol)); // Filter items by transfer_from
+      
+      const filteredData = data.filter((item) => item.transfer_from === user.symbol);
+      
+      setTransferredItems(filteredData); // Filter items by transfer_from
     } catch (error) {
       console.error("Error fetching transferred items:", error);
     }
@@ -374,6 +377,11 @@ const Home = () => {
                         </Text>
                         <Text style={styles.transferredItemTextRight}>
                           Przepisano do: {item.transfer_to}
+                          {item.reason && (item.transfer_to?.toLowerCase() === 'dom' || item.transfer_to?.toLowerCase() === 'd') && (
+                            <Text style={{ fontSize: 11, color: "#fbbf24" }}>
+                              {' '}({item.reason.length > 15 ? item.reason.substring(0, 15) + '...' : item.reason})
+                            </Text>
+                          )}
                         </Text>
                       </View>
                     ))}

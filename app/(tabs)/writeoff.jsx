@@ -1,18 +1,21 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { GlobalStateContext } from "../../context/GlobalState";
 
 const WriteOff = () => {
     const { 
         user, 
         stateData, 
+        users: globalUsers, // Dodaj globalną tablicę użytkowników
         fetchState,
-        fetchUsers: fetchUsersFromContext 
+        fetchUsers: fetchUsersFromContext,
+        getFilteredSellingPoints
     } = React.useContext(GlobalStateContext);
     
     const [modalVisible, setModalVisible] = useState(false);
     const [transferModalVisible, setTransferModalVisible] = useState(false);
+    const [domReasonModalVisible, setDomReasonModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [users, setUsers] = useState([]); // List of users for transfer
     const [transfers, setTransfers] = useState([]); // List of current transfers
@@ -20,6 +23,8 @@ const WriteOff = () => {
     const [isRefreshing, setIsRefreshing] = useState(false); // Dodano nowy stan dla pull-to-refresh
     const [showErrorModal, setShowErrorModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+    const [customReason, setCustomReason] = useState(""); // Stan dla niestandardowego powodu
+    const [selectedReasonOption, setSelectedReasonOption] = useState(null); // Radio button selection
     
     // Animacje dla kropek ładowania
     const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -84,6 +89,13 @@ const WriteOff = () => {
         }
     }, [isLoading]);
 
+    // Automatyczne filtrowanie użytkowników gdy globalUsers się zaktualizuje
+    useEffect(() => {
+        if (globalUsers && globalUsers.length > 0) {
+            fetchUsersData();
+        }
+    }, [globalUsers]);
+
     const fetchAllRequiredData = async (isRefreshAction = false) => {
         // Ustawienie odpowiedniego stanu ładowania
         if (isRefreshAction) {
@@ -109,7 +121,7 @@ const WriteOff = () => {
             // Race between data fetching and timeout
             const dataPromise = Promise.all([
                 fetchState(),
-                fetchUsersData(),
+                fetchUsersFromContext(), // Użyj funkcji z Global State zamiast lokalnej
                 fetchTransfers()
             ]);
             
@@ -117,6 +129,8 @@ const WriteOff = () => {
                 dataPromise,
                 timeoutPromise
             ]);
+            
+            // fetchUsersData() będzie wywoływane automatycznie przez useEffect gdy globalUsers się zaktualizuje
             
         } catch (error) {
             if (error.message.includes('Timeout') || error.message.includes('timeout')) {
@@ -167,7 +181,6 @@ const fetchTransfers = async () => {
 
         setTransfers(filteredTransfers);
     } catch (error) {
-        console.error("Error fetching transfers:", error.message);
         setTransfers([]);
         throw error; // Re-throw to be caught by fetchAllRequiredData
     }
@@ -185,27 +198,62 @@ const fetchTransfers = async () => {
 
     const fetchUsersData = async () => {
         try {
-            const response = await fetch("http://192.168.1.32:3000/api/user"); // Fetch all users
-            const data = await response.json();
-            setUsers(
-                data.users.filter(
-                    (u) => u.symbol !== user.symbol && u.role !== "admin" // Exclude current user and admin
-                )
-            );
+            // Nie pobieramy danych z API - używamy danych z Global State
+            // które zostały już zaktualizowane przez fetchUsersFromContext()
+            
+            if (!globalUsers || globalUsers.length === 0) {
+                // Fallback do funkcji z Global State
+                const filteredUsers = getFilteredSellingPoints();
+                const finalFilteredUsers = filteredUsers.filter(u => u.symbol !== user?.symbol);
+                setUsers(finalFilteredUsers);
+                return;
+            }
+            
+            // Zastosuj logikę filtrowania
+            const filteredUsers = globalUsers.filter(u => {
+                // Zawsze uwzględniaj użytkowników z rolą "dom"
+                if (u.role && u.role.toLowerCase() === 'dom') {
+                    return true;
+                }
+                
+                // Dla pozostałych użytkowników stosuj standardowe filtrowanie
+                const userLocation = u.location || u.sellingPoint || null;
+                const currentUserLocation = user?.location || user?.sellingPoint || null;
+                
+                const shouldInclude = userLocation && currentUserLocation &&
+                    userLocation.trim().toLowerCase() === currentUserLocation.trim().toLowerCase() && 
+                    u.role !== 'admin' && 
+                    u.role !== 'magazyn' &&
+                    u.sellingPoint && 
+                    u.sellingPoint.trim() !== '';
+                    
+                return shouldInclude;
+            });
+            
+            // Dodatkowo wykluczamy zalogowanego użytkownika
+            const finalFilteredUsers = filteredUsers.filter(u => u.symbol !== user?.symbol);
+            
+            setUsers(finalFilteredUsers);
         } catch (error) {
-            console.error("Error fetching users:", error);
+            console.error('❌ Error in fetchUsersData:', error);
             throw error; // Re-throw to be caught by fetchAllRequiredData
         }
     };
 
-    useEffect(() => {
-        fetchUsersData();
-    }, []);
-
-    const initiateTransfer = async (toSymbol) => {
+    const initiateTransfer = async (toSymbol, reason = null) => {
         if (!selectedItem) {
             Alert.alert("Error", "No item selected for transfer.");
             return;
+        }
+
+        // Sprawdź czy transfer jest do "Dom" i czy nie ma powodu
+        if (toSymbol.toLowerCase() === 'dom' || toSymbol.toLowerCase() === 'd') {
+            if (!reason) {
+                // Pokaż modal wyboru powodu dla transferu do domu
+                setTransferModalVisible(false);
+                setDomReasonModalVisible(true);
+                return;
+            }
         }
 
         const transferModel = {
@@ -215,6 +263,7 @@ const fetchTransfers = async () => {
             transfer_from: user.symbol,
             transfer_to: toSymbol,
             productId: selectedItem.id,
+            reason: reason || null, // Dodaj powód do transferu
         };
 
         try {
@@ -233,9 +282,29 @@ const fetchTransfers = async () => {
 
             fetchAllRequiredData(false);
             setTransferModalVisible(false);
+            setDomReasonModalVisible(false);
+            setCustomReason(""); // Wyczyść niestandardowy powód
+            setSelectedReasonOption(null); // Wyczyść wybór radio button
         } catch (error) {
-            console.error("Error creating transfer:", error);
             Alert.alert("Error", "An unexpected error occurred while creating the transfer.");
+        }
+    };
+
+    const handleDomReasonSelect = (reason) => {
+        if (reason === 'custom') {
+            // Nie zamykaj modalu, pozwól użytkownikowi wpisać powód
+            return;
+        }
+        
+        // Znajdź użytkownika Dom
+        const domUser = users.find(u => u.role && u.role.toLowerCase() === 'dom');
+        if (domUser) {
+            initiateTransfer(domUser.symbol, reason);
+            // Wyczyść state po udanym transferze
+            setSelectedReasonOption(null);
+            setCustomReason("");
+        } else {
+            Alert.alert("Error", "Nie znaleziono użytkownika Dom.");
         }
     };
 
@@ -263,7 +332,6 @@ const fetchTransfers = async () => {
             fetchAllRequiredData(false);
             closeModal();
         } catch (error) {
-            console.error("Error deleting transfer:", error);
             Alert.alert("Error", "An unexpected error occurred while deleting the transfer.");
         }
     };
@@ -433,7 +501,16 @@ const fetchTransfers = async () => {
                             <TouchableOpacity
                                 key={item._id}
                                 style={styles.optionButton}
-                                onPress={() => initiateTransfer(item.symbol)}
+                                onPress={() => {
+                                    if (item.role && item.role.toLowerCase() === 'dom') {
+                                        // Dla użytkownika Dom pokaż modal powodów
+                                        setTransferModalVisible(false);
+                                        setDomReasonModalVisible(true);
+                                    } else {
+                                        // Dla innych użytkowników normalne przepisywanie
+                                        initiateTransfer(item.symbol);
+                                    }
+                                }}
                             >
                                 <Text style={styles.optionText}>{item.symbol}</Text>
                             </TouchableOpacity>
@@ -470,6 +547,96 @@ const fetchTransfers = async () => {
                             onPress={handleCloseError}
                         >
                             <Text style={styles.closeText}>Zamknij</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal powodów przepisania do domu */}
+            <Modal
+                visible={domReasonModalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => {
+                    setDomReasonModalVisible(false);
+                    setCustomReason("");
+                    setSelectedReasonOption(null);
+                }}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Powód przepisania do domu</Text>
+                        
+                        {/* Radio button - Skracanie rękawów */}
+                        <TouchableOpacity
+                            style={styles.radioOptionContainer}
+                            onPress={() => setSelectedReasonOption('skracanie rękawów')}
+                        >
+                            <View style={styles.radioButton}>
+                                {selectedReasonOption === 'skracanie rękawów' && <View style={styles.radioButtonInner} />}
+                            </View>
+                            <Text style={styles.optionText}>Skracanie rękawów</Text>
+                        </TouchableOpacity>
+                        
+                        {/* Radio button - Wysyłka */}
+                        <TouchableOpacity
+                            style={styles.radioOptionContainer}
+                            onPress={() => setSelectedReasonOption('wysyłka')}
+                        >
+                            <View style={styles.radioButton}>
+                                {selectedReasonOption === 'wysyłka' && <View style={styles.radioButtonInner} />}
+                            </View>
+                            <Text style={styles.optionText}>Wysyłka</Text>
+                        </TouchableOpacity>
+                        
+                        {/* Radio button - Inny powód */}
+                        <TouchableOpacity
+                            style={styles.radioOptionContainer}
+                            onPress={() => setSelectedReasonOption('custom')}
+                        >
+                            <View style={styles.radioButton}>
+                                {selectedReasonOption === 'custom' && <View style={styles.radioButtonInner} />}
+                            </View>
+                            <Text style={styles.optionText}>Inny powód</Text>
+                        </TouchableOpacity>
+                        
+                        {/* Pole tekstowe dla niestandardowego powodu - pokazuje się automatycznie */}
+                        {selectedReasonOption === 'custom' && (
+                            <View style={styles.customReasonContainer}>
+                                <TextInput
+                                    style={styles.customReasonInput}
+                                    placeholder="Wpisz powód..."
+                                    placeholderTextColor="#ccc"
+                                    value={customReason}
+                                    onChangeText={setCustomReason}
+                                    multiline={true}
+                                    numberOfLines={3}
+                                />
+                            </View>
+                        )}
+                        
+                        {/* Przycisk Zatwierdź - pokazuje się gdy wybrano opcję */}
+                        {selectedReasonOption && (selectedReasonOption !== 'custom' || customReason.trim().length > 0) && (
+                            <TouchableOpacity
+                                style={[styles.optionButton, styles.submitButton]}
+                                onPress={() => {
+                                    const finalReason = selectedReasonOption === 'custom' ? customReason.trim() : selectedReasonOption;
+                                    handleDomReasonSelect(finalReason);
+                                }}
+                            >
+                                <Text style={styles.optionText}>Zatwierdź</Text>
+                            </TouchableOpacity>
+                        )}
+                        
+                        <TouchableOpacity
+                            style={[styles.optionButton, styles.closeButton]}
+                            onPress={() => {
+                                setDomReasonModalVisible(false);
+                                setCustomReason("");
+                                setSelectedReasonOption(null);
+                            }}
+                        >
+                            <Text style={styles.closeText}>Anuluj</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -617,6 +784,48 @@ const styles = StyleSheet.create({
     menuText: {
         color: "white",
         fontSize: 20, // Increased font size for the three dots
+    },
+    customReasonContainer: {
+        width: '90%',
+        marginVertical: 10,
+    },
+    customReasonInput: {
+        backgroundColor: 'black',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 14,
+        color: 'white',
+        textAlignVertical: 'top',
+        marginBottom: 10,
+        minHeight: 80,
+        borderWidth: 1,
+        borderColor: '#333',
+    },
+    submitButton: {
+        backgroundColor: '#28a745',
+    },
+    radioOptionContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        width: '100%',
+    },
+    radioButton: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#007bff',
+        marginRight: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    radioButtonInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#007bff',
     },
 });
 
