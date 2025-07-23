@@ -166,7 +166,7 @@ const fetchTransfers = async () => {
     if (!user?.symbol) return;
     
     try {
-        const response = await fetch(`http://192.168.1.32:3000/api/transfer/`);
+        const response = await fetch(`http://192.168.1.131:3000/api/transfer/`);
         if (!response.ok) {
             throw new Error(`Failed to fetch transfers: ${response.status}`);
         }
@@ -272,7 +272,7 @@ const fetchTransfers = async () => {
         };
 
         try {
-            const response = await fetch("http://192.168.1.32:3000/api/transfer", {
+            const response = await fetch("http://192.168.1.131:3000/api/transfer", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(transferModel),
@@ -362,7 +362,7 @@ const fetchTransfers = async () => {
                 return;
             }
 
-            const response = await fetch(`http://192.168.1.32:3000/api/transfer/${transfer.productId}`, {
+            const response = await fetch(`http://192.168.1.131:3000/api/transfer/${transfer.productId}`, {
                 method: "DELETE",
             });
 

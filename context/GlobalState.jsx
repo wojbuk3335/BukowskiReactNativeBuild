@@ -53,7 +53,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchState = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/state");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/state");
             
             if (!response || !response.ok) {
                 setStateData([]); // Set fallback immediately
@@ -84,7 +84,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchSizes = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/excel/size/get-all-sizes");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/excel/size/get-all-sizes");
             
             if (!response || !response.ok) {
                 setSizes([]); // Set fallback immediately
@@ -104,7 +104,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchColors = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/excel/color/get-all-colors");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/excel/color/get-all-colors");
             
             if (!response || !response.ok) {
                 setColors([]); // Set fallback immediately
@@ -124,7 +124,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchGoods = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/excel/goods/get-all-goods");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/excel/goods/get-all-goods");
             
             if (!response || !response.ok) {
                 setGoods([]); // Set fallback immediately
@@ -144,7 +144,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchUsers = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/user");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/user");
             
             if (!response || !response.ok) {
                 setUsers([]); // Set fallback immediately
@@ -174,7 +174,7 @@ export const GlobalStateProvider = ({ children }) => {
     const bukowski_login = async (email, password, navigation) => {
         setIsLoading(true); // Set loading to true
         try {
-            const response = await fetch("http://192.168.1.32:3000/api/user/login", {
+            const response = await fetch("http://192.168.1.131:3000/api/user/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -203,7 +203,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchStock = async () => {
         try {
-            const response = await fetchWithTimeout("http://192.168.1.32:3000/api/excel/stock/get-all-stocks");
+            const response = await fetchWithTimeout("http://192.168.1.131:3000/api/excel/stock/get-all-stocks");
             
             if (!response || !response.ok) {
                 setStocks([]); // Set fallback immediately

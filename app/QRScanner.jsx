@@ -333,7 +333,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
     }
 
     try {
-      const response = await axios.post("http://192.168.1.32:3000/api/sales/save-sales", payload);
+      const response = await axios.post("http://192.168.1.131:3000/api/sales/save-sales", payload);
       Alert.alert("Success", "Dane zostały zapisane pomyślnie!");
 
       // Reset modal state
