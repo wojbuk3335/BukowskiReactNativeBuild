@@ -2,6 +2,7 @@ import axios from "axios"; // Import axios for HTTP requests
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { getApiUrl } from "../config/api";
 
 const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
@@ -333,7 +334,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
     }
 
     try {
-      const response = await axios.post("http://192.168.1.131:3000/api/sales/save-sales", payload);
+      const response = await axios.post(getApiUrl("/sales/save-sales"), payload);
       Alert.alert("Success", "Dane zostały zapisane pomyślnie!");
 
       // Reset modal state

@@ -90,7 +90,8 @@ describe('SignIn Integration Tests - API Data Loading', () => {
 
     // Wait for login API call
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('http://192.168.1.32:3000/api/user/login', {
+      const { API_CONFIG } = require('../../config/api');
+      expect(fetch).toHaveBeenCalledWith(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/user/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,7 +152,8 @@ describe('SignIn Integration Tests - API Data Loading', () => {
 
     // Wait for login API call to complete
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('http://192.168.1.32:3000/api/user/login', expect.any(Object));
+      const { API_CONFIG } = require('../../config/api');
+      expect(fetch).toHaveBeenCalledWith(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/user/login`, expect.any(Object));
     });
 
     // Verify only login API call was made
@@ -275,13 +277,14 @@ describe('SignIn Integration Tests - API Data Loading', () => {
     });
 
     // Verify the login call was made
-    expect(apiCallOrder).toContain('http://192.168.1.32:3000/api/user/login');
+    const { API_CONFIG } = require('../../config/api');
+    expect(apiCallOrder).toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/user/login`);
     
     // Verify NO data fetching calls were made automatically after login
-    expect(apiCallOrder).not.toContain('http://192.168.1.32:3000/api/excel/stock/get-all-stocks');
-    expect(apiCallOrder).not.toContain('http://192.168.1.32:3000/api/excel/color/get-all-colors');
-    expect(apiCallOrder).not.toContain('http://192.168.1.32:3000/api/excel/size/get-all-sizes');
-    expect(apiCallOrder).not.toContain('http://192.168.1.32:3000/api/state');
-    expect(apiCallOrder).not.toContain('http://192.168.1.32:3000/api/excel/goods/get-all-goods');
+    expect(apiCallOrder).not.toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/excel/stock/get-all-stocks`);
+    expect(apiCallOrder).not.toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/excel/color/get-all-colors`);
+    expect(apiCallOrder).not.toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/excel/size/get-all-sizes`);
+    expect(apiCallOrder).not.toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/state`);
+    expect(apiCallOrder).not.toContain(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/excel/goods/get-all-goods`);
   });
 });

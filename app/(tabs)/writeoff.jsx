@@ -1,6 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { getApiUrl } from "../../config/api";
 import { GlobalStateContext } from "../../context/GlobalState";
 
 const WriteOff = () => {
@@ -36,9 +37,7 @@ const WriteOff = () => {
     const spinnerAnim = useRef(new Animated.Value(0)).current;
 
     // Ensure stateData and user are not null
-    const filteredData = stateData?.filter(item => item.symbol === user?.symbol) || []; // Fallback to empty array
-
-    // Get today's date in YYYY-MM-DD format
+    const filteredData = stateData?.filter(item => item.symbol === user?.symbol) || []; // Fallback to empty array    // Get today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split('T')[0];
 
     // Animacja kropek
@@ -166,23 +165,38 @@ const fetchTransfers = async () => {
     if (!user?.symbol) return;
     
     try {
-        const response = await fetch(`http://192.168.1.131:3000/api/transfer/`);
+        const response = await fetch(getApiUrl('/transfer'));
         if (!response.ok) {
             throw new Error(`Failed to fetch transfers: ${response.status}`);
         }
 
         const data = await response.json();
-        // Only keep transfers for this user and made today
-        const filteredTransfers = Array.isArray(data)
-            ? data.filter(
-                (transfer) =>
-                    (transfer.transfer_from === user?.symbol || transfer.transfer_to === user?.symbol) &&
-                    transfer.date &&
-                    transfer.date.startsWith(today)
-            )
-            : [];
-
-        setTransfers(filteredTransfers);
+        
+        // Split transfers into two categories:
+        // 1. ALL transfers for filtering out sold items (regardless of date)
+        // 2. TODAY's transfers for UI highlighting
+        const allTransfers = Array.isArray(data) ? data : [];
+        
+        // For filtering sold items, we need ALL SOLD transfers (no date filter)
+        const soldTransfers = allTransfers.filter(transfer => transfer.transfer_to === 'SOLD');
+        
+        // For UI highlighting, only today's transfers involving this user
+        const todayTransfers = allTransfers.filter(
+            (transfer) =>
+                (transfer.transfer_from === user?.symbol || transfer.transfer_to === user?.symbol) &&
+                transfer.date &&
+                transfer.date.startsWith(today)
+        );
+        
+        // Combine both: sold items (all dates) + today's other transfers
+        const combinedTransfers = [...soldTransfers, ...todayTransfers];
+        
+        // Remove duplicates based on productId
+        const uniqueTransfers = combinedTransfers.filter((transfer, index, self) => 
+            index === self.findIndex(t => t.productId === transfer.productId)
+        );
+        
+        setTransfers(uniqueTransfers);
     } catch (error) {
         setTransfers([]);
         throw error; // Re-throw to be caught by fetchAllRequiredData
@@ -272,7 +286,7 @@ const fetchTransfers = async () => {
         };
 
         try {
-            const response = await fetch("http://192.168.1.131:3000/api/transfer", {
+            const response = await fetch(getApiUrl('/transfer'), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(transferModel),
@@ -362,7 +376,13 @@ const fetchTransfers = async () => {
                 return;
             }
 
-            const response = await fetch(`http://192.168.1.131:3000/api/transfer/${transfer.productId}`, {
+            // Blokuj anulowanie transferów typu SOLD - te można anulować tylko przez usunięcie sprzedaży
+            if (transfer.transfer_to === 'SOLD') {
+                Alert.alert("Informacja", "Ta kurtka została sprzedana. Aby ją odblokować, usuń odpowiednią sprzedaż z zakładki Home.");
+                return;
+            }
+
+            const response = await fetch(getApiUrl(`/transfer/${transfer.productId}`), {
                 method: "DELETE",
             });
 
@@ -386,9 +406,10 @@ const fetchTransfers = async () => {
         setShowErrorModal(false);
     };
 
-    // Only treat as transferred if transfer for this item exists and is from today
+    // Treat as transferred (blocked) if any transfer exists for this product
     const isTransferred = (item) => {
-        return Array.isArray(transfers) && transfers.some((t) => t.productId === item.id);
+        if (!Array.isArray(transfers)) return false;
+        return transfers.some((t) => t.productId === item.id);
     };
 
     return (
@@ -503,12 +524,25 @@ const fetchTransfers = async () => {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Opcje</Text>
                         {selectedItem && isTransferred(selectedItem) ? (
-                            <TouchableOpacity
-                                style={[styles.optionButton, styles.deleteButton]}
-                                onPress={cancelTransfer}
-                            >
-                                <Text style={styles.optionText}>Anuluj przepisanie</Text>
-                            </TouchableOpacity>
+                            (() => {
+                                const transfer = transfers.find(t => t.productId === selectedItem.id);
+                                if (transfer && transfer.transfer_to === 'SOLD') {
+                                    return (
+                                        <View style={[styles.optionButton, styles.disabledButton]}>
+                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
+                                        </View>
+                                    );
+                                } else {
+                                    return (
+                                        <TouchableOpacity
+                                            style={[styles.optionButton, styles.deleteButton]}
+                                            onPress={cancelTransfer}
+                                        >
+                                            <Text style={styles.optionText}>Anuluj odpisanie</Text>
+                                        </TouchableOpacity>
+                                    );
+                                }
+                            })()
                         ) : (
                             <TouchableOpacity
                                 style={styles.optionButton}

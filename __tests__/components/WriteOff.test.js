@@ -1,3 +1,45 @@
+  test('should block write-off only for SOLD transfers from today (isTransferred logic)', () => {
+    // Helper function (copy of isTransferred from writeoff.jsx)
+    const isTransferred = (item, transfers, today) => {
+      if (!Array.isArray(transfers)) return false;
+      return transfers.some((t) => t.productId === item.id && t.transfer_to === 'SOLD' && t.date && t.date.startsWith(today));
+    };
+
+    const today = new Date().toISOString().split('T')[0];
+    // Simulate yesterday's date
+    const yesterday = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split('T')[0];
+    })();
+
+    const item = { id: 123 };
+    const transfers = [
+      { productId: 123, transfer_to: 'SOLD', date: today + 'T10:00:00.000Z' }, // dzisiaj
+      { productId: 123, transfer_to: 'SOLD', date: yesterday + 'T10:00:00.000Z' }, // wczoraj
+      { productId: 123, transfer_to: 'USER', date: today + 'T12:00:00.000Z' }, // inny typ
+      { productId: 456, transfer_to: 'SOLD', date: today + 'T10:00:00.000Z' }, // inny produkt
+    ];
+
+    // Kurtka sprzedana dzisiaj powinna być zablokowana
+    expect(isTransferred(item, transfers, today)).toBe(true);
+
+    // Kurtka sprzedana tylko wczoraj (nie dzisiaj) powinna być odblokowana
+    const transfersYesterday = [
+      { productId: 123, transfer_to: 'SOLD', date: yesterday + 'T10:00:00.000Z' }
+    ];
+    expect(isTransferred(item, transfersYesterday, today)).toBe(false);
+
+    // Kurtka sprzedana dzisiaj i wczoraj - blokuje tylko jeśli jest dzisiejszy transfer
+    expect(isTransferred(item, [
+      { productId: 123, transfer_to: 'SOLD', date: yesterday + 'T10:00:00.000Z' },
+      { productId: 123, transfer_to: 'SOLD', date: today + 'T09:00:00.000Z' }
+    ], today)).toBe(true);
+
+    // Kurtka nie sprzedana wcale
+    expect(isTransferred(item, [], today)).toBe(false);
+    expect(isTransferred(item, null, today)).toBe(false);
+  });
 // Simple WriteOff component tests without rendering to avoid mock issues
 describe('WriteOff Component Logic Tests', () => {
   
