@@ -20,6 +20,8 @@ const WriteOff = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [users, setUsers] = useState([]); // List of users for transfer
     const [transfers, setTransfers] = useState([]); // List of current transfers
+    const [allTransfers, setAllTransfers] = useState([]); // List of ALL transfers for validation
+    const [salesData, setSalesData] = useState([]); // List of sales for blocking validation
     const [isLoading, setIsLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false); // Dodano nowy stan dla pull-to-refresh
     const [showErrorModal, setShowErrorModal] = useState(false);
@@ -37,8 +39,12 @@ const WriteOff = () => {
     const spinnerAnim = useRef(new Animated.Value(0)).current;
 
     // Ensure stateData and user are not null
-    const filteredData = stateData?.filter(item => item.symbol === user?.symbol) || []; // Fallback to empty array    // Get today's date in YYYY-MM-DD format
-    const today = new Date().toISOString().split('T')[0];
+    const filteredData = stateData?.filter(item => item.symbol === user?.symbol) || []; // Fallback to empty array    
+    
+    // Get today's date in YYYY-MM-DD format
+    // FOR TESTING: Uncomment line below to simulate tomorrow
+    // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+    const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
 
     // Animacja kropek
     useEffect(() => {
@@ -124,7 +130,8 @@ const WriteOff = () => {
             const dataPromise = Promise.all([
                 fetchState(),
                 fetchUsersFromContext(), // Użyj funkcji z Global State zamiast lokalnej
-                fetchTransfers()
+                fetchTransfers(),
+                fetchSales() // Add sales data fetching
             ]);
             
             await Promise.race([
@@ -172,33 +179,76 @@ const fetchTransfers = async () => {
 
         const data = await response.json();
         
-        // Split transfers into two categories:
-        // 1. ALL transfers for filtering out sold items (regardless of date)
-        // 2. TODAY's transfers for UI highlighting
+        // COMPLETE DAILY RESET: Filter ALL operations to show only TODAY's transfers
+        // After midnight, everything resets - both UI and validation
         const allTransfers = Array.isArray(data) ? data : [];
         
-        // For filtering sold items, we need ALL SOLD transfers (no date filter)
-        const soldTransfers = allTransfers.filter(transfer => transfer.transfer_to === 'SOLD');
-        
-        // For UI highlighting, only today's transfers involving this user
-        const todayTransfers = allTransfers.filter(
+        // For UI highlighting: only TODAY's transfers involving this user
+        const todayUserTransfers = allTransfers.filter(
             (transfer) =>
                 (transfer.transfer_from === user?.symbol || transfer.transfer_to === user?.symbol) &&
                 transfer.date &&
                 transfer.date.startsWith(today)
         );
         
-        // Combine both: sold items (all dates) + today's other transfers
-        const combinedTransfers = [...soldTransfers, ...todayTransfers];
+        console.log('DEBUG: Today user transfers:', todayUserTransfers.length);
         
-        // Remove duplicates based on productId
-        const uniqueTransfers = combinedTransfers.filter((transfer, index, self) => 
+        // FIXED: For sold items - include ALL sales from today for UI highlighting
+        // We need to show all sold items to block jackets with same barcode regardless of who sold them
+        const todaySoldItems = allTransfers.filter(
+            transfer => transfer.transfer_to === 'SOLD' && 
+                       transfer.date &&
+                       transfer.date.startsWith(today)
+        );
+        
+        // CHANGED: For validation - check ALL transfers but filter by date
+        // This ensures jackets can be transferred again after midnight
+        const todayUserProductTransfers = allTransfers.filter(
+            (transfer) => {
+                // Check if transfer is from TODAY for ANY product
+                const isToday = transfer.date && transfer.date.startsWith(today);
+                
+                // Only include TODAY's transfers (regardless of user - this is for blocking validation)
+                return isToday;
+            }
+        );
+        
+        // Combine today's transfers for UI
+        const todayTransfers = [...todayUserTransfers, ...todaySoldItems];
+        const uniqueTodayTransfers = todayTransfers.filter((transfer, index, self) => 
             index === self.findIndex(t => t.productId === transfer.productId)
         );
         
-        setTransfers(uniqueTransfers);
+        // Store TODAY's transfers for UI highlighting (includes ALL sold items)
+        setTransfers(uniqueTodayTransfers);
+        // CHANGED: Store ONLY TODAY's transfers for validation (complete daily reset)
+        // This blocks transfers ONLY if the same product was transferred TODAY
+        setAllTransfers(todayUserProductTransfers);
     } catch (error) {
         setTransfers([]);
+        setAllTransfers([]);
+        throw error; // Re-throw to be caught by fetchAllRequiredData
+    }
+};
+
+const fetchSales = async () => {
+    try {
+        const response = await fetch(getApiUrl('/sales/get-all-sales'));
+        if (!response.ok) {
+            throw new Error(`Failed to fetch sales: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const allSales = Array.isArray(data) ? data : [];
+        
+        // Filter sales from today only
+        const todaySales = allSales.filter(sale => 
+            sale.date && sale.date.startsWith(today)
+        );
+        
+        setSalesData(todaySales);
+    } catch (error) {
+        setSalesData([]);
         throw error; // Re-throw to be caught by fetchAllRequiredData
     }
 };
@@ -262,6 +312,54 @@ const fetchTransfers = async () => {
             return;
         }
 
+        if (!user || !user.symbol) {
+            Alert.alert("Błąd", "Brak danych zalogowanego użytkownika");
+            return;
+        }
+
+        console.log("Transfer attempt:", {
+            selectedItem,
+            user: { symbol: user.symbol, email: user.email },
+            toSymbol,
+            reason
+        });
+
+        // Sprawdź czy kurtka nie ma już aktywnego transferu DZISIAJ
+        if (hasActiveTransfer(selectedItem)) {
+            const existingTransfer = allTransfers.find(t => t.productId === selectedItem.id);
+            if (existingTransfer) {
+                const transferInfo = existingTransfer.transfer_to === 'SOLD' 
+                    ? 'została sprzedana' 
+                    : `została przeniesiona do ${existingTransfer.transfer_to}`;
+                
+                Alert.alert(
+                    "Kurtka już przeniesiona", 
+                    `Ta kurtka ${transferInfo} dzisiaj (${today}). Najpierw anuluj dzisiejszy transfer.`
+                );
+                return;
+            }
+        }
+
+        // SPRAWDZENIE WSZYSTKICH TRANSFERÓW W BAZIE - informacyjne
+        try {
+            const response = await fetch(getApiUrl('/transfer'));
+            const allTransfersFromDB = await response.json();
+            
+            const anyExistingTransfer = Array.isArray(allTransfersFromDB) ? 
+                allTransfersFromDB.find(t => t.productId === selectedItem.id) : null;
+            
+            if (anyExistingTransfer) {
+                const transferDate = anyExistingTransfer.date ? anyExistingTransfer.date.split('T')[0] : 'nieznana';
+                const isFromToday = transferDate === today;
+                
+                if (!isFromToday) {
+                    console.log(`INFO: Kurtka ${selectedItem.fullName} ma starszy transfer z ${transferDate}, ale pozwalamy na nowy transfer z ${today}`);
+                }
+            }
+        } catch (error) {
+            console.log("Błąd sprawdzania transferów:", error);
+        }
+
         // Sprawdź czy transfer jest do "Dom" i czy nie ma powodu
         if (toSymbol.toLowerCase() === 'dom' || toSymbol.toLowerCase() === 'd') {
             if (!reason) {
@@ -275,7 +373,8 @@ const fetchTransfers = async () => {
         const transferModel = {
             fullName: selectedItem.fullName,
             size: selectedItem.size,
-            date: new Date().toISOString(),
+            date: today + 'T' + new Date().toISOString().split('T')[1], // Use consistent date with today variable
+            dateString: today, // Add dateString field required by new schema
             transfer_from: user.symbol,
             transfer_to: toSymbol,
             productId: selectedItem.id,
@@ -285,6 +384,20 @@ const fetchTransfers = async () => {
             advancePaymentCurrency: advance ? advance.currency : 'PLN',
         };
 
+        // Walidacja danych przed wysłaniem
+        if (!transferModel.transfer_from) {
+            Alert.alert("Błąd", "Brak danych użytkownika (transfer_from)");
+            return;
+        }
+        if (!transferModel.transfer_to) {
+            Alert.alert("Błąd", "Brak docelowego użytkownika (transfer_to)");
+            return;
+        }
+        if (!transferModel.productId) {
+            Alert.alert("Błąd", "Brak ID produktu");
+            return;
+        }
+
         try {
             const response = await fetch(getApiUrl('/transfer'), {
                 method: "POST",
@@ -293,11 +406,27 @@ const fetchTransfers = async () => {
             });
 
             const responseData = await response.json();
-
+            
             if (!response.ok) {
-                Alert.alert("Error", responseData.message || "Failed to create transfer.");
+                // Sprawdź czy to błąd duplikatu
+                if (response.status === 400 && responseData.error && responseData.error.includes("E11000 duplicate key")) {
+                    Alert.alert(
+                        "Kurtka już przeniesiona", 
+                        "Ta kurtka została już wcześniej przeniesiona dzisiaj. Spróbuj jutro."
+                    );
+                    // Automatycznie odśwież dane
+                    fetchAllRequiredData(false);
+                    return;
+                }
+                
+                // Wyświetl szczegółowy błąd z backendu
+                const errorMessage = responseData.message || responseData.error || `HTTP ${response.status}: Failed to create transfer`;
+                Alert.alert("Błąd transferu", errorMessage);
                 return;
             }
+
+            // Show success message
+            Alert.alert("Sukces", "Transfer został pomyślnie utworzony!");
 
             fetchAllRequiredData(false);
             setTransferModalVisible(false);
@@ -347,7 +476,7 @@ const fetchTransfers = async () => {
             advanceData = {
                 amount: parseFloat(advanceAmount),
                 currency: selectedCurrency,
-                date: new Date().toISOString()
+                date: today + 'T' + new Date().toISOString().split('T')[1] // Use consistent date with today variable
             };
         }
 
@@ -370,7 +499,12 @@ const fetchTransfers = async () => {
         }
 
         try {
-            const transfer = transfers.find(t => t.productId === selectedItem.id);
+            // Szukaj transferu w obu listach
+            let transfer = transfers.find(t => t.productId === selectedItem.id);
+            if (!transfer) {
+                transfer = allTransfers.find(t => t.productId === selectedItem.id);
+            }
+            
             if (!transfer) {
                 Alert.alert("Error", "No transfer found for this product.");
                 return;
@@ -406,10 +540,87 @@ const fetchTransfers = async () => {
         setShowErrorModal(false);
     };
 
-    // Treat as transferred (blocked) if any transfer exists for this product
+    // Treat as transferred (blocked) for UI - show blocked ONLY if transferred TODAY
+    // After midnight, all jackets become available (blue) again
     const isTransferred = (item) => {
         if (!Array.isArray(transfers)) return false;
-        return transfers.some((t) => t.productId === item.id);
+        
+        // FIXED: Check by exact product ID - mark only the specific jacket that was transferred
+        // This allows multiple jackets with same name/barcode to be transferred individually
+        
+        // Check if THIS SPECIFIC jacket (by ID) was transferred today
+        const hasTransferWithSameId = transfers.some((t) => {
+            return t.productId === item.id;
+        });
+        
+        // Check if THIS SPECIFIC jacket was sold today (by barcode match FROM SAME SELLING POINT)
+        // If ANY jacket with same barcode was sold FROM THIS SELLING POINT, block only the FIRST one with that barcode
+        const hasSaleWithSameBarcode = salesData.some((sale) => {
+            // Match by barcode AND selling point (symbol) - sale must be from same selling point as current user
+            const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
+            const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
+            return barcodeMatches && sellingPointMatches;
+        });
+        
+        // If there's a sale with same barcode, block only the FIRST AVAILABLE (not already blocked) jacket with that barcode
+        let hasSaleWithSameItem = false;
+        if (hasSaleWithSameBarcode) {
+            // Find first AVAILABLE jacket with this barcode (not already blocked by transfer)
+            const firstAvailableItemWithThisBarcode = filteredData.find(dataItem => {
+                const sameBarcode = dataItem.barcode === item.barcode;
+                if (!sameBarcode) return false;
+                
+                // Check if this item is already blocked by transfer (not sale)
+                const isBlockedByTransfer = transfers.some(t => t.productId === dataItem.id);
+                
+                return !isBlockedByTransfer; // Return first item that is NOT blocked by transfer
+            });
+            
+            hasSaleWithSameItem = firstAvailableItemWithThisBarcode && firstAvailableItemWithThisBarcode.id === item.id;
+        }
+        
+        return hasTransferWithSameId || hasSaleWithSameItem;
+    };
+
+    // Check if item has active transfer OR sale TODAY ONLY (for validation)
+    // After midnight, all jackets can be transferred again
+    const hasActiveTransfer = (item) => {
+        if (!Array.isArray(allTransfers)) return false;
+        
+        // FIXED: Check by exact product ID - each jacket can be transferred individually
+        // Only block if THIS SPECIFIC jacket (by ID) was already transferred today
+        
+        // Check transfers by exact product ID
+        const hasTransferWithSameId = allTransfers.some((t) => {
+            return t.productId === item.id;
+        });
+        
+        // Check sales by barcode - block only if THIS specific item (first with this barcode) was sold FROM SAME SELLING POINT
+        const hasSaleWithSameBarcode = salesData.some((sale) => {
+            // Match by barcode AND selling point (symbol) - sale must be from same selling point as current user
+            const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
+            const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
+            return barcodeMatches && sellingPointMatches;
+        });
+        
+        // If there's a sale with same barcode, block only the FIRST AVAILABLE (not already blocked) jacket with that barcode
+        let hasSaleWithSameItem = false;
+        if (hasSaleWithSameBarcode) {
+            // Find first AVAILABLE jacket with this barcode (not already blocked by transfer)
+            const firstAvailableItemWithThisBarcode = filteredData.find(dataItem => {
+                const sameBarcode = dataItem.barcode === item.barcode;
+                if (!sameBarcode) return false;
+                
+                // Check if this item is already blocked by transfer (not sale)
+                const isBlockedByTransfer = allTransfers.some(t => t.productId === dataItem.id);
+                
+                return !isBlockedByTransfer; // Return first item that is NOT blocked by transfer
+            });
+            
+            hasSaleWithSameItem = firstAvailableItemWithThisBarcode && firstAvailableItemWithThisBarcode.id === item.id;
+        }
+        
+        return hasTransferWithSameId || hasSaleWithSameItem;
     };
 
     return (
@@ -525,7 +736,34 @@ const fetchTransfers = async () => {
                         <Text style={styles.modalTitle}>Opcje</Text>
                         {selectedItem && isTransferred(selectedItem) ? (
                             (() => {
-                                const transfer = transfers.find(t => t.productId === selectedItem.id);
+                                // Check if item was SOLD - check salesData by barcode FROM SAME SELLING POINT
+                                const wasSoldByBarcode = salesData.some(sale => {
+                                    const barcodeMatches = sale.barcode && selectedItem.barcode && sale.barcode === selectedItem.barcode;
+                                    const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
+                                    return barcodeMatches && sellingPointMatches;
+                                });
+                                
+                                // If sold by barcode, check if THIS is the first item with this barcode (the blocked one)
+                                let wasSold = false;
+                                if (wasSoldByBarcode) {
+                                    const firstItemWithThisBarcode = filteredData.find(dataItem => dataItem.barcode === selectedItem.barcode);
+                                    wasSold = firstItemWithThisBarcode && firstItemWithThisBarcode.id === selectedItem.id;
+                                }
+                                
+                                if (wasSold) {
+                                    return (
+                                        <View style={[styles.optionButton, styles.disabledButton]}>
+                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
+                                        </View>
+                                    );
+                                }
+                                
+                                // If not sold, check if it was transferred
+                                let transfer = transfers.find(t => t.productId === selectedItem.id);
+                                if (!transfer) {
+                                    transfer = allTransfers.find(t => t.productId === selectedItem.id);
+                                }
+                                
                                 if (transfer && transfer.transfer_to === 'SOLD') {
                                     return (
                                         <View style={[styles.optionButton, styles.disabledButton]}>

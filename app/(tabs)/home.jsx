@@ -2,8 +2,8 @@ import { useFocusEffect } from '@react-navigation/native'; // Import useFocusEff
 import React, { useContext, useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
-import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import { getApiUrl } from "../../config/api"; // Import API configuration
+import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
@@ -45,7 +45,9 @@ const Home = () => {
       setSalesData(data); // Update state with API data
 
       // Filter data based on user's sellingPoint and current date
-      const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+      // FOR TESTING: Uncomment line below to simulate tomorrow
+      // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+      const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
       const filtered = data.filter(
         item => item.sellingPoint === user?.sellingPoint && item.date?.startsWith(today)
       );
@@ -207,7 +209,9 @@ const Home = () => {
 
   // Function to calculate available funds by currency
   const calculateAvailableFunds = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // FOR TESTING: Uncomment line below to simulate tomorrow
+    // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+    const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
     
     // Calculate total sales by currency
     const salesTotals = {};
@@ -531,7 +535,9 @@ const Home = () => {
           }}
           ListFooterComponent={() => {
             // Only show transfers with a valid date matching today
-            const today = new Date().toISOString().split('T')[0];
+            // FOR TESTING: Uncomment line below to simulate tomorrow
+            // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+            const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
             const transferredToday = transferredItems.filter(
               item => item.date && item.date.startsWith(today) && item.transfer_to !== 'SOLD'
             );
@@ -618,6 +624,9 @@ const Home = () => {
                 )}
                 {/* Section for advances/zaliczki */}
                 {(() => {
+                  // FOR TESTING: Uncomment line below to simulate tomorrow
+                  // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+                  const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
                   const advancesToday = advancesData.filter(
                     item => item.date && item.date.startsWith(today)
                   );
@@ -665,7 +674,9 @@ const Home = () => {
                 
                 {/* Section for deductions/odpisane kwoty */}
                 {(() => {
-                  const today = new Date().toISOString().split('T')[0];
+                  // FOR TESTING: Uncomment line below to simulate tomorrow
+                  // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+                  const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
                   const deductionsToday = deductionsData.filter(
                     item => item.date && item.date.startsWith(today)
                   );
@@ -718,7 +729,9 @@ const Home = () => {
                 
                 {/* Financial Summary Section - Zamknięcie Dnia */}
                 {(() => {
-                  const today = new Date().toISOString().split('T')[0];
+                  // FOR TESTING: Uncomment line below to simulate tomorrow
+                  // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
+                  const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
                   
                   // Calculate total sales by currency
                   const salesTotals = {};

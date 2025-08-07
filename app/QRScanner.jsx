@@ -42,27 +42,29 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
     setSellingPointMenuVisible(false);
   };
 
-  const getMatchingSymbols = () => {
-    if (!stateData || !barcode || !users || !user) {
+  const getMatchingSymbols = (currentBarcode = barcode) => {
+    if (!stateData || !currentBarcode || !users || !user) {
       return [];
     }
 
     // 1. Znajdź wszystkie produkty z tym kodem kreskowym
-    const matchingProducts = stateData.filter((item) => item.barcode === barcode);
+    const matchingProducts = stateData.filter((item) => item.barcode === currentBarcode);
     
     // 2. Wyciągnij symbole z tych produktów
     const matchingSymbols = matchingProducts.map((item) => item.symbol);
     
-    // 3. Filtruj użytkowników z tej samej lokalizacji co zalogowany użytkownik
+    // 3. NAPRAWIONE PONOWNIE: Filtruj użytkowników z tej samej lokalizacji co zalogowany użytkownik
+    // Pokaż tylko punkty sprzedaży z tej samej lokalizacji gdzie znajdą się kurtki z tym kodem kreskowym
     const sameLocationUsers = users.filter(u => 
-      u.location === user.location && 
+      u.location && user.location && 
+      u.location.trim() === user.location.trim() && // NAPRAWIONE: dodano .trim() dla porównania lokalizacji
       u.role !== 'admin' && 
       u.role !== 'magazyn' &&
       u.sellingPoint && 
       u.sellingPoint.trim() !== ''
     );
     
-    // 4. Zwróć tylko tych użytkowników, których symbole pasują do znalezionych produktów
+    // 4. Zwróć tylko tych użytkowników z tej samej lokalizacji, których symbole pasują do znalezionych produktów
     const availableSellingPoints = sameLocationUsers.filter(u => 
       matchingSymbols.includes(u.symbol)
     );
@@ -195,14 +197,40 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       if (builtJacketName) {
         // Use the built jacket name for barcodes with four zeros pattern
         setModalMessage(builtJacketName);
-        setSelectedOption(""); // Clear selected option since we don't have a symbol from stateData
+        
+        // NAPRAWIONE: Ustaw domyślny punkt sprzedaży na podstawie dostępnych opcji
+        const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+        if (availableOptions.length > 0) {
+          // Sprawdź czy zalogowany użytkownik ma tę kurtkę na stanie
+          const userHasThisItem = availableOptions.find(option => option.symbol === user?.symbol);
+          if (userHasThisItem) {
+            setSelectedOption(user.symbol); // Zalogowany użytkownik ma tę kurtkę - ustaw jego punkt
+          } else {
+            setSelectedOption(availableOptions[0].symbol); // Zalogowany nie ma - ustaw pierwszy z listy
+          }
+        } else {
+          setSelectedOption(""); // Brak dostępnych opcji
+        }
       } else {
         // Fall back to original logic - match the scanned barcode with the stateData
         const matchedItem = stateData?.find(item => item.barcode === data);
 
         if (matchedItem) {
           setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
-          setSelectedOption(matchedItem.symbol); // Set default selected symbol
+          
+          // NAPRAWIONE: Ustaw domyślny punkt sprzedaży na podstawie dostępnych opcji
+          const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+          if (availableOptions.length > 0) {
+            // Sprawdź czy zalogowany użytkownik ma tę kurtkę na stanie
+            const userHasThisItem = availableOptions.find(option => option.symbol === user?.symbol);
+            if (userHasThisItem) {
+              setSelectedOption(user.symbol); // Zalogowany użytkownik ma tę kurtkę - ustaw jego punkt
+            } else {
+              setSelectedOption(availableOptions[0].symbol); // Zalogowany nie ma - ustaw pierwszy z listy
+            }
+          } else {
+            setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
+          }
         } else {
           setModalMessage("Nie ma takiej kurtki"); // No match found
           setSelectedOption(""); // Clear selected option if no match
