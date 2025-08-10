@@ -179,6 +179,9 @@ const fetchTransfers = async () => {
 
         const data = await response.json();
         
+        console.log(`DEBUG: Fetching transfers - Today is: ${today}`);
+        console.log(`DEBUG: Total transfers from API:`, data.length);
+        
         // COMPLETE DAILY RESET: Filter ALL operations to show only TODAY's transfers
         // After midnight, everything resets - both UI and validation
         const allTransfers = Array.isArray(data) ? data : [];
@@ -208,6 +211,9 @@ const fetchTransfers = async () => {
                 // Check if transfer is from TODAY for ANY product
                 const isToday = transfer.date && transfer.date.startsWith(today);
                 
+                // DEBUG: Log filtering details
+                console.log(`DEBUG: Transfer filter - ID: ${transfer.productId}, Date: ${transfer.date}, Today: ${today}, IsToday: ${isToday}`);
+                
                 // Only include TODAY's transfers (regardless of user - this is for blocking validation)
                 return isToday;
             }
@@ -224,6 +230,8 @@ const fetchTransfers = async () => {
         // CHANGED: Store ONLY TODAY's transfers for validation (complete daily reset)
         // This blocks transfers ONLY if the same product was transferred TODAY
         setAllTransfers(todayUserProductTransfers);
+        
+        console.log(`DEBUG: Final result - UI transfers: ${uniqueTodayTransfers.length}, Validation transfers: ${todayUserProductTransfers.length}`);
     } catch (error) {
         setTransfers([]);
         setAllTransfers([]);
@@ -328,16 +336,33 @@ const fetchSales = async () => {
         if (hasActiveTransfer(selectedItem)) {
             const existingTransfer = allTransfers.find(t => t.productId === selectedItem.id);
             if (existingTransfer) {
-                const transferInfo = existingTransfer.transfer_to === 'SOLD' 
-                    ? 'została sprzedana' 
-                    : `została przeniesiona do ${existingTransfer.transfer_to}`;
+                // Sprawdź czy transfer rzeczywiście jest z dzisiaj
+                const transferDate = existingTransfer.date ? existingTransfer.date.split('T')[0] : '';
+                const isFromToday = transferDate === today;
                 
-                Alert.alert(
-                    "Kurtka już przeniesiona", 
-                    `Ta kurtka ${transferInfo} dzisiaj (${today}). Najpierw anuluj dzisiejszy transfer.`
-                );
-                return;
+                if (isFromToday) {
+                    const transferInfo = existingTransfer.transfer_to === 'SOLD' 
+                        ? 'została sprzedana' 
+                        : `została przeniesiona do ${existingTransfer.transfer_to}`;
+                    
+                    Alert.alert(
+                        "Kurtka już przeniesiona", 
+                        `Ta kurtka ${transferInfo} dzisiaj (${today}). Najpierw anuluj dzisiejszy transfer.`
+                    );
+                    return;
+                } else {
+                    // Transfer jest ze starszej daty - powinniśmy pozwolić na nowy transfer
+                    console.log(`INFO: hasActiveTransfer zwróciło true, ale transfer jest z ${transferDate}, dzisiaj jest ${today}. Pozwalamy na nowy transfer.`);
+                    // Nie return - kontynuuj z tworzeniem nowego transferu
+                }
+            } else {
+                // hasActiveTransfer zwróciło true, ale nie ma transferu w allTransfers
+                // To może być spowodowane sprzedażą - sprawdźmy
+                console.log(`INFO: hasActiveTransfer zwróciło true, ale nie znaleziono transferu w allTransfers. Może to być sprzedaż.`);
+                // Nie return - kontynuuj z tworzeniem nowego transferu (jeśli to sprzedaż, to może być z wczoraj)
             }
+        } else {
+            // hasActiveTransfer zwróciło false - można tworzyć transfer
         }
 
         // SPRAWDZENIE WSZYSTKICH TRANSFERÓW W BAZIE - informacyjne
@@ -587,6 +612,9 @@ const fetchSales = async () => {
     const hasActiveTransfer = (item) => {
         if (!Array.isArray(allTransfers)) return false;
         
+        console.log(`DEBUG: hasActiveTransfer check for item ${item.id} (${item.fullName})`);
+        console.log(`DEBUG: allTransfers contains ${allTransfers.length} transfers:`, allTransfers.map(t => ({ id: t.productId, date: t.date })));
+        
         // FIXED: Check by exact product ID - each jacket can be transferred individually
         // Only block if THIS SPECIFIC jacket (by ID) was already transferred today
         
@@ -620,7 +648,10 @@ const fetchSales = async () => {
             hasSaleWithSameItem = firstAvailableItemWithThisBarcode && firstAvailableItemWithThisBarcode.id === item.id;
         }
         
-        return hasTransferWithSameId || hasSaleWithSameItem;
+        const result = hasTransferWithSameId || hasSaleWithSameItem;
+        console.log(`DEBUG: hasActiveTransfer result for ${item.id}: hasTransferWithSameId=${hasTransferWithSameId}, hasSaleWithSameItem=${hasSaleWithSameItem}, final=${result}`);
+        
+        return result;
     };
 
     return (

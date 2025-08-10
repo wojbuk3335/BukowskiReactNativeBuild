@@ -65,6 +65,11 @@ const SearchScreen = () => {
       if (itemString.includes(stemPolishColor(word))) return true;
       return false;
     });
+  })?.sort((a, b) => {
+    // Sortowanie alfabetyczne według fullName
+    const nameA = (a.fullName || '').toLowerCase();
+    const nameB = (b.fullName || '').toLowerCase();
+    return nameA.localeCompare(nameB, 'pl', { sensitivity: 'base' });
   }) || [];
 
   if (showQR) {
