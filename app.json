@@ -7,7 +7,6 @@
     "icon": "./assets/images/logo2.png",
     "scheme": "bukowski",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -16,8 +15,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.wojbuk3335.bukowskiapp2025"
+      "package": "com.bukowski.inventory2.mobile2025"
     },
     "web": {
       "bundler": "metro",
@@ -43,7 +41,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "76d10e85-b91c-45bd-88c5-ff399f5d3253"
+        "projectId": "9e828d3c-82f4-4e57-ab94-21d149810aef"
       }
     }
   }

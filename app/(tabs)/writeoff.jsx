@@ -179,9 +179,6 @@ const fetchTransfers = async () => {
 
         const data = await response.json();
         
-        console.log(`DEBUG: Fetching transfers - Today is: ${today}`);
-        console.log(`DEBUG: Total transfers from API:`, data.length);
-        
         // COMPLETE DAILY RESET: Filter ALL operations to show only TODAY's transfers
         // After midnight, everything resets - both UI and validation
         const allTransfers = Array.isArray(data) ? data : [];
@@ -193,8 +190,6 @@ const fetchTransfers = async () => {
                 transfer.date &&
                 transfer.date.startsWith(today)
         );
-        
-        console.log('DEBUG: Today user transfers:', todayUserTransfers.length);
         
         // FIXED: For sold items - include ALL sales from today for UI highlighting
         // We need to show all sold items to block jackets with same barcode regardless of who sold them
@@ -231,7 +226,6 @@ const fetchTransfers = async () => {
         // This blocks transfers ONLY if the same product was transferred TODAY
         setAllTransfers(todayUserProductTransfers);
         
-        console.log(`DEBUG: Final result - UI transfers: ${uniqueTodayTransfers.length}, Validation transfers: ${todayUserProductTransfers.length}`);
     } catch (error) {
         setTransfers([]);
         setAllTransfers([]);
@@ -567,44 +561,68 @@ const fetchSales = async () => {
 
     // Treat as transferred (blocked) for UI - show blocked ONLY if transferred TODAY
     // After midnight, all jackets become available (blue) again
-    const isTransferred = (item) => {
-        if (!Array.isArray(transfers)) return false;
+    // Get the block status of an item (transfer, sale, or none)
+    const getItemBlockStatus = (item) => {
+        if (!Array.isArray(transfers)) return { isBlocked: false, type: 'none' };
         
-        // FIXED: Check by exact product ID - mark only the specific jacket that was transferred
-        // This allows multiple jackets with same name/barcode to be transferred individually
-        
-        // Check if THIS SPECIFIC jacket (by ID) was transferred today
+        // FIRST: Check if THIS SPECIFIC jacket (by ID) has a transfer
         const hasTransferWithSameId = transfers.some((t) => {
             return t.productId === item.id;
         });
         
-        // Check if THIS SPECIFIC jacket was sold today (by barcode match FROM SAME SELLING POINT)
-        // If ANY jacket with same barcode was sold FROM THIS SELLING POINT, block only the FIRST one with that barcode
+        // If this specific item has a transfer, it's blocked by transfer - STOP HERE!
+        if (hasTransferWithSameId) {
+            return { isBlocked: true, type: 'transfer' };
+        }
+        
+        // SECOND: Only check sales for items WITHOUT transfers
         const hasSaleWithSameBarcode = salesData.some((sale) => {
-            // Match by barcode AND selling point (symbol) - sale must be from same selling point as current user
             const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
-            const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
+            const sellingPointMatches = sale.from === user?.symbol;
             return barcodeMatches && sellingPointMatches;
         });
         
-        // If there's a sale with same barcode, block only the FIRST AVAILABLE (not already blocked) jacket with that barcode
-        let hasSaleWithSameItem = false;
         if (hasSaleWithSameBarcode) {
-            // Find first AVAILABLE jacket with this barcode (not already blocked by transfer)
-            const firstAvailableItemWithThisBarcode = filteredData.find(dataItem => {
-                const sameBarcode = dataItem.barcode === item.barcode;
-                if (!sameBarcode) return false;
-                
-                // Check if this item is already blocked by transfer (not sale)
-                const isBlockedByTransfer = transfers.some(t => t.productId === dataItem.id);
-                
-                return !isBlockedByTransfer; // Return first item that is NOT blocked by transfer
+            // Count how many sales exist for this barcode from this selling point
+            const salesCount = salesData.filter(sale => {
+                return sale.barcode === item.barcode && sale.from === user?.symbol;
+            }).length;
+            
+            // Get all items with same barcode, sorted by their position in filteredData
+            const allItemsWithSameBarcode = filteredData
+                .filter(dataItem => dataItem.barcode === item.barcode)
+                .sort((a, b) => filteredData.indexOf(a) - filteredData.indexOf(b));
+            
+            // CRITICAL: Filter out items that already have transfers (these are NEVER affected by sales)
+            const availableForSaleBlocking = allItemsWithSameBarcode.filter(dataItem => {
+                const hasTransfer = transfers.some(t => t.productId === dataItem.id);
+                return !hasTransfer; // Keep only items WITHOUT transfers
             });
             
-            hasSaleWithSameItem = firstAvailableItemWithThisBarcode && firstAvailableItemWithThisBarcode.id === item.id;
+            // Among available items (no transfers), block the first N where N = salesCount
+            const indexInAvailableList = availableForSaleBlocking.findIndex(dataItem => dataItem.id === item.id);
+            
+            // This item should be blocked by sale only if:
+            // 1. It's in the available list (no transfer)
+            // 2. It's among the first N items where N = salesCount
+            if (indexInAvailableList >= 0 && indexInAvailableList < salesCount) {
+                return { isBlocked: true, type: 'sale' };
+            }
         }
         
-        return hasTransferWithSameId || hasSaleWithSameItem;
+        return { isBlocked: false, type: 'none' };
+    };
+
+    // Backward compatibility - keep the old function
+    const isTransferred = (item) => {
+        const status = getItemBlockStatus(item);
+        return status.isBlocked;
+    };
+
+    // Check if THIS SPECIFIC item has a transfer (for showing cancel button)
+    const hasTransfer = (item) => {
+        if (!Array.isArray(transfers)) return false;
+        return transfers.some((t) => t.productId === item.id);
     };
 
     // Check if item has active transfer OR sale TODAY ONLY (for validation)
@@ -615,43 +633,52 @@ const fetchSales = async () => {
         console.log(`DEBUG: hasActiveTransfer check for item ${item.id} (${item.fullName})`);
         console.log(`DEBUG: allTransfers contains ${allTransfers.length} transfers:`, allTransfers.map(t => ({ id: t.productId, date: t.date })));
         
-        // FIXED: Check by exact product ID - each jacket can be transferred individually
-        // Only block if THIS SPECIFIC jacket (by ID) was already transferred today
-        
-        // Check transfers by exact product ID
+        // Use the same logic as getItemBlockStatus but with allTransfers
+        // FIRST: Check if THIS SPECIFIC jacket (by ID) has a transfer
         const hasTransferWithSameId = allTransfers.some((t) => {
             return t.productId === item.id;
         });
         
-        // Check sales by barcode - block only if THIS specific item (first with this barcode) was sold FROM SAME SELLING POINT
+        // If this specific item has a transfer, it's blocked - STOP HERE!
+        if (hasTransferWithSameId) {
+            console.log(`DEBUG: Item ${item.id} has transfer, blocking`);
+            return true;
+        }
+        
+        // SECOND: Only check sales for items WITHOUT transfers
         const hasSaleWithSameBarcode = salesData.some((sale) => {
-            // Match by barcode AND selling point (symbol) - sale must be from same selling point as current user
             const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
-            const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
+            const sellingPointMatches = sale.from === user?.symbol;
             return barcodeMatches && sellingPointMatches;
         });
         
-        // If there's a sale with same barcode, block only the FIRST AVAILABLE (not already blocked) jacket with that barcode
-        let hasSaleWithSameItem = false;
         if (hasSaleWithSameBarcode) {
-            // Find first AVAILABLE jacket with this barcode (not already blocked by transfer)
-            const firstAvailableItemWithThisBarcode = filteredData.find(dataItem => {
-                const sameBarcode = dataItem.barcode === item.barcode;
-                if (!sameBarcode) return false;
-                
-                // Check if this item is already blocked by transfer (not sale)
-                const isBlockedByTransfer = allTransfers.some(t => t.productId === dataItem.id);
-                
-                return !isBlockedByTransfer; // Return first item that is NOT blocked by transfer
+            // Count sales for this barcode
+            const salesCount = salesData.filter(sale => {
+                return sale.barcode === item.barcode && sale.from === user?.symbol;
+            }).length;
+            
+            // Get all items with same barcode
+            const allItemsWithSameBarcode = filteredData
+                .filter(dataItem => dataItem.barcode === item.barcode)
+                .sort((a, b) => filteredData.indexOf(a) - filteredData.indexOf(b));
+            
+            // CRITICAL: Filter out items with transfers (they are NEVER affected by sales)
+            const availableForSaleBlocking = allItemsWithSameBarcode.filter(dataItem => {
+                const hasTransfer = allTransfers.some(t => t.productId === dataItem.id);
+                return !hasTransfer; // Keep only items WITHOUT transfers
             });
             
-            hasSaleWithSameItem = firstAvailableItemWithThisBarcode && firstAvailableItemWithThisBarcode.id === item.id;
+            // Check if this item should be blocked by sale
+            const indexInAvailableList = availableForSaleBlocking.findIndex(dataItem => dataItem.id === item.id);
+            const hasSaleWithSameItem = indexInAvailableList >= 0 && indexInAvailableList < salesCount;
+            
+            console.log(`DEBUG: hasActiveTransfer result for ${item.id}: hasTransferWithSameId=${hasTransferWithSameId}, hasSaleWithSameItem=${hasSaleWithSameItem}, final=${hasSaleWithSameItem}`);
+            return hasSaleWithSameItem;
         }
         
-        const result = hasTransferWithSameId || hasSaleWithSameItem;
-        console.log(`DEBUG: hasActiveTransfer result for ${item.id}: hasTransferWithSameId=${hasTransferWithSameId}, hasSaleWithSameItem=${hasSaleWithSameItem}, final=${result}`);
-        
-        return result;
+        console.log(`DEBUG: hasActiveTransfer result for ${item.id}: no transfer, no sale, final=false`);
+        return false;
     };
 
     return (
@@ -765,63 +792,70 @@ const fetchSales = async () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Opcje</Text>
-                        {selectedItem && isTransferred(selectedItem) ? (
+                        {selectedItem ? (
                             (() => {
-                                // Check if item was SOLD - check salesData by barcode FROM SAME SELLING POINT
-                                const wasSoldByBarcode = salesData.some(sale => {
-                                    const barcodeMatches = sale.barcode && selectedItem.barcode && sale.barcode === selectedItem.barcode;
-                                    const sellingPointMatches = sale.from === user?.symbol; // Sale must be from current user's selling point
-                                    return barcodeMatches && sellingPointMatches;
-                                });
+                                const blockStatus = getItemBlockStatus(selectedItem);
                                 
-                                // If sold by barcode, check if THIS is the first item with this barcode (the blocked one)
-                                let wasSold = false;
-                                if (wasSoldByBarcode) {
-                                    const firstItemWithThisBarcode = filteredData.find(dataItem => dataItem.barcode === selectedItem.barcode);
-                                    wasSold = firstItemWithThisBarcode && firstItemWithThisBarcode.id === selectedItem.id;
-                                }
-                                
-                                if (wasSold) {
-                                    return (
-                                        <View style={[styles.optionButton, styles.disabledButton]}>
-                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
-                                        </View>
-                                    );
-                                }
-                                
-                                // If not sold, check if it was transferred
-                                let transfer = transfers.find(t => t.productId === selectedItem.id);
-                                if (!transfer) {
-                                    transfer = allTransfers.find(t => t.productId === selectedItem.id);
-                                }
-                                
-                                if (transfer && transfer.transfer_to === 'SOLD') {
-                                    return (
-                                        <View style={[styles.optionButton, styles.disabledButton]}>
-                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
-                                        </View>
-                                    );
-                                } else {
+                                if (!blockStatus.isBlocked) {
+                                    // Item is not blocked - show transfer option
                                     return (
                                         <TouchableOpacity
-                                            style={[styles.optionButton, styles.deleteButton]}
-                                            onPress={cancelTransfer}
+                                            style={styles.optionButton}
+                                            onPress={() => {
+                                                setModalVisible(false);
+                                                setTransferModalVisible(true);
+                                            }}
                                         >
-                                            <Text style={styles.optionText}>Anuluj odpisanie</Text>
+                                            <Text style={styles.optionText}>Przepisz do</Text>
                                         </TouchableOpacity>
                                     );
                                 }
+                                
+                                if (blockStatus.type === 'transfer') {
+                                    // Item has a transfer - check if it's SOLD transfer or regular transfer
+                                    let transfer = transfers.find(t => t.productId === selectedItem.id);
+                                    if (!transfer) {
+                                        transfer = allTransfers.find(t => t.productId === selectedItem.id);
+                                    }
+                                    
+                                    if (transfer && transfer.transfer_to === 'SOLD') {
+                                        return (
+                                            <View style={[styles.optionButton, styles.disabledButton]}>
+                                                <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
+                                            </View>
+                                        );
+                                    } else {
+                                        return (
+                                            <TouchableOpacity
+                                                style={[styles.optionButton, styles.deleteButton]}
+                                                onPress={cancelTransfer}
+                                            >
+                                                <Text style={styles.optionText}>Anuluj odpisanie</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    }
+                                }
+                                
+                                if (blockStatus.type === 'sale') {
+                                    // Item is blocked by sale - can only be cancelled in Home tab
+                                    return (
+                                        <View style={[styles.optionButton, styles.disabledButton]}>
+                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
+                                        </View>
+                                    );
+                                }
+                                
+                                // Fallback - shouldn't happen
+                                return (
+                                    <View style={[styles.optionButton, styles.disabledButton]}>
+                                        <Text style={styles.optionText}>Produkt zablokowany</Text>
+                                    </View>
+                                );
                             })()
                         ) : (
-                            <TouchableOpacity
-                                style={styles.optionButton}
-                                onPress={() => {
-                                    setModalVisible(false);
-                                    setTransferModalVisible(true);
-                                }}
-                            >
-                                <Text style={styles.optionText}>Przepisz do</Text>
-                            </TouchableOpacity>
+                            <View style={[styles.optionButton, styles.disabledButton]}>
+                                <Text style={styles.optionText}>Brak wybranego produktu</Text>
+                            </View>
                         )}
                         <TouchableOpacity
                             style={[styles.optionButton, styles.closeButton]}

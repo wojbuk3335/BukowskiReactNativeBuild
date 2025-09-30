@@ -573,7 +573,7 @@ const Home = () => {
                       <View key={item._id || index} style={{ marginBottom: 16, paddingHorizontal: 16, paddingVertical: 8, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#0d6efd" }}>
                         <Text style={{ fontSize: 13, color: "#d1d5db", flex: 1, fontWeight: "bold" }}>{index + 1}. {item.fullName} {item.size}</Text>
                         <Text style={{ fontSize: 13, color: "#fff" }}>
-                          {item.symbol || "Brak informacji o miejscu sprzedaży"}
+                          {item.sellingPoint || "Brak informacji o miejscu sprzedaży"}
                         </Text>
                       </View>
                     ))}
