@@ -13,12 +13,14 @@ export default function Create() {
     goods, 
     stocks,
     users,
+    bags,
     fetchSizes,
     fetchColors,
     fetchGoods,
     fetchStock,
     fetchState,
     fetchUsers,
+    fetchBags,
     getFilteredSellingPoints
   } = React.useContext(GlobalStateContext);
   
@@ -108,10 +110,11 @@ export default function Create() {
         fetchGoods(),
         fetchStock(),
         fetchState(),
-        fetchUsers()
+        fetchUsers(),
+        fetchBags()
       ]);
       
-      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult] = await Promise.race([
+      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult, bagsResult] = await Promise.race([
         dataPromise,
         timeoutPromise
       ]);
@@ -230,6 +233,7 @@ export default function Create() {
           goods={goods}
           stocks={stocks}
           users={users}
+          bags={bags}
           getFilteredSellingPoints={getFilteredSellingPoints}
           isActive={isFocused}
         />

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { getApiUrl } from "../config/api";
 
-const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFilteredSellingPoints, isActive }) => {
+const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -66,6 +66,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
   const buildJacketNameFromBarcode = (barcodeData) => {
     try {
       // Check if barcode has four zeros before the last digit (e.g., 0020600100009)
+      // But exclude bag patterns (starting with 000)
       const regex = /^(\d{3})(\d{2})(\d{3})0000(\d)$/;
       const match = barcodeData.match(regex);
       
@@ -74,6 +75,11 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       }
 
       const [, stockCode, colorCode, sizeCode] = match;
+      
+      // Exclude bag patterns (stockCode starting with 000)
+      if (stockCode === "000") {
+        return null; // This is a bag, not a jacket
+      }
       
       // Try to extract arrays from the objects
       const stocksArray = Array.isArray(stocks) ? stocks : (stocks?.data || stocks?.stocks || []);
@@ -103,6 +109,64 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       return jacketName;
     } catch (error) {
       console.error("Error building jacket name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to build bag name from barcode segments
+  const buildBagNameFromBarcode = (barcodeData) => {
+    try {
+      // New format for bags: 000 + kolor + wiersz + wartość_po_kropce + suma kontrolna
+      // Pozycje 1-3: 000 (stałe)
+      // Pozycje 4-5: Kod koloru  
+      // Pozycje 6-9: Numer wiersza (Torebki_Nr)
+      // Pozycje 10-12: Wartość po kropce z Torebki_Kod
+      // Pozycja 13: Suma kontrolna
+      if (barcodeData.length < 13) {
+        return null; // Not long enough
+      }
+
+      const first3 = barcodeData.substring(0, 3);
+      const colorCode = barcodeData.substring(3, 5);
+      const rowNumber = barcodeData.substring(5, 9); // Positions 6-9 (4 digits)
+      const position6 = barcodeData.substring(5, 6); // Position 6 only
+      
+      // Check if it starts with 000 and position 6 is not zero
+      if (first3 !== "000" || position6 === "0") {
+        return null; // Not a bag pattern
+      }
+
+      // Convert row number to integer for search
+      const rowNumberInt = parseInt(rowNumber, 10);
+      
+      // Check if row number is valid (greater than 0)
+      if (rowNumberInt === 0 || isNaN(rowNumberInt)) {
+        return null; // Invalid row number
+      }
+
+      // Try to extract arrays from the objects
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const bagsArray = Array.isArray(bags) ? bags : (bags?.data || bags?.bags || []);
+      
+      // Ensure we have arrays before proceeding
+      if (!Array.isArray(colorsArray) || !Array.isArray(bagsArray)) {
+        return null;
+      }
+      
+      // Look up color (Kol_Opis) from positions 4-5
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      // Look up bag name from row number (compare with Torebki_Nr)
+      const bagItem = bagsArray.find(bag => parseInt(bag.Torebki_Nr, 10) === rowNumberInt);
+      const bagName = bagItem?.Torebki_Kod || `Torebka_${rowNumberInt}`;
+      
+      // Build the bag name with color
+      const fullBagName = `${bagName} ${colorName}`;
+      
+      return fullBagName;
+    } catch (error) {
+      console.error("Error building bag name from barcode:", error);
       return null;
     }
   };
@@ -181,12 +245,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
       setScanned(true);
       setBarcode(data); // Set the scanned barcode
 
-      // First, try to build jacket name from barcode pattern (four zeros before last digit)
-      const builtJacketName = buildJacketNameFromBarcode(data);
+      // First, try to build bag name from barcode pattern (000 + non-zero at position 6)
+      const builtBagName = buildBagNameFromBarcode(data);
       
-      if (builtJacketName) {
-        // Use the built jacket name for barcodes with four zeros pattern
-        setModalMessage(builtJacketName);
+      if (builtBagName) {
+        // Use the built bag name for bag barcodes
+        setModalMessage(builtBagName);
         
         // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
         const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -202,11 +266,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
           setSelectedOption(""); // Brak dostępnych opcji
         }
       } else {
-        // Fall back to original logic - match the scanned barcode with the stateData
-        const matchedItem = stateData?.find(item => item.barcode === data);
-
-        if (matchedItem) {
-          setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+        // Second, try to build jacket name from barcode pattern (four zeros before last digit)
+        const builtJacketName = buildJacketNameFromBarcode(data);
+        
+        if (builtJacketName) {
+          // Use the built jacket name for barcodes with four zeros pattern
+          setModalMessage(builtJacketName);
           
           // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
           const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -219,11 +284,32 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
               setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
             }
           } else {
-            setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
+            setSelectedOption(""); // Brak dostępnych opcji
           }
         } else {
-          setModalMessage("Nie ma takiej kurtki"); // No match found
-          setSelectedOption(""); // Clear selected option if no match
+          // Fall back to original logic - match the scanned barcode with the stateData
+          const matchedItem = stateData?.find(item => item.barcode === data);
+
+          if (matchedItem) {
+            setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+            
+            // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
+            const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+            if (availableOptions.length > 0) {
+              // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+              const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+              if (currentUserInLocation) {
+                setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
+              } else {
+                setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
+              }
+            } else {
+              setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
+            }
+          } else {
+            setModalMessage("Nie znaleziono produktu"); // No match found
+            setSelectedOption(""); // Clear selected option if no match
+          }
         }
       }
 
@@ -291,11 +377,14 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
     
     let fullName, size, symbol;
 
+    // Check if this is a bag barcode (000 + non-zero at position 6)
+    const isBag = buildBagNameFromBarcode(barcode) !== null;
+
     // Sprawdź czy mamy dane z stateData czy z buildJacketNameFromBarcode
     if (matchedItems && matchedItems.length > 0) {
       // Dane z stateData
       fullName = matchedItems[0].fullName;
-      size = matchedItems[0].size;
+      size = isBag ? "-" : matchedItems[0].size; // For bags, send "-" instead of empty
       symbol = selectedOption || matchedItems[0].symbol || "Unknown";
     } else {
       // Dane z buildJacketNameFromBarcode (modalMessage zawiera pełną nazwę)
@@ -307,12 +396,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, getFi
         const namePart = parts.slice(0, -1).join(' '); // Reszta to nazwa
         
         fullName = namePart || modalMessage;
-        size = sizePart || "Unknown";
+        size = isBag ? "-" : (sizePart || "Unknown"); // For bags, send "-" instead of empty
         symbol = selectedOption || "Generated";
       } else {
         // Fallback dla nieznanych produktów
         fullName = modalMessage || "Unknown Product";
-        size = "Unknown";
+        size = isBag ? "-" : "Unknown"; // For bags, send "-" instead of empty
         symbol = selectedOption || "Unknown";
       }
     }

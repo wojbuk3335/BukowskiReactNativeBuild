@@ -15,6 +15,7 @@ export const GlobalStateProvider = ({ children }) => {
     const [goods, setGoods] = useState([]); // Global state for goods
     const [stocks, setStocks] = useState([]); // Global state for stocks
     const [users, setUsers] = useState([]); // Global state for all users
+    const [bags, setBags] = useState([]); // Global state for bags
     const [matchedItems, setMatchedItems] = useState([]); // Lista dopasowanych elementów
     const [transferredJackets, setTransferredJackets] = useState([]); // Initialize transferred jackets
 
@@ -172,6 +173,26 @@ export const GlobalStateProvider = ({ children }) => {
         }
     };
 
+    const fetchBags = async () => {
+        try {
+            const response = await fetchWithTimeout(getApiUrl("/excel/bags/get-all-bags"));
+            
+            if (!response || !response.ok) {
+                setBags([]); // Set fallback immediately
+                return []; // Return empty array instead of throwing
+            }
+            const data = await response.json();
+            
+            // Extract bags array from the response object
+            const bagsArray = Array.isArray(data?.bags) ? data.bags : [];
+            setBags(bagsArray); // Set the fetched bags into state
+            return bagsArray; // Return fetched bags as array
+        } catch (error) {
+            setBags([]); // Fallback to an empty array in case of error
+            return []; // Return empty array instead of throwing
+        }
+    };
+
     const bukowski_login = async (email, password, navigation) => {
         setIsLoading(true); // Set loading to true
         try {
@@ -284,6 +305,7 @@ export const GlobalStateProvider = ({ children }) => {
             goods, // Provide goods in the global state
             stocks, // Provide stocks in the global state
             users, // Provide users in the global state
+            bags, // Provide bags in the global state
             matchedItems, // Provide matched items in the global state
             transferredJackets, // Provide transferred jackets in the global state
             setUser: updateUser,
@@ -297,6 +319,7 @@ export const GlobalStateProvider = ({ children }) => {
             fetchSizes, // Provide function to fetch sizes
             fetchGoods, // Provide function to fetch goods
             fetchUsers, // Provide function to fetch users
+            fetchBags, // Provide function to fetch bags
             getFilteredSellingPoints, // Provide function to get filtered selling points
         }}>
             {children}
