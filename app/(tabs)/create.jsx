@@ -114,10 +114,13 @@ export default function Create() {
         fetchBags()
       ]);
       
-      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult, bagsResult] = await Promise.race([
+      const result = await Promise.race([
         dataPromise,
         timeoutPromise
       ]);
+
+      // If we get here, dataPromise won, so result is the array of results
+      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult, bagsResult] = result;
 
       const stateArray = Array.isArray(stateResult) ? stateResult : [];
       const usersArray = Array.isArray(usersResult) ? usersResult : [];

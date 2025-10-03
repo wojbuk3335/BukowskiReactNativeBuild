@@ -53,12 +53,14 @@ describe('Create Tab Component', () => {
       colors: [],
       goods: [],
       stocks: [],
+      bags: [],
       fetchSizes: jest.fn(),
       fetchColors: jest.fn(),
       fetchGoods: jest.fn(),
       fetchStock: jest.fn(),
       fetchState: jest.fn(),
       fetchUsers: jest.fn(),
+      fetchBags: jest.fn(),
       getFilteredSellingPoints: jest.fn(() => []),
     };
   });
@@ -83,6 +85,7 @@ describe('Create Tab Component', () => {
       mockContext.fetchStock.mockResolvedValue(mockStocksResponse.stocks);
       mockContext.fetchState.mockResolvedValue(mockStateResponse);
       mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -114,6 +117,7 @@ describe('Create Tab Component', () => {
       mockContext.fetchStock.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 200)));
       mockContext.fetchState.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 200)));
       mockContext.fetchUsers.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 200)));
+      mockContext.fetchBags.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 200)));
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -151,6 +155,8 @@ describe('Create Tab Component', () => {
       mockContext.fetchGoods.mockResolvedValue([]);
       mockContext.fetchStock.mockResolvedValue([]);
       mockContext.fetchState.mockResolvedValue([]);
+      mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -180,6 +186,7 @@ describe('Create Tab Component', () => {
       mockContext.fetchStock.mockRejectedValue(new Error('Network error'));
       mockContext.fetchState.mockRejectedValue(new Error('Network error'));
       mockContext.fetchUsers.mockRejectedValue(new Error('Network error'));
+      mockContext.fetchBags.mockRejectedValue(new Error('Network error'));
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -217,6 +224,7 @@ describe('Create Tab Component', () => {
       mockContext.fetchStock.mockImplementation(mockFailThenSuccess);
       mockContext.fetchState.mockImplementation(mockFailThenSuccess);
       mockContext.fetchUsers.mockImplementation(mockFailThenSuccess);
+      mockContext.fetchBags.mockImplementation(mockFailThenSuccess);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>

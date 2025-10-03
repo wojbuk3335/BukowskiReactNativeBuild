@@ -48,12 +48,14 @@ describe('Create Tab - Timeout Tests', () => {
       colors: [],
       goods: [],
       stocks: [],
+      bags: [],
       fetchSizes: jest.fn(),
       fetchColors: jest.fn(),
       fetchGoods: jest.fn(),
       fetchStock: jest.fn(),
       fetchState: jest.fn(),
       fetchUsers: jest.fn(),
+      fetchBags: jest.fn(),
       getFilteredSellingPoints: jest.fn(() => []),
     };
 
@@ -78,6 +80,7 @@ describe('Create Tab - Timeout Tests', () => {
       mockContext.fetchStock.mockImplementation(neverResolvePromise);
       mockContext.fetchState.mockImplementation(neverResolvePromise);
       mockContext.fetchUsers.mockImplementation(neverResolvePromise);
+      mockContext.fetchBags.mockImplementation(neverResolvePromise);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -114,6 +117,7 @@ describe('Create Tab - Timeout Tests', () => {
       mockContext.fetchStock.mockImplementation(quickResolve);
       mockContext.fetchState.mockImplementation(quickResolve);
       mockContext.fetchUsers.mockImplementation(quickResolve);
+      mockContext.fetchBags.mockImplementation(quickResolve);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -150,6 +154,7 @@ describe('Create Tab - Timeout Tests', () => {
       mockContext.fetchStock.mockImplementation(neverResolvePromise);
       mockContext.fetchState.mockImplementation(neverResolvePromise);
       mockContext.fetchUsers.mockImplementation(neverResolvePromise);
+      mockContext.fetchBags.mockImplementation(neverResolvePromise);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
@@ -204,6 +209,7 @@ describe('Create Tab - Timeout Tests', () => {
       mockContext.fetchStock.mockImplementation(mockTimeoutThenSuccess);
       mockContext.fetchState.mockImplementation(mockTimeoutThenSuccess);
       mockContext.fetchUsers.mockImplementation(mockTimeoutThenSuccess);
+      mockContext.fetchBags.mockImplementation(mockTimeoutThenSuccess);
 
       const MockContextProvider = ({ children }) => (
         <GlobalStateContext.Provider value={mockContext}>
