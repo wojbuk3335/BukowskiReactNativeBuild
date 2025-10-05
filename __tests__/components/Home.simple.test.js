@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, act } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import Home from '../../app/(tabs)/home';
 import { GlobalStateContext } from '../../context/GlobalState';
@@ -6,7 +6,9 @@ import { GlobalStateContext } from '../../context/GlobalState';
 // Mock the navigation library
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: jest.fn((callback) => {
-    setTimeout(callback, 100);
+    setTimeout(() => {
+      callback();
+    }, 100);
     return () => {};
   }),
 }));

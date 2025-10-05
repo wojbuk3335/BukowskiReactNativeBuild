@@ -14,6 +14,7 @@ export default function Create() {
     stocks,
     users,
     bags,
+    wallets,
     fetchSizes,
     fetchColors,
     fetchGoods,
@@ -21,6 +22,7 @@ export default function Create() {
     fetchState,
     fetchUsers,
     fetchBags,
+    fetchWallets,
     getFilteredSellingPoints
   } = React.useContext(GlobalStateContext);
   
@@ -111,7 +113,8 @@ export default function Create() {
         fetchStock(),
         fetchState(),
         fetchUsers(),
-        fetchBags()
+        fetchBags(),
+        fetchWallets()
       ]);
       
       const result = await Promise.race([
@@ -120,7 +123,7 @@ export default function Create() {
       ]);
 
       // If we get here, dataPromise won, so result is the array of results
-      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult, bagsResult] = result;
+      const [sizesResult, colorsResult, goodsResult, stocksResult, stateResult, usersResult, bagsResult, walletsResult] = result;
 
       const stateArray = Array.isArray(stateResult) ? stateResult : [];
       const usersArray = Array.isArray(usersResult) ? usersResult : [];
@@ -237,6 +240,7 @@ export default function Create() {
           stocks={stocks}
           users={users}
           bags={bags}
+          wallets={wallets}
           getFilteredSellingPoints={getFilteredSellingPoints}
           isActive={isFocused}
         />

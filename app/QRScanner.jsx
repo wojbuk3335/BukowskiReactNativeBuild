@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { getApiUrl } from "../config/api";
 
-const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, getFilteredSellingPoints, isActive }) => {
+const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -171,6 +171,77 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
   };
 
+  // Helper function to build wallet name from barcode segments
+  const buildWalletNameFromBarcode = (barcodeData) => {
+    try {
+      // Wallet format: 13-digit barcode
+      // Pozycje 1-3: 000 (stałe)
+      // Pozycja 6: 0 (stała)
+      // Pozycja 7: ≠0 (nie zero)
+      // Pozycje 4-5: Kod koloru
+      // Pozycje 7-9: Numer portfela (Portfele_Nr)
+      if (barcodeData.length !== 13) {
+        return null; // Must be exactly 13 digits
+      }
+
+      const first3 = barcodeData.substring(0, 3);
+      const colorCode = barcodeData.substring(3, 5);
+      const position6 = barcodeData.substring(5, 6); // Position 6
+      const position7 = barcodeData.substring(6, 7); // Position 7
+      const walletNumber = barcodeData.substring(6, 9); // Positions 7-9 (3 digits)
+      
+      // Check wallet pattern: 000 + color + 0 + non-zero
+      if (first3 !== "000" || position6 !== "0" || position7 === "0") {
+        return null; // Not a wallet pattern
+      }
+
+      // Convert wallet number to integer for search
+      const walletNumberInt = parseInt(walletNumber, 10);
+      
+      // Check if wallet number is valid (greater than 0)
+      if (walletNumberInt === 0 || isNaN(walletNumberInt)) {
+        return null; // Invalid wallet number
+      }
+
+      // Try to extract arrays from the objects
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const walletsArray = Array.isArray(wallets) ? wallets : (wallets?.data || wallets?.wallets || []);
+      
+      // Debug logging
+      console.log("Wallet barcode parsing debug:");
+      console.log("Wallet number:", walletNumberInt);
+      console.log("Color code:", colorCode);
+      console.log("Wallets array length:", walletsArray.length);
+      console.log("Wallets array sample:", walletsArray.slice(0, 3));
+      console.log("Looking for wallet with Portfele_Nr:", walletNumberInt);
+      
+      // Ensure we have arrays before proceeding
+      if (!Array.isArray(colorsArray) || !Array.isArray(walletsArray)) {
+        console.log("Arrays validation failed - colorsArray:", Array.isArray(colorsArray), "walletsArray:", Array.isArray(walletsArray));
+        return null;
+      }
+      
+      // Look up color (Kol_Opis) from positions 4-5
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      console.log("Color found:", colorItem, "Color name:", colorName);
+      
+      // Look up wallet name from wallet number (compare with Portfele_Nr)
+      const walletItem = walletsArray.find(wallet => parseInt(wallet.Portfele_Nr, 10) === walletNumberInt);
+      console.log("Wallet item found:", walletItem);
+      const walletName = walletItem?.Portfele_Kod || `Portfel_${walletNumberInt}`;
+      console.log("Wallet name:", walletName);
+      
+      // Build the wallet name with color
+      const fullWalletName = `${walletName} ${colorName}`;
+      
+      return fullWalletName;
+    } catch (error) {
+      console.error("Error building wallet name from barcode:", error);
+      return null;
+    }
+  };
+
   const openCurrencyModal = (index) => {
     setCurrentCurrencyPairIndex(index);
     setCurrencyModalVisible(true);
@@ -266,18 +337,39 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           setSelectedOption(""); // Brak dostępnych opcji
         }
       } else {
-        // Second, try to build jacket name from barcode pattern (four zeros before last digit)
-        const builtJacketName = buildJacketNameFromBarcode(data);
+        // Second, try to build wallet name from barcode pattern (000 + 0 at position 6 + non-zero at position 7)
+        const builtWalletName = buildWalletNameFromBarcode(data);
         
-        if (builtJacketName) {
-          // Use the built jacket name for barcodes with four zeros pattern
-          setModalMessage(builtJacketName);
+        if (builtWalletName) {
+          // Use the built wallet name for wallet barcodes
+          setModalMessage(builtWalletName);
           
           // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
           const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
           if (availableOptions.length > 0) {
             // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
             const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+            if (currentUserInLocation) {
+              setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
+            } else {
+              setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
+            }
+          } else {
+            setSelectedOption(""); // Brak dostępnych opcji
+          }
+        } else {
+          // Third, try to build jacket name from barcode pattern (four zeros before last digit)
+          const builtJacketName = buildJacketNameFromBarcode(data);
+          
+          if (builtJacketName) {
+            // Use the built jacket name for barcodes with four zeros pattern
+            setModalMessage(builtJacketName);
+            
+            // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
+            const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+            if (availableOptions.length > 0) {
+              // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+              const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
             if (currentUserInLocation) {
               setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
             } else {
@@ -312,6 +404,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           }
         }
       }
+    }
 
       setModalVisible(true); // Show the modal
       // Usuwamy automatyczny timeout - reset będzie tylko przy zamykaniu modala
@@ -379,29 +472,41 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
 
     // Check if this is a bag barcode (000 + non-zero at position 6)
     const isBag = buildBagNameFromBarcode(barcode) !== null;
+    
+    // Check if this is a wallet barcode (000 + 0 at position 6 + non-zero at position 7)
+    const isWallet = buildWalletNameFromBarcode(barcode) !== null;
 
     // Sprawdź czy mamy dane z stateData czy z buildJacketNameFromBarcode
     if (matchedItems && matchedItems.length > 0) {
       // Dane z stateData
       fullName = matchedItems[0].fullName;
-      size = isBag ? "-" : matchedItems[0].size; // For bags, send "-" instead of empty
+      size = (isBag || isWallet) ? "-" : matchedItems[0].size; // For bags and wallets, send "-" instead of empty
       symbol = selectedOption || matchedItems[0].symbol || "Unknown";
     } else {
-      // Dane z buildJacketNameFromBarcode (modalMessage zawiera pełną nazwę)
+      // Check for built names (jacket, bag, or wallet)
       const builtJacketName = buildJacketNameFromBarcode(barcode);
-      if (builtJacketName) {
-        // Spróbuj wyodrębnić nazwę i rozmiar z modalMessage
-        const parts = modalMessage.split(' ');
-        const sizePart = parts[parts.length - 1]; // Ostatnia część to rozmiar
-        const namePart = parts.slice(0, -1).join(' '); // Reszta to nazwa
-        
-        fullName = namePart || modalMessage;
-        size = isBag ? "-" : (sizePart || "Unknown"); // For bags, send "-" instead of empty
+      const builtBagName = buildBagNameFromBarcode(barcode);
+      const builtWalletName = buildWalletNameFromBarcode(barcode);
+      
+      if (builtJacketName || builtBagName || builtWalletName) {
+        if (isBag || isWallet) {
+          // For bags and wallets, use the full modalMessage as name (includes color)
+          fullName = modalMessage;
+          size = "-"; // No size for bags and wallets
+        } else {
+          // For jackets, try to extract name and size from modalMessage
+          const parts = modalMessage.split(' ');
+          const sizePart = parts[parts.length - 1]; // Ostatnia część to rozmiar
+          const namePart = parts.slice(0, -1).join(' '); // Reszta to nazwa
+          
+          fullName = namePart || modalMessage;
+          size = sizePart || "Unknown";
+        }
         symbol = selectedOption || "Generated";
       } else {
         // Fallback dla nieznanych produktów
         fullName = modalMessage || "Unknown Product";
-        size = isBag ? "-" : "Unknown"; // For bags, send "-" instead of empty
+        size = (isBag || isWallet) ? "-" : "Unknown"; // For bags and wallets, send "-" instead of empty
         symbol = selectedOption || "Unknown";
       }
     }

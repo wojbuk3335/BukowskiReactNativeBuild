@@ -16,6 +16,7 @@ export const GlobalStateProvider = ({ children }) => {
     const [stocks, setStocks] = useState([]); // Global state for stocks
     const [users, setUsers] = useState([]); // Global state for all users
     const [bags, setBags] = useState([]); // Global state for bags
+    const [wallets, setWallets] = useState([]); // Global state for wallets
     const [matchedItems, setMatchedItems] = useState([]); // Lista dopasowanych elementów
     const [transferredJackets, setTransferredJackets] = useState([]); // Initialize transferred jackets
 
@@ -193,6 +194,26 @@ export const GlobalStateProvider = ({ children }) => {
         }
     };
 
+    const fetchWallets = async () => {
+        try {
+            const response = await fetchWithTimeout(getApiUrl("/excel/wallets/get-all-wallets"));
+            
+            if (!response || !response.ok) {
+                setWallets([]); // Set fallback immediately
+                return []; // Return empty array instead of throwing
+            }
+            const data = await response.json();
+            
+            // Extract wallets array from the response object
+            const walletsArray = Array.isArray(data?.wallets) ? data.wallets : [];
+            setWallets(walletsArray); // Set the fetched wallets into state
+            return walletsArray; // Return fetched wallets as array
+        } catch (error) {
+            setWallets([]); // Fallback to an empty array in case of error
+            return []; // Return empty array instead of throwing
+        }
+    };
+
     const bukowski_login = async (email, password, navigation) => {
         setIsLoading(true); // Set loading to true
         try {
@@ -253,6 +274,8 @@ export const GlobalStateProvider = ({ children }) => {
             setGoods([]); // Clear goods
             setStocks([]); // Clear stocks
             setUsers([]); // Clear users
+            setBags([]); // Clear bags
+            setWallets([]); // Clear wallets
             setMatchedItems([]); // Clear matched items
             setTransferredJackets([]); // Clear transferred jackets
             await AsyncStorage.clear(); // Clear all AsyncStorage data
@@ -306,6 +329,7 @@ export const GlobalStateProvider = ({ children }) => {
             stocks, // Provide stocks in the global state
             users, // Provide users in the global state
             bags, // Provide bags in the global state
+            wallets, // Provide wallets in the global state
             matchedItems, // Provide matched items in the global state
             transferredJackets, // Provide transferred jackets in the global state
             setUser: updateUser,
@@ -320,6 +344,7 @@ export const GlobalStateProvider = ({ children }) => {
             fetchGoods, // Provide function to fetch goods
             fetchUsers, // Provide function to fetch users
             fetchBags, // Provide function to fetch bags
+            fetchWallets, // Provide function to fetch wallets
             getFilteredSellingPoints, // Provide function to get filtered selling points
         }}>
             {children}

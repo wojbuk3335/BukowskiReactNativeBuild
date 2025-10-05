@@ -206,9 +206,6 @@ const fetchTransfers = async () => {
                 // Check if transfer is from TODAY for ANY product
                 const isToday = transfer.date && transfer.date.startsWith(today);
                 
-                // DEBUG: Log filtering details
-                console.log(`DEBUG: Transfer filter - ID: ${transfer.productId}, Date: ${transfer.date}, Today: ${today}, IsToday: ${isToday}`);
-                
                 // Only include TODAY's transfers (regardless of user - this is for blocking validation)
                 return isToday;
             }
@@ -318,13 +315,6 @@ const fetchSales = async () => {
             Alert.alert("Błąd", "Brak danych zalogowanego użytkownika");
             return;
         }
-
-        console.log("Transfer attempt:", {
-            selectedItem,
-            user: { symbol: user.symbol, email: user.email },
-            toSymbol,
-            reason
-        });
 
         // Sprawdź czy kurtka nie ma już aktywnego transferu DZISIAJ
         if (hasActiveTransfer(selectedItem)) {
@@ -630,9 +620,6 @@ const fetchSales = async () => {
     const hasActiveTransfer = (item) => {
         if (!Array.isArray(allTransfers)) return false;
         
-        console.log(`DEBUG: hasActiveTransfer check for item ${item.id} (${item.fullName})`);
-        console.log(`DEBUG: allTransfers contains ${allTransfers.length} transfers:`, allTransfers.map(t => ({ id: t.productId, date: t.date })));
-        
         // Use the same logic as getItemBlockStatus but with allTransfers
         // FIRST: Check if THIS SPECIFIC jacket (by ID) has a transfer
         const hasTransferWithSameId = allTransfers.some((t) => {
@@ -641,7 +628,6 @@ const fetchSales = async () => {
         
         // If this specific item has a transfer, it's blocked - STOP HERE!
         if (hasTransferWithSameId) {
-            console.log(`DEBUG: Item ${item.id} has transfer, blocking`);
             return true;
         }
         
@@ -673,11 +659,9 @@ const fetchSales = async () => {
             const indexInAvailableList = availableForSaleBlocking.findIndex(dataItem => dataItem.id === item.id);
             const hasSaleWithSameItem = indexInAvailableList >= 0 && indexInAvailableList < salesCount;
             
-            console.log(`DEBUG: hasActiveTransfer result for ${item.id}: hasTransferWithSameId=${hasTransferWithSameId}, hasSaleWithSameItem=${hasSaleWithSameItem}, final=${hasSaleWithSameItem}`);
             return hasSaleWithSameItem;
         }
         
-        console.log(`DEBUG: hasActiveTransfer result for ${item.id}: no transfer, no sale, final=false`);
         return false;
     };
 
