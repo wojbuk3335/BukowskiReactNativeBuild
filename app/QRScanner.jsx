@@ -207,30 +207,18 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
       const walletsArray = Array.isArray(wallets) ? wallets : (wallets?.data || wallets?.wallets || []);
       
-      // Debug logging
-      console.log("Wallet barcode parsing debug:");
-      console.log("Wallet number:", walletNumberInt);
-      console.log("Color code:", colorCode);
-      console.log("Wallets array length:", walletsArray.length);
-      console.log("Wallets array sample:", walletsArray.slice(0, 3));
-      console.log("Looking for wallet with Portfele_Nr:", walletNumberInt);
-      
       // Ensure we have arrays before proceeding
       if (!Array.isArray(colorsArray) || !Array.isArray(walletsArray)) {
-        console.log("Arrays validation failed - colorsArray:", Array.isArray(colorsArray), "walletsArray:", Array.isArray(walletsArray));
         return null;
       }
       
       // Look up color (Kol_Opis) from positions 4-5
       const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
       const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
-      console.log("Color found:", colorItem, "Color name:", colorName);
       
       // Look up wallet name from wallet number (compare with Portfele_Nr)
       const walletItem = walletsArray.find(wallet => parseInt(wallet.Portfele_Nr, 10) === walletNumberInt);
-      console.log("Wallet item found:", walletItem);
       const walletName = walletItem?.Portfele_Kod || `Portfel_${walletNumberInt}`;
-      console.log("Wallet name:", walletName);
       
       // Build the wallet name with color
       const fullWalletName = `${walletName} ${colorName}`;
@@ -238,6 +226,70 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       return fullWalletName;
     } catch (error) {
       console.error("Error building wallet name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to build remaining products name from barcode segments
+  const buildRemainingProductNameFromBarcode = async (barcodeData) => {
+    try {
+      // Remaining products format: kod ma na pierwszych 3 miejscach zera 000 
+      // potem na 6 i 7 dwa zera 00 to znaczy się że jest to kod towaru dla pozostałego asortymentu
+      // kolor jest na miejscu 4 i 5, nazwa jest na miejscu 8 i 9
+      if (barcodeData.length < 9) {
+        return null; // Not long enough
+      }
+
+      const first3 = barcodeData.substring(0, 3); // Positions 1-3
+      const colorCode = barcodeData.substring(3, 5); // Positions 4-5
+      const positions6and7 = barcodeData.substring(5, 7); // Positions 6-7
+      const productCode = barcodeData.substring(7, 9); // Positions 8-9
+      
+      // Check remaining products pattern: 000 + color + 00 + product
+      if (first3 !== "000" || positions6and7 !== "00") {
+        return null; // Not a remaining products pattern
+      }
+
+      // Try to extract arrays from the objects
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      
+      // Ensure we have colors array before proceeding
+      if (!Array.isArray(colorsArray)) {
+        return null;
+      }
+      
+      // Look up color (Kol_Opis) from positions 4-5
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      // Fetch product name from remaining products API using productCode
+      try {
+        const fullUrl = getApiUrl("/excel/remaining-products/get-all-remaining-products");
+        const response = await axios.get(fullUrl);
+        
+        const remainingProducts = response.data.remainingProducts; // Access the remainingProducts array
+        
+        // Find product by Poz_Nr matching the productCode (positions 8-9)
+        // Convert productCode to number for comparison
+        const productCodeNumber = parseInt(productCode, 10);
+        
+        const productItem = remainingProducts.find(product => 
+          product.Poz_Nr && parseInt(product.Poz_Nr, 10) === productCodeNumber
+        );
+        
+        const productName = productItem?.Poz_Kod || `Produkt_${productCode}`;
+        
+        // Build the remaining product name: Poz_Kod + color
+        const fullRemainingProductName = `${productName} ${colorName}`;
+        
+        return fullRemainingProductName;
+      } catch (error) {
+        console.error("Error fetching remaining products:", error);
+        // Fallback if API call fails
+        return `Produkt_${productCode} ${colorName}`;
+      }
+    } catch (error) {
+      console.error("Error building remaining product name from barcode:", error);
       return null;
     }
   };
@@ -311,17 +363,17 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     );
   }
 
-  const handleScan = ({ data, type }) => {
+  const handleScan = async ({ data, type }) => {
     if (!scanned) {
       setScanned(true);
       setBarcode(data); // Set the scanned barcode
 
-      // First, try to build bag name from barcode pattern (000 + non-zero at position 6)
-      const builtBagName = buildBagNameFromBarcode(data);
+      // First, try to build remaining products name from barcode pattern (000 + XX + 00 + XX)
+      const builtRemainingProductName = await buildRemainingProductNameFromBarcode(data);
       
-      if (builtBagName) {
-        // Use the built bag name for bag barcodes
-        setModalMessage(builtBagName);
+      if (builtRemainingProductName) {
+        // Use the built remaining product name
+        setModalMessage(builtRemainingProductName);
         
         // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
         const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -337,12 +389,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           setSelectedOption(""); // Brak dostępnych opcji
         }
       } else {
-        // Second, try to build wallet name from barcode pattern (000 + 0 at position 6 + non-zero at position 7)
-        const builtWalletName = buildWalletNameFromBarcode(data);
+        // Second, try to build bag name from barcode pattern (000 + non-zero at position 6)
+        const builtBagName = buildBagNameFromBarcode(data);
         
-        if (builtWalletName) {
-          // Use the built wallet name for wallet barcodes
-          setModalMessage(builtWalletName);
+        if (builtBagName) {
+          // Use the built bag name for bag barcodes
+          setModalMessage(builtBagName);
           
           // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
           const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -358,32 +410,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
             setSelectedOption(""); // Brak dostępnych opcji
           }
         } else {
-          // Third, try to build jacket name from barcode pattern (four zeros before last digit)
-          const builtJacketName = buildJacketNameFromBarcode(data);
+          // Third, try to build wallet name from barcode pattern (000 + 0 at position 6 + non-zero at position 7)
+          const builtWalletName = buildWalletNameFromBarcode(data);
           
-          if (builtJacketName) {
-            // Use the built jacket name for barcodes with four zeros pattern
-            setModalMessage(builtJacketName);
-            
-            // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-            const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-            if (availableOptions.length > 0) {
-              // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-              const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-            if (currentUserInLocation) {
-              setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-            } else {
-              setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-            }
-          } else {
-            setSelectedOption(""); // Brak dostępnych opcji
-          }
-        } else {
-          // Fall back to original logic - match the scanned barcode with the stateData
-          const matchedItem = stateData?.find(item => item.barcode === data);
-
-          if (matchedItem) {
-            setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+          if (builtWalletName) {
+            // Use the built wallet name for wallet barcodes
+            setModalMessage(builtWalletName);
             
             // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
             const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -396,11 +428,53 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                 setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
               }
             } else {
-              setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
+              setSelectedOption(""); // Brak dostępnych opcji
             }
           } else {
-            setModalMessage("Nie znaleziono produktu"); // No match found
-            setSelectedOption(""); // Clear selected option if no match
+            // Fourth, try to build jacket name from barcode pattern (four zeros before last digit)
+            const builtJacketName = buildJacketNameFromBarcode(data);
+            
+            if (builtJacketName) {
+              // Use the built jacket name for barcodes with four zeros pattern
+              setModalMessage(builtJacketName);
+              
+              // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
+              const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+              if (availableOptions.length > 0) {
+                // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+                const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+              if (currentUserInLocation) {
+                setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
+              } else {
+                setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
+              }
+            } else {
+              setSelectedOption(""); // Brak dostępnych opcji
+            }
+          } else {
+            // Fall back to original logic - match the scanned barcode with the stateData
+            const matchedItem = stateData?.find(item => item.barcode === data);
+
+            if (matchedItem) {
+              setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+              
+              // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
+              const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
+              if (availableOptions.length > 0) {
+                // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+                const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+                if (currentUserInLocation) {
+                  setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
+                } else {
+                  setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
+                }
+              } else {
+                setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
+              }
+            } else {
+              setModalMessage("Nie znaleziono produktu"); // No match found
+              setSelectedOption(""); // Clear selected option if no match
+            }
           }
         }
       }
@@ -470,6 +544,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     
     let fullName, size, symbol;
 
+    // Check if this is a remaining products barcode (000 + XX + 00 + XX)
+    const builtRemainingProductName = await buildRemainingProductNameFromBarcode(barcode);
+    const isRemainingProduct = builtRemainingProductName !== null;
+    
     // Check if this is a bag barcode (000 + non-zero at position 6)
     const isBag = buildBagNameFromBarcode(barcode) !== null;
     
@@ -480,19 +558,19 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     if (matchedItems && matchedItems.length > 0) {
       // Dane z stateData
       fullName = matchedItems[0].fullName;
-      size = (isBag || isWallet) ? "-" : matchedItems[0].size; // For bags and wallets, send "-" instead of empty
+      size = (isBag || isWallet || isRemainingProduct) ? "-" : matchedItems[0].size; // For bags, wallets and remaining products, send "-" instead of empty
       symbol = selectedOption || matchedItems[0].symbol || "Unknown";
     } else {
-      // Check for built names (jacket, bag, or wallet)
+      // Check for built names (jacket, bag, wallet, or remaining product)
       const builtJacketName = buildJacketNameFromBarcode(barcode);
       const builtBagName = buildBagNameFromBarcode(barcode);
       const builtWalletName = buildWalletNameFromBarcode(barcode);
       
-      if (builtJacketName || builtBagName || builtWalletName) {
-        if (isBag || isWallet) {
-          // For bags and wallets, use the full modalMessage as name (includes color)
+      if (builtJacketName || builtBagName || builtWalletName || builtRemainingProductName) {
+        if (isBag || isWallet || isRemainingProduct) {
+          // For bags, wallets and remaining products, use the full modalMessage as name (includes color)
           fullName = modalMessage;
-          size = "-"; // No size for bags and wallets
+          size = "-"; // No size for bags, wallets and remaining products
         } else {
           // For jackets, try to extract name and size from modalMessage
           const parts = modalMessage.split(' ');
@@ -506,7 +584,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       } else {
         // Fallback dla nieznanych produktów
         fullName = modalMessage || "Unknown Product";
-        size = (isBag || isWallet) ? "-" : "Unknown"; // For bags and wallets, send "-" instead of empty
+        size = (isBag || isWallet || isRemainingProduct) ? "-" : "Unknown"; // For bags, wallets and remaining products, send "-" instead of empty
         symbol = selectedOption || "Unknown";
       }
     }
