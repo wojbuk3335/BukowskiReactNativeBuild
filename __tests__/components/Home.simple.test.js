@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, act } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import Home from '../../app/(tabs)/home';
 import { GlobalStateContext } from '../../context/GlobalState';
+import tokenService from '../../services/tokenService';
 
 // Mock the navigation library
 jest.mock('@react-navigation/native', () => ({
@@ -15,6 +16,11 @@ jest.mock('@react-navigation/native', () => ({
 
 // Mock fetch
 global.fetch = jest.fn();
+
+// Mock tokenService
+jest.mock('../../services/tokenService', () => ({
+  authenticatedFetch: jest.fn(),
+}));
 
 // Mock Alert
 jest.spyOn(Alert, 'alert');
@@ -85,10 +91,11 @@ describe('Home Simplified Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fetch.mockClear();
+    tokenService.authenticatedFetch.mockClear();
     Alert.alert.mockClear();
     
-    // Mock API responses
-    fetch.mockImplementation((url, options) => {
+    // Mock tokenService.authenticatedFetch for sales API
+    tokenService.authenticatedFetch.mockImplementation((url, options) => {
       if (url.includes('/sales/get-all-sales') && options?.method !== 'DELETE') {
         return Promise.resolve({
           ok: true,
@@ -100,6 +107,17 @@ describe('Home Simplified Tests', () => {
           ok: true,
           json: () => Promise.resolve({ message: 'Sale deleted' })
         });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    
+    // Mock regular fetch for other APIs (transfer, deductions)
+    fetch.mockImplementation((url, options) => {
+      if (url.includes('/transfer')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      }
+      if (url.includes('/deductions')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
@@ -167,12 +185,12 @@ describe('Home Simplified Tests', () => {
       renderWithContext(<Home />);
       
       await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/sales/get-all-sales'));
+        expect(tokenService.authenticatedFetch).toHaveBeenCalledWith(expect.stringContaining('/sales/get-all-sales'));
       }, { timeout: 3000 });
     });
 
     it('should handle API errors gracefully', async () => {
-      fetch.mockRejectedValueOnce(new Error('API Error'));
+      tokenService.authenticatedFetch.mockRejectedValueOnce(new Error('API Error'));
       
       const { getByTestId } = renderWithContext(<Home />);
       
@@ -194,7 +212,7 @@ describe('Home Simplified Tests', () => {
     });
 
     it('should handle empty sales data', async () => {
-      fetch.mockImplementationOnce(() => Promise.resolve({
+      tokenService.authenticatedFetch.mockImplementationOnce(() => Promise.resolve({
         ok: true,
         json: () => Promise.resolve([])
       }));
@@ -209,7 +227,7 @@ describe('Home Simplified Tests', () => {
 
   describe('Refresh Tests', () => {
     it('should support pull-to-refresh', async () => {
-      fetch.mockClear(); // Clear previous calls
+      tokenService.authenticatedFetch.mockClear(); // Clear previous calls
       
       const { getByTestId } = renderWithContext(<Home />);
       
@@ -218,8 +236,8 @@ describe('Home Simplified Tests', () => {
         expect(flatList).toBeTruthy();
       }, { timeout: 3000 });
       
-      // Clear fetch calls after initial mount
-      fetch.mockClear();
+      // Clear tokenService calls after initial mount
+      tokenService.authenticatedFetch.mockClear();
       
       // Trigger refresh
       const flatList = getByTestId('home-flatlist');
@@ -227,7 +245,7 @@ describe('Home Simplified Tests', () => {
       
       // Wait for refresh API call
       await waitFor(() => {
-        expect(fetch).toHaveBeenCalled();
+        expect(tokenService.authenticatedFetch).toHaveBeenCalled();
       }, { timeout: 3000 });
     });
   });
@@ -249,7 +267,7 @@ describe('Home Simplified Tests', () => {
 
   describe('Deletion Tests', () => {
     it('should handle sale deletion API call', async () => {
-      fetch.mockImplementation((url, options) => {
+      tokenService.authenticatedFetch.mockImplementation((url, options) => {
         if (options?.method === 'DELETE') {
           return Promise.resolve({
             ok: true,
@@ -266,12 +284,12 @@ describe('Home Simplified Tests', () => {
       
       // Test component renders without errors
       await waitFor(() => {
-        expect(fetch).toHaveBeenCalled();
+        expect(tokenService.authenticatedFetch).toHaveBeenCalled();
       }, { timeout: 3000 });
     });
 
     it('should handle deletion errors', async () => {
-      fetch.mockImplementation((url, options) => {
+      tokenService.authenticatedFetch.mockImplementation((url, options) => {
         if (options?.method === 'DELETE') {
           return Promise.resolve({
             ok: false,
@@ -288,7 +306,7 @@ describe('Home Simplified Tests', () => {
       renderWithContext(<Home />);
       
       await waitFor(() => {
-        expect(fetch).toHaveBeenCalled();
+        expect(tokenService.authenticatedFetch).toHaveBeenCalled();
       }, { timeout: 3000 });
     });
   });

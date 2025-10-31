@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router"; // Import router
 import React, { createContext, useState } from "react";
 import { getApiUrl } from "../config/api"; // Import API config
+import tokenService from "../services/tokenService"; // Import token service
 
 export const GlobalStateContext = createContext();
 
@@ -20,13 +21,14 @@ export const GlobalStateProvider = ({ children }) => {
     const [matchedItems, setMatchedItems] = useState([]); // Lista dopasowanych elementów
     const [transferredJackets, setTransferredJackets] = useState([]); // Initialize transferred jackets
 
-    // Helper function for fetch with timeout
+    // Helper function for fetch with timeout and authentication
     const fetchWithTimeout = async (url, timeout = 10000) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
         try {
-            const response = await fetch(url, {
+            // Use tokenService for authenticated requests
+            const response = await tokenService.authenticatedFetch(url, {
                 signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -231,6 +233,14 @@ export const GlobalStateProvider = ({ children }) => {
             }
 
             const data = await response.json();
+            
+            // Store tokens using tokenService
+            if (data.token || data.accessToken) {
+                const accessToken = data.accessToken || data.token;
+                const refreshToken = data.refreshToken;
+                await tokenService.setTokens(accessToken, refreshToken);
+            }
+            
             setUser(data); // Update user state
             setIsLoggedIn(true); // Set login status to true
             await AsyncStorage.setItem("user", JSON.stringify(data)); // Save user data locally
@@ -266,6 +276,9 @@ export const GlobalStateProvider = ({ children }) => {
 
     const logout = async () => {
         try {
+            // Clear tokens using tokenService
+            await tokenService.logout();
+            
             setUser(null); // Clear user state
             setIsLoggedIn(false); // Set login status to false
             setStateData(null); // Clear state data

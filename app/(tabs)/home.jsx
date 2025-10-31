@@ -4,6 +4,7 @@ import { Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleShe
 import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
+import tokenService from '../../services/tokenService';
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
@@ -40,20 +41,23 @@ const Home = () => {
 
   const fetchSalesData = async () => {
     try {
-      const response = await fetch(getApiUrl('/sales/get-all-sales'));
+      const response = await tokenService.authenticatedFetch(getApiUrl('/sales/get-all-sales'));
       const data = await response.json();
-      setSalesData(data); // Update state with API data
+      
+      // Ensure data is an array
+      const salesArray = Array.isArray(data) ? data : (data?.sales || data?.data || []);
+      setSalesData(salesArray); // Update state with API data
 
       // Filter data based on user's sellingPoint and current date
       // FOR TESTING: Uncomment line below to simulate tomorrow
       // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
       const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
-      const filtered = data.filter(
+      const filtered = salesArray.filter(
         item => item.sellingPoint === user?.sellingPoint && item.date?.startsWith(today)
       );
       setFilteredData(filtered); // Update state with filtered data
 
-      const otherAccounts = data.filter(
+      const otherAccounts = salesArray.filter(
         item => item.sellingPoint !== user?.sellingPoint && item.from === user?.symbol && item.date?.startsWith(today)
       );
       setOtherAccountsData(otherAccounts); // Update state with other accounts data
@@ -76,7 +80,7 @@ const Home = () => {
 
   const fetchItemData = async (id) => {
     try {
-      const response = await fetch(getApiUrl(`/sales/${id}`));
+      const response = await tokenService.authenticatedFetch(getApiUrl(`/sales/${id}`));
       if (!response.ok) {
         throw new Error("Failed to fetch item data.");
       }
@@ -106,7 +110,7 @@ const Home = () => {
           card: cardPriceCurrencyPairs.map(({ price, currency }) => ({ price: parseFloat(price) || 0, currency })),
         };
 
-        const response = await fetch(
+        const response = await tokenService.authenticatedFetch(
           getApiUrl(`/sales/update-sales/${editData._id}`),
           {
             method: "PATCH",
@@ -151,24 +155,31 @@ const Home = () => {
 
   const fetchTransferredItems = async () => {
     try {
-      const response = await fetch(getApiUrl("/transfer"));
+      const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
       const data = await response.json();
       
-      const filteredData = data.filter((item) => item.transfer_from === user.symbol);
+      // Ensure data is an array
+      const transferArray = Array.isArray(data) ? data : (data?.transfers || data?.data || []);
+      const filteredData = transferArray.filter((item) => item.transfer_from === user.symbol);
       
       setTransferredItems(filteredData); // Filter items by transfer_from
     } catch (error) {
       console.error("Error fetching transferred items:", error);
+      setTransferredItems([]); // Fallback to empty array
     }
   };
 
   const fetchReceivedItems = async () => {
     try {
-      const response = await fetch(getApiUrl("/transfer"));
+      const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
       const data = await response.json();
-      setReceivedItems(data.filter((item) => item.transfer_to === user.symbol)); // Filter items by transfer_to
+      
+      // Ensure data is an array
+      const transferArray = Array.isArray(data) ? data : (data?.transfers || data?.data || []);
+      setReceivedItems(transferArray.filter((item) => item.transfer_to === user.symbol)); // Filter items by transfer_to
     } catch (error) {
       console.error("Error fetching received items:", error);
+      setReceivedItems([]); // Fallback to empty array
     }
   };
 
@@ -177,8 +188,11 @@ const Home = () => {
       const response = await fetch(getApiUrl("/transfer"));
       const data = await response.json();
       
+      // Ensure data is an array
+      const transferArray = Array.isArray(data) ? data : (data?.transfers || data?.data || []);
+      
       // Filtruj tylko te transfery które mają zaliczki i są od obecnego użytkownika
-      const advancesFiltered = data.filter((item) => 
+      const advancesFiltered = transferArray.filter((item) => 
         item.transfer_from === user.symbol && 
         item.advancePayment && 
         item.advancePayment > 0
@@ -187,6 +201,7 @@ const Home = () => {
       setAdvancesData(advancesFiltered);
     } catch (error) {
       console.error("Error fetching advances:", error);
+      setAdvancesData([]); // Fallback to empty array
     }
   };
 
@@ -195,8 +210,11 @@ const Home = () => {
       const response = await fetch(getApiUrl("/deductions"));
       const data = await response.json();
       
+      // Ensure data is an array
+      const deductionsArray = Array.isArray(data) ? data : (data?.deductions || data?.data || []);
+      
       // Filtruj odpisane kwoty dla obecnego użytkownika
-      const deductionsFiltered = data.filter((item) => 
+      const deductionsFiltered = deductionsArray.filter((item) => 
         item.userSymbol === user.symbol
       );
       

@@ -1,8 +1,12 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl } from "../../config/api";
 import { GlobalStateContext } from "../../context/GlobalState";
+import tokenService from "../../services/tokenService";
+import { debugTokens } from "../../debug_tokens";
+import AuthFix from "../../components/AuthFix";
 
 const WriteOff = () => {
     const { 
@@ -105,6 +109,9 @@ const WriteOff = () => {
     }, [globalUsers]);
 
     const fetchAllRequiredData = async (isRefreshAction = false) => {
+        // Debug tokens
+        await debugTokens();
+        
         // Ustawienie odpowiedniego stanu ładowania
         if (isRefreshAction) {
             setIsRefreshing(true);
@@ -169,10 +176,13 @@ const WriteOff = () => {
     );
 
 const fetchTransfers = async () => {
-    if (!user?.symbol) return;
+    if (!user?.symbol) {
+        return;
+    }
     
     try {
-        const response = await fetch(getApiUrl('/transfer'));
+        const response = await tokenService.authenticatedFetch(getApiUrl('/transfer'));
+        
         if (!response.ok) {
             throw new Error(`Failed to fetch transfers: ${response.status}`);
         }
@@ -232,7 +242,8 @@ const fetchTransfers = async () => {
 
 const fetchSales = async () => {
     try {
-        const response = await fetch(getApiUrl('/sales/get-all-sales'));
+        const response = await tokenService.authenticatedFetch(getApiUrl('/sales/get-all-sales'));
+        
         if (!response.ok) {
             throw new Error(`Failed to fetch sales: ${response.status}`);
         }
@@ -336,13 +347,11 @@ const fetchSales = async () => {
                     return;
                 } else {
                     // Transfer jest ze starszej daty - powinniśmy pozwolić na nowy transfer
-                    console.log(`INFO: hasActiveTransfer zwróciło true, ale transfer jest z ${transferDate}, dzisiaj jest ${today}. Pozwalamy na nowy transfer.`);
                     // Nie return - kontynuuj z tworzeniem nowego transferu
                 }
             } else {
                 // hasActiveTransfer zwróciło true, ale nie ma transferu w allTransfers
                 // To może być spowodowane sprzedażą - sprawdźmy
-                console.log(`INFO: hasActiveTransfer zwróciło true, ale nie znaleziono transferu w allTransfers. Może to być sprzedaż.`);
                 // Nie return - kontynuuj z tworzeniem nowego transferu (jeśli to sprzedaż, to może być z wczoraj)
             }
         } else {
@@ -351,7 +360,7 @@ const fetchSales = async () => {
 
         // SPRAWDZENIE WSZYSTKICH TRANSFERÓW W BAZIE - informacyjne
         try {
-            const response = await fetch(getApiUrl('/transfer'));
+            const response = await tokenService.authenticatedFetch(getApiUrl('/transfer'));
             const allTransfersFromDB = await response.json();
             
             const anyExistingTransfer = Array.isArray(allTransfersFromDB) ? 
@@ -362,11 +371,11 @@ const fetchSales = async () => {
                 const isFromToday = transferDate === today;
                 
                 if (!isFromToday) {
-                    console.log(`INFO: Kurtka ${selectedItem.fullName} ma starszy transfer z ${transferDate}, ale pozwalamy na nowy transfer z ${today}`);
+                    // INFO: Old transfer found, allowing new transfer
                 }
             }
         } catch (error) {
-            console.log("Błąd sprawdzania transferów:", error);
+            // Error checking transfers
         }
 
         // Sprawdź czy transfer jest do "Dom" i czy nie ma powodu
@@ -408,7 +417,7 @@ const fetchSales = async () => {
         }
 
         try {
-            const response = await fetch(getApiUrl('/transfer'), {
+            const response = await tokenService.authenticatedFetch(getApiUrl('/transfer'), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(transferModel),
@@ -525,7 +534,7 @@ const fetchSales = async () => {
                 return;
             }
 
-            const response = await fetch(getApiUrl(`/transfer/${transfer.productId}`), {
+            const response = await tokenService.authenticatedFetch(getApiUrl(`/transfer/${transfer.productId}`), {
                 method: "DELETE",
             });
 
@@ -664,6 +673,11 @@ const fetchSales = async () => {
         
         return false;
     };
+
+    // Show AuthFix for debugging
+    if (false) { // Set to false to hide
+        return <AuthFix />;
+    }
 
     return (
         <>
