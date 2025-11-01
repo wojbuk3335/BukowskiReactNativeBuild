@@ -3,6 +3,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { getApiUrl } from "../config/api";
+import tokenService from "../services/tokenService"; // Import tokenService
 
 const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
@@ -265,9 +266,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       // Fetch product name from remaining products API using productCode
       try {
         const fullUrl = getApiUrl("/excel/remaining-products/get-all-remaining-products");
-        const response = await axios.get(fullUrl);
+        const response = await tokenService.authenticatedFetch(fullUrl);
+        const responseData = await response.json();
         
-        const remainingProducts = response.data.remainingProducts; // Access the remainingProducts array
+        const remainingProducts = responseData.remainingProducts; // Access the remainingProducts array
         
         // Find product by Poz_Nr matching the productCode (positions 8-9)
         // Convert productCode to number for comparison
@@ -624,7 +626,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
 
     try {
-      const response = await axios.post(getApiUrl("/sales/save-sales"), payload);
+      const response = await tokenService.authenticatedFetch(getApiUrl("/sales/save-sales"), {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+      
       Alert.alert("Success", "Dane zostały zapisane pomyślnie!");
 
       // Reset modal state
@@ -635,7 +646,15 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       setModalMessage("");
     } catch (error) {
       console.error("Error saving data:", error);
-      Alert.alert("Error", "Failed to save data.");
+      
+      let errorMessage = "Failed to save data.";
+      if (error.message.includes('401')) {
+        errorMessage = "Nie jesteś zalogowany. Zaloguj się ponownie.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert("Błąd", errorMessage);
     }
 
     setModalVisible(false);

@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native'; // Import useFocusEffect
 import React, { useContext, useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
@@ -185,7 +185,7 @@ const Home = () => {
 
   const fetchAdvances = async () => {
     try {
-      const response = await fetch(getApiUrl("/transfer"));
+      const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
       const data = await response.json();
       
       // Ensure data is an array
@@ -207,7 +207,7 @@ const Home = () => {
 
   const fetchDeductions = async () => {
     try {
-      const response = await fetch(getApiUrl("/deductions"));
+      const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
       const data = await response.json();
       
       // Ensure data is an array
@@ -311,9 +311,8 @@ const Home = () => {
         date: new Date().toISOString(),
       };
       
-      const response = await fetch(getApiUrl("/deductions"), {
+      const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(deductionData),
       });
       
@@ -342,9 +341,8 @@ const Home = () => {
     }
     
     try {
-      const response = await fetch(getApiUrl(`/deductions/${selectedDeductionItem._id}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+      const response = await tokenService.authenticatedFetch(getApiUrl(`/deductions/${selectedDeductionItem._id}`), {
+        method: "DELETE"
       });
       
       if (!response.ok) {
@@ -396,13 +394,10 @@ const Home = () => {
     try {
       if (selectedItem?._id) {
         const updatedItem = { ...selectedItem, from: newFromValue }; // Update the 'from' field
-        const response = await fetch(
+        const response = await tokenService.authenticatedFetch(
           getApiUrl(`/sales/update-sales/${selectedItem._id}`),
           {
             method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
             body: JSON.stringify(updatedItem),
           }
         );
@@ -903,78 +898,109 @@ const Home = () => {
           }}
           contentContainerStyle={{ paddingBottom: 20 }}
         />
-        {/* Edit Modal */}
+        {/* Edit Modal - Identyczny z QRScanner */}
         <Modal
-          transparent={true}
+          transparent={false}
           visible={editModalVisible}
-          animationType="fade"
+          animationType="slide"
           onRequestClose={() => setEditModalVisible(false)}
         >
-          <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-            <View
-              className="w-3/4 rounded-lg shadow-lg"
-              style={{
-                backgroundColor: "black",
-                borderWidth: 1,
-                borderColor: "white",
-              }}
-            >
-              <View
-                className="p-4 rounded-t-lg"
-                style={{
-                  backgroundColor: "black",
-                }}
-              >
-                <Text className="text-lg font-bold text-white text-center">Edytuj Produkt</Text>
-              </View>
-              <ScrollView className="p-6">
-                {/* Existing Modal Content */}
-                <TextInput
-                  style={{
-                    backgroundColor: "grey",
-                    color: "black",
-                    padding: 10,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                  value={editData?.fullName || ""}
-                  editable={false}
-                  placeholder="Nazwa produktu"
-                />
-                <TextInput
-                  style={{
-                    backgroundColor: "grey",
-                    color: "black",
-                    padding: 10,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                  value={editData?.size || ""}
-                  editable={false}
-                  placeholder="Rozmiar"
-                />
-                <TouchableOpacity
-                  onPress={() => {
-                    const matchingSymbols = stateData
-                      ?.filter((item) => item.barcode === editData?.barcode)
-                      ?.map((item) => item.symbol) || [];
-                    if (matchingSymbols.length > 0) {
-                      setSymbolSelectionVisible(true);
-                    } else {
-                      Alert.alert("Brak symboli", "Nie znaleziono symboli dla tego produktu.");
-                    }
-                  }}
-                  style={{
-                    backgroundColor: "black",
-                    borderColor: "white",
-                    borderWidth: 1,
-                    padding: 10,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: "white" }}>{editData?.from || "Wybierz symbol"}</Text>
-                </TouchableOpacity>
+          <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20 }}>
+                <View style={[{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
+                  <Pressable
+                    style={{
+                      position: "absolute",
+                      top: 40,
+                      right: 20,
+                      width: 40,
+                      height: 40,
+                      backgroundColor: "red",
+                      borderRadius: 20,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      zIndex: 10
+                    }}
+                    onPress={() => setEditModalVisible(false)}
+                  >
+                    <Text style={{ color: "white", fontSize: 18, fontWeight: "bold" }}>X</Text>
+                  </Pressable>
+                  
+                  <Text style={{ fontSize: 16, color: "white", marginBottom: 8, marginTop: 80 }}>Edytuj Produkt:</Text>
+                  <TextInput
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "white",
+                      borderRadius: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      color: "white",
+                      backgroundColor: "black",
+                      marginBottom: 20,
+                      width: "100%"
+                    }}
+                    value={editData?.fullName || ""}
+                    editable={false}
+                    placeholder="Nazwa produktu"
+                    placeholderTextColor="gray"
+                  />
+                  
+                  <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Rozmiar</Text>
+                  <TextInput
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "white",
+                      borderRadius: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      color: "white",
+                      backgroundColor: "black",
+                      marginBottom: 20,
+                      width: "100%"
+                    }}
+                    value={editData?.size || ""}
+                    editable={false}
+                    placeholder="Rozmiar"
+                    placeholderTextColor="gray"
+                  />
+                  
+                  <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano od:</Text>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "white",
+                      borderRadius: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      marginBottom: 20,
+                      width: "100%",
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={{
+                        height: 40,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor: "black",
+                        borderRadius: 5,
+                      }}
+                      onPress={() => {
+                        const matchingSymbols = stateData
+                          ?.filter((item) => item.barcode === editData?.barcode)
+                          ?.map((item) => item.symbol) || [];
+                        if (matchingSymbols.length > 0) {
+                          setSymbolSelectionVisible(true);
+                        } else {
+                          Alert.alert("Brak symboli", "Nie znaleziono symboli dla tego produktu.");
+                        }
+                      }}
+                    >
+                      <Text style={{ color: "white" }}>
+                        {editData?.from || "Wybierz punkt sprzedaży"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
                 {/* Cash Payment Section */}
                 <Text style={{ fontSize: 16, marginBottom: 10, textAlign: "center", color: "white" }}>Płatność gotówką</Text>
@@ -1102,31 +1128,43 @@ const Home = () => {
                   </Pressable>
                 </View>
 
-                <Pressable
-                  onPress={updateItem}
-                  style={{
-                    backgroundColor: "#0d6efd",
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Zapisz</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setEditModalVisible(false)}
-                  style={{
-                    backgroundColor: "#6c757d",
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Anuluj</Text>
-                </Pressable>
+                {/* Przyciski identyczne z QRScanner */}
+                <View style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 20,
+                  width: "100%",
+                }}>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      marginHorizontal: 10,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: "gray",
+                    }}
+                    onPress={() => setEditModalVisible(false)}
+                  >
+                    <Text style={{ color: "white", fontSize: 16 }}>Anuluj</Text>
+                  </Pressable>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      marginHorizontal: 10,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: "green",
+                    }}
+                    onPress={updateItem}
+                  >
+                    <Text style={{ color: "white", fontSize: 16 }}>Zapisz</Text>
+                  </Pressable>
+                </View>
+                </View>
               </ScrollView>
-            </View>
+            </TouchableWithoutFeedback>
           </View>
         </Modal>
         {/* Edit From Modal */}
@@ -1290,7 +1328,7 @@ const Home = () => {
                           style: "destructive",
                           onPress: async () => {
                             try {
-                              const response = await fetch(
+                              const response = await tokenService.authenticatedFetch(
                                 getApiUrl(`/sales/delete-sale/${selectedItem._id}`),
                                 { method: "DELETE" }
                               );
