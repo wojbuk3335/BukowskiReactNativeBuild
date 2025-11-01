@@ -21,6 +21,7 @@ const WriteOff = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [transferModalVisible, setTransferModalVisible] = useState(false);
     const [domReasonModalVisible, setDomReasonModalVisible] = useState(false);
+    const [magazynReasonModalVisible, setMagazynReasonModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [users, setUsers] = useState([]); // List of users for transfer
     const [transfers, setTransfers] = useState([]); // List of current transfers
@@ -449,6 +450,7 @@ const fetchSales = async () => {
             fetchAllRequiredData(false);
             setTransferModalVisible(false);
             setDomReasonModalVisible(false);
+            setMagazynReasonModalVisible(false);
             setCustomReason("");
             setSelectedReason("");
             setAdvanceAmount("");
@@ -508,6 +510,25 @@ const fetchSales = async () => {
         } else {
             Alert.alert("Error", "Nie znaleziono użytkownika Dom.");
         }
+    };
+
+    const handleMagazynFinalSubmit = () => {
+        if (!selectedReason) {
+            Alert.alert("Error", "Proszę wybrać powód.");
+            return;
+        }
+
+        // Sprawdź czy to custom reason i czy tekst został podany
+        if (selectedReason === 'custom' && !customReason.trim()) {
+            Alert.alert("Error", "Proszę podać powód.");
+            return;
+        }
+
+        // Użyj odpowiedniego powodu
+        const finalReason = selectedReason === 'custom' ? customReason.trim() : selectedReason;
+
+        // Przepisz do MAGAZYN
+        initiateTransfer('MAGAZYN', finalReason, null);
     };
 
     const cancelTransfer = async () => {
@@ -873,6 +894,16 @@ const fetchSales = async () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Wybierz użytkownika</Text>
+                        {/* MAGAZYN option at the top */}
+                        <TouchableOpacity
+                            style={[styles.optionButton, styles.magazynButton]}
+                            onPress={() => {
+                                setTransferModalVisible(false);
+                                setMagazynReasonModalVisible(true);
+                            }}
+                        >
+                            <Text style={styles.optionText}>MAGAZYN</Text>
+                        </TouchableOpacity>
                         {users.map((item) => (
                             <TouchableOpacity
                                 key={item._id}
@@ -1063,6 +1094,106 @@ const fetchSales = async () => {
                 </View>
             </Modal>
 
+            {/* Modal powodów przepisania do MAGAZYN */}
+            <Modal
+                visible={magazynReasonModalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => {
+                    setMagazynReasonModalVisible(false);
+                    setCustomReason("");
+                    setSelectedReason("");
+                }}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { width: '85%' }]}>
+                        <Text style={styles.modalTitle}>Czy na pewno chcesz przepisać kurtkę do MAGAZYNy?</Text>
+                        
+                        {/* Radio buttons dla powodów */}
+                        <View style={styles.radioContainer}>
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => setSelectedReason('przeróbka')}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'przeróbka' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Przeróbka</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => setSelectedReason('wysyłka')}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'wysyłka' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Wysyłka</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.radioOption}
+                                onPress={() => {
+                                    setSelectedReason('custom');
+                                    setCustomReason(''); // Wyczyść poprzedni tekst
+                                }}
+                            >
+                                <View style={styles.radioButton}>
+                                    {selectedReason === 'custom' && <View style={styles.radioButtonSelected} />}
+                                </View>
+                                <Text style={styles.radioText}>Inny powód</Text>
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {/* Pole tekstowe dla niestandardowego powodu */}
+                        {selectedReason === 'custom' && (
+                            <View style={styles.customReasonContainer}>
+                                <TextInput
+                                    style={styles.customReasonInput}
+                                    placeholder="Wpisz powód (max 12 znaków)..."
+                                    placeholderTextColor="#999"
+                                    value={customReason}
+                                    onChangeText={(text) => {
+                                        // Ograniczenie do 12 znaków
+                                        if (text.length <= 12) {
+                                            setCustomReason(text);
+                                        }
+                                    }}
+                                    maxLength={12}
+                                    multiline={false}
+                                    numberOfLines={1}
+                                />
+                                <Text style={styles.characterCount}>
+                                    {customReason.length}/12
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {/* Przyciski akcji */}
+                        <View style={styles.actionButtons}>
+                            <TouchableOpacity
+                                style={[styles.optionButton, styles.submitButton, !selectedReason && styles.disabledButton]}
+                                onPress={handleMagazynFinalSubmit}
+                                disabled={!selectedReason}
+                            >
+                                <Text style={styles.optionText}>Zatwierdź</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={[styles.optionButton, styles.closeButton]}
+                                onPress={() => {
+                                    setMagazynReasonModalVisible(false);
+                                    setCustomReason("");
+                                    setSelectedReason("");
+                                }}
+                            >
+                                <Text style={styles.closeText}>Anuluj</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
             {/* Modal wyboru waluty */}
             <Modal
                 visible={showCurrencyModal}
@@ -1188,6 +1319,11 @@ const styles = StyleSheet.create({
     },
     deleteButton: {
         backgroundColor: '#dc3545',
+    },
+    magazynButton: {
+        backgroundColor: '#ffc107', // Yellow background for MAGAZYN
+        borderWidth: 2,
+        borderColor: '#fff',
     },
     closeButton: {
         backgroundColor: 'red',
