@@ -37,6 +37,12 @@ const Home = () => {
   const [deductionReason, setDeductionReason] = useState(""); // State for deduction reason
   const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
+  
+  // States for "Dopisz kwotę" (Add Amount) - identical functionality
+  const [addAmountModalVisible, setAddAmountModalVisible] = useState(false); // State for add amount modal
+  const [addAmountAmount, setAddAmountAmount] = useState(""); // State for add amount amount
+  const [addAmountCurrency, setAddAmountCurrency] = useState("PLN"); // State for add amount currency
+  const [addAmountReason, setAddAmountReason] = useState(""); // State for add amount reason
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
   // Funkcja identyczna z QRScanner - filtruje użytkowników z tej samej lokalizacji
@@ -226,23 +232,35 @@ const Home = () => {
     }
   };
 
-  const fetchDeductions = async () => {
+  const fetchFinancialOperations = async () => {
     try {
-      const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
+      const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"));
       const data = await response.json();
       
       // Ensure data is an array
-      const deductionsArray = Array.isArray(data) ? data : (data?.deductions || data?.data || []);
+      const operationsArray = Array.isArray(data) ? data : (data?.operations || data?.data || []);
       
-      // Filtruj odpisane kwoty dla obecnego użytkownika
-      const deductionsFiltered = deductionsArray.filter((item) => 
+      // Filtruj operacje finansowe dla obecnego użytkownika
+      const operationsFiltered = operationsArray.filter((item) => 
         item.userSymbol === user.symbol
       );
       
-      setDeductionsData(deductionsFiltered);
+      setDeductionsData(operationsFiltered); // Keep same state variable for now to avoid breaking changes
     } catch (error) {
-      console.error("Error fetching deductions:", error);
-      setDeductionsData([]); // Fallback to empty array if API doesn't exist yet
+      console.error("Error fetching financial operations:", error);
+      // Fallback to old deductions endpoint if new one doesn't exist yet
+      try {
+        const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
+        const data = await response.json();
+        const deductionsArray = Array.isArray(data) ? data : (data?.deductions || data?.data || []);
+        const deductionsFiltered = deductionsArray.filter((item) => 
+          item.userSymbol === user.symbol
+        );
+        setDeductionsData(deductionsFiltered);
+      } catch (fallbackError) {
+        console.error("Error fetching deductions fallback:", fallbackError);
+        setDeductionsData([]);
+      }
     }
   };
 
@@ -271,28 +289,29 @@ const Home = () => {
         advancesTotals[currency] = (advancesTotals[currency] || 0) + item.advancePayment;
       });
     
-    // Calculate total deductions by currency
-    const deductionsTotals = {};
+    // Calculate total financial operations by currency (positive amounts add, negative amounts subtract)
+    const operationsTotals = {};
     deductionsData
       .filter(item => item.date && item.date.startsWith(today))
       .forEach(item => {
         const currency = item.currency;
-        deductionsTotals[currency] = (deductionsTotals[currency] || 0) + item.amount;
+        // Use actual amount (positive or negative) directly
+        operationsTotals[currency] = (operationsTotals[currency] || 0) + item.amount;
       });
     
     // Calculate available funds by currency
     const allCurrencies = new Set([
       ...Object.keys(salesTotals),
       ...Object.keys(advancesTotals),
-      ...Object.keys(deductionsTotals)
+      ...Object.keys(operationsTotals)
     ]);
     
     const availableFunds = {};
     allCurrencies.forEach(currency => {
       const sales = salesTotals[currency] || 0;
       const advances = advancesTotals[currency] || 0;
-      const deductions = deductionsTotals[currency] || 0;
-      availableFunds[currency] = sales + advances - deductions;
+      const operations = operationsTotals[currency] || 0;
+      availableFunds[currency] = sales + advances + operations; // Add operations (can be positive or negative)
     });
     
     return availableFunds;
@@ -324,17 +343,18 @@ const Home = () => {
     }
     
     try {
-      const deductionData = {
+      const operationData = {
         userSymbol: user.symbol,
-        amount: parseFloat(deductionAmount),
+        amount: -parseFloat(deductionAmount), // Negative for deduction
         currency: deductionCurrency,
+        type: "deduction",
         reason: deductionReason.trim(),
         date: new Date().toISOString(),
       };
       
-      const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"), {
+      const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"), {
         method: "POST",
-        body: JSON.stringify(deductionData),
+        body: JSON.stringify(operationData),
       });
       
       if (!response.ok) {
@@ -346,12 +366,56 @@ const Home = () => {
       setDeductionCurrency("PLN");
       setDeductionReason("");
       setDeductionModalVisible(false);
-      await fetchDeductions();
+      await fetchFinancialOperations();
       
       Alert.alert("Sukces", "Kwota została odpisana.");
     } catch (error) {
       console.error("Error submitting deduction:", error);
       Alert.alert("Błąd", "Nie udało się odpisać kwoty. Spróbuj ponownie.");
+    }
+  };
+
+  const submitAddAmount = async () => {
+    if (!addAmountAmount || parseFloat(addAmountAmount) <= 0) {
+      Alert.alert("Błąd", "Proszę wprowadzić prawidłową kwotę.");
+      return;
+    }
+    
+    if (!addAmountReason.trim()) {
+      Alert.alert("Błąd", "Proszę wprowadzić powód dopisania.");
+      return;
+    }
+    
+    try {
+      const operationData = {
+        userSymbol: user.symbol,
+        amount: parseFloat(addAmountAmount), // Positive amount for addition
+        currency: addAmountCurrency,
+        type: "addition",
+        reason: addAmountReason.trim(),
+        date: new Date().toISOString(),
+      };
+      
+      const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"), {
+        method: "POST",
+        body: JSON.stringify(operationData),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to submit addition");
+      }
+      
+      // Reset form and refresh data
+      setAddAmountAmount("");
+      setAddAmountCurrency("PLN");
+      setAddAmountReason("");
+      setAddAmountModalVisible(false);
+      await fetchFinancialOperations();
+      
+      Alert.alert("Sukces", "Kwota została dopisana.");
+    } catch (error) {
+      console.error("Error submitting addition:", error);
+      Alert.alert("Błąd", "Nie udało się dopisać kwoty. Spróbuj ponownie.");
     }
   };
 
@@ -362,7 +426,7 @@ const Home = () => {
     }
     
     try {
-      const response = await tokenService.authenticatedFetch(getApiUrl(`/deductions/${selectedDeductionItem._id}`), {
+      const response = await tokenService.authenticatedFetch(getApiUrl(`/financial-operations/${selectedDeductionItem._id}`), {
         method: "DELETE"
       });
       
@@ -373,9 +437,9 @@ const Home = () => {
       // Close modal and refresh data
       setCancelDeductionModalVisible(false);
       setSelectedDeductionItem(null);
-      await fetchDeductions();
+      await fetchFinancialOperations();
       
-      Alert.alert("Sukces", "Odpisana kwota została anulowana.");
+      Alert.alert("Sukces", "Operacja została anulowana.");
     } catch (error) {
       console.error("Error canceling deduction:", error);
       Alert.alert("Błąd", "Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
@@ -395,7 +459,7 @@ const Home = () => {
         fetchTransferredItems(); // Fetch transferred items when the tab is focused
         fetchReceivedItems(); // Fetch received items when the tab is focused
         fetchAdvances(); // Fetch advances when the tab is focused
-        fetchDeductions(); // Fetch deductions when the tab is focused
+        fetchFinancialOperations(); // Fetch financial operations when the tab is focused
       }
     }, [user?.symbol]) // Refetch when the user's symbol changes
   );
@@ -408,7 +472,7 @@ const Home = () => {
       await fetchTransferredItems();
       await fetchReceivedItems();
       await fetchAdvances();
-      await fetchDeductions();
+      await fetchFinancialOperations();
     }
     setRefreshing(false);
   };
@@ -545,13 +609,20 @@ const Home = () => {
                       })}
                     </Text>
                   </View>
-                  
-                  {/* Button to add deduction - moved to top right */}
+                </View>
+                
+                {/* Buttons for deductions - above Sprzedaż section */}
+                <View style={{ 
+                  flexDirection: "row", 
+                  justifyContent: "center", 
+                  marginBottom: 10,
+                  gap: 10
+                }}>
                   <TouchableOpacity
                     style={{
                       backgroundColor: '#dc3545',
-                      paddingVertical: 6,
-                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
                       borderRadius: 6,
                       borderWidth: 1,
                       borderColor: 'white',
@@ -562,7 +633,24 @@ const Home = () => {
                       Odpisz kwotę
                     </Text>
                   </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#28a745',
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                    }}
+                    onPress={() => setAddAmountModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                      Dopisz kwotę
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+                
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ color: "#d1d5db", fontSize: 14, fontWeight: "bold", marginRight: 8 }}>Sprzedaż:</Text>
                 </View>
@@ -719,17 +807,25 @@ const Home = () => {
                   
                   return deductionsToday.length > 0 && (
                     <View style={{ marginTop: 24 }}>
-                      <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Odpisane kwoty dzisiaj:</Text>
+                      <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Operacje dzisiaj:</Text>
                       {deductionsToday.map((item, index) => (
                         <View
                           key={item._id || index}
-                          style={styles.deductionItem}
+                          style={[
+                            styles.deductionItem,
+                            (item.type === 'addition' || item.amount > 0) 
+                              ? { backgroundColor: '#059669' } // Green background for additions
+                              : { backgroundColor: '#dc2626' } // Red background for deductions
+                          ]}
                         >
                           <Text style={styles.deductionItemTextLeft}>
                             {index + 1}. {item.reason}
                           </Text>
                           <Text style={styles.deductionItemTextRight}>
-                            -{item.amount} {item.currency}
+                            {(item.type === 'addition' || item.amount > 0)
+                              ? `+${Math.abs(item.amount)} ${item.currency}`
+                              : `-${Math.abs(item.amount)} ${item.currency}`
+                            }
                           </Text>
                           <TouchableOpacity
                             onPress={() => openCancelDeductionModal(item)}
@@ -745,19 +841,29 @@ const Home = () => {
                       ))}
                       {/* Suma odpisanych kwot pogrupowana według walut */}
                       <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#374151" }}>
-                        <Text style={{ fontSize: 12, color: "#9ca3af", fontWeight: "bold", textAlign: "right" }}>
-                          Suma odpisanych kwot: {' '}
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 12, color: "#9ca3af", fontWeight: "bold" }}>
+                            Bilans operacji: {' '}
+                          </Text>
                           {(() => {
-                            const deductionTotals = {};
+                            const operationTotals = {};
                             deductionsToday.forEach(item => {
                               const currency = item.currency;
-                              deductionTotals[currency] = (deductionTotals[currency] || 0) + item.amount;
+                              // Use the amount directly (positive for additions, negative for deductions)
+                              operationTotals[currency] = (operationTotals[currency] || 0) + item.amount;
                             });
-                            return Object.entries(deductionTotals)
-                              .map(([currency, total]) => `-${total} ${currency}`)
-                              .join(', ');
+                            return Object.entries(operationTotals)
+                              .map(([currency, total], index) => {
+                                const sign = total >= 0 ? '+' : '-';
+                                const color = total >= 0 ? '#10b981' : '#ef4444'; // Green for positive, red for negative
+                                return (
+                                  <Text key={currency} style={{ fontSize: 12, color, fontWeight: "bold", marginLeft: index > 0 ? 8 : 0 }}>
+                                    {sign}{Math.abs(total)} {currency}
+                                  </Text>
+                                );
+                              });
                           })()}
-                        </Text>
+                        </View>
                       </View>
                     </View>
                   );
@@ -788,28 +894,28 @@ const Home = () => {
                       advancesTotals[currency] = (advancesTotals[currency] || 0) + item.advancePayment;
                     });
                   
-                  // Calculate total deductions by currency
-                  const deductionsTotals = {};
+                  // Calculate total financial operations by currency
+                  const operationsTotals = {};
                   deductionsData
                     .filter(item => item.date && item.date.startsWith(today))
                     .forEach(item => {
                       const currency = item.currency;
-                      deductionsTotals[currency] = (deductionsTotals[currency] || 0) + item.amount;
+                      operationsTotals[currency] = (operationsTotals[currency] || 0) + item.amount;
                     });
                   
                   // Calculate final totals by currency
                   const allCurrencies = new Set([
                     ...Object.keys(salesTotals),
                     ...Object.keys(advancesTotals),
-                    ...Object.keys(deductionsTotals)
+                    ...Object.keys(operationsTotals)
                   ]);
                   
                   const finalTotals = {};
                   allCurrencies.forEach(currency => {
                     const sales = salesTotals[currency] || 0;
                     const advances = advancesTotals[currency] || 0;
-                    const deductions = deductionsTotals[currency] || 0;
-                    finalTotals[currency] = sales + advances - deductions;
+                    const operations = operationsTotals[currency] || 0;
+                    finalTotals[currency] = sales + advances + operations;
                   });
                   
                   return allCurrencies.size > 0 && (
@@ -859,15 +965,19 @@ const Home = () => {
                         </View>
                       )}
                       
-                      {/* Deductions */}
-                      {Object.keys(deductionsTotals).length > 0 && (
+                      {/* Financial Operations */}
+                      {Object.keys(operationsTotals).length > 0 && (
                         <View style={{ marginBottom: 12 }}>
-                          <Text style={{ fontSize: 14, color: "#ef4444", fontWeight: "bold", marginBottom: 4 }}>
-                            📉 ODPISANE KWOTY:
+                          <Text style={{ fontSize: 14, color: "#fbbf24", fontWeight: "bold", marginBottom: 4 }}>
+                            � OPERACJE FINANSOWE:
                           </Text>
-                          {Object.entries(deductionsTotals).map(([currency, total]) => (
-                            <Text key={`deductions-${currency}`} style={{ fontSize: 13, color: "#fecaca", marginLeft: 16 }}>
-                              -{total.toFixed(2)} {currency}
+                          {Object.entries(operationsTotals).map(([currency, total]) => (
+                            <Text key={`operations-${currency}`} style={{ 
+                              fontSize: 13, 
+                              color: total >= 0 ? "#10b981" : "#fecaca", 
+                              marginLeft: 16 
+                            }}>
+                              {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
                             </Text>
                           ))}
                         </View>
@@ -1561,8 +1671,17 @@ const Home = () => {
                     <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: 'bold', textAlign: 'center' }}>
                       {selectedDeductionItem.reason}
                     </Text>
-                    <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginTop: 4 }}>
-                      -{selectedDeductionItem.amount} {selectedDeductionItem.currency}
+                    <Text style={{ 
+                      color: (selectedDeductionItem.type === 'addition' || selectedDeductionItem.amount > 0) ? '#10b981' : '#ef4444', 
+                      fontSize: 18, 
+                      fontWeight: 'bold', 
+                      textAlign: 'center', 
+                      marginTop: 4 
+                    }}>
+                      {(selectedDeductionItem.type === 'addition' || selectedDeductionItem.amount > 0)
+                        ? `+${Math.abs(selectedDeductionItem.amount)} ${selectedDeductionItem.currency}`
+                        : `-${Math.abs(selectedDeductionItem.amount)} ${selectedDeductionItem.currency}`
+                      }
                     </Text>
                   </View>
                 </View>
@@ -1583,6 +1702,107 @@ const Home = () => {
                 }}
               >
                 <Text style={styles.closeText}>Nie, zostaw</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Add Amount Modal */}
+        <Modal
+          transparent={true}
+          visible={addAmountModalVisible}
+          animationType="fade"
+          onRequestClose={() => setAddAmountModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '85%' }]}>
+              <Text style={styles.modalTitle}>Dopisz kwotę</Text>
+              
+              {/* Amount input */}
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Kwota:</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: 'black',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 16,
+                    color: 'white',
+                    borderWidth: 1,
+                    borderColor: '#10b981', // Green border for addition
+                    textAlign: 'center',
+                  }}
+                  placeholder="0.00"
+                  placeholderTextColor="#ccc"
+                  value={addAmountAmount}
+                  onChangeText={setAddAmountAmount}
+                  keyboardType="numeric"
+                />
+              </View>
+              
+              {/* Currency selection */}
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta:</Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#10b981', // Green for addition
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={() => {/* Currency selection logic can be added here */}}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
+                    {addAmountCurrency}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Reason input */}
+              <View style={{ width: '100%', marginBottom: 20 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Powód dopisania:</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: 'black',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 14,
+                    color: 'white',
+                    borderWidth: 1,
+                    borderColor: '#10b981', // Green border for addition
+                    minHeight: 80,
+                    textAlignVertical: 'top',
+                  }}
+                  placeholder="Wpisz powód dopisania kwoty..."
+                  placeholderTextColor="#ccc"
+                  value={addAmountReason}
+                  onChangeText={setAddAmountReason}
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+              
+              {/* Action buttons */}
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#10b981', marginBottom: 10 }]} // Green button
+                onPress={submitAddAmount}
+              >
+                <Text style={styles.optionText}>Dopisz kwotę</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.optionButton, styles.closeButton]}
+                onPress={() => {
+                  setAddAmountModalVisible(false);
+                  setAddAmountAmount("");
+                  setAddAmountCurrency("PLN");
+                  setAddAmountReason("");
+                }}
+              >
+                <Text style={styles.closeText}>Anuluj</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1760,7 +1980,7 @@ const styles = StyleSheet.create({
   deductionItem: {
     marginBottom: 12,
     padding: 12,
-    backgroundColor: "#dc3545", // Red background for deductions
+    backgroundColor: "#374151", // Neutral gray background (will be overridden by inline styles)
     borderRadius: 8,
     flexDirection: "row",
     justifyContent: "space-between",
