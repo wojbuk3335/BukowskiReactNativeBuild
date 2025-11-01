@@ -8,7 +8,7 @@ import tokenService from '../../services/tokenService';
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
-  const { stateData } = useContext(GlobalStateContext); // Access state data from global context
+  const { stateData, users, fetchUsers } = useContext(GlobalStateContext); // Access state data, users and fetchUsers from global context
   const [salesData, setSalesData] = useState([]); // State to store API data
   const [filteredData, setFilteredData] = useState([]); // State to store filtered data
   const [totals, setTotals] = useState({ cash: {}, card: {} }); // State to store aggregated totals
@@ -38,6 +38,27 @@ const Home = () => {
   const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
+
+  // Funkcja identyczna z QRScanner - filtruje użytkowników z tej samej lokalizacji
+  const getMatchingSymbols = () => {
+    if (!users || !user) {
+      return [];
+    }
+
+    // Filtruj użytkowników z tej samej lokalizacji co zalogowany użytkownik
+    // Pokaż WSZYSTKICH użytkowników z tej samej lokalizacji (niezależnie od stanu magazynowego)
+    const sameLocationUsers = users.filter(u => 
+      u.location && user.location && 
+      u.location.trim() === user.location.trim() && // Porównanie lokalizacji z trim()
+      u.role !== 'admin' && 
+      u.role !== 'magazyn' &&
+      u.sellingPoint && 
+      u.sellingPoint.trim() !== ''
+    );
+    
+    // Zwróć wszystkich użytkowników z tej samej lokalizacji
+    return sameLocationUsers;
+  };
 
   const fetchSalesData = async () => {
     try {
@@ -369,6 +390,7 @@ const Home = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchSalesData(); // Fetch sales data when the tab is focused
+      fetchUsers(); // Fetch users data for symbol selection
       if (user?.symbol) { // Ensure user exists before fetching items
         fetchTransferredItems(); // Fetch transferred items when the tab is focused
         fetchReceivedItems(); // Fetch received items when the tab is focused
@@ -381,6 +403,7 @@ const Home = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchSalesData(); // Fetch data on pull-to-refresh
+    await fetchUsers(); // Fetch users data for symbol selection
     if (user?.symbol) {
       await fetchTransferredItems();
       await fetchReceivedItems();
@@ -986,13 +1009,12 @@ const Home = () => {
                         borderRadius: 5,
                       }}
                       onPress={() => {
-                        const matchingSymbols = stateData
-                          ?.filter((item) => item.barcode === editData?.barcode)
-                          ?.map((item) => item.symbol) || [];
+                        const matchingSymbols = getMatchingSymbols();
+                        
                         if (matchingSymbols.length > 0) {
                           setSymbolSelectionVisible(true);
                         } else {
-                          Alert.alert("Brak symboli", "Nie znaleziono symboli dla tego produktu.");
+                          Alert.alert("Brak symboli", "Nie znaleziono punktów sprzedaży w Twojej lokalizacji.");
                         }
                       }}
                     >
@@ -1231,63 +1253,45 @@ const Home = () => {
             </View>
           </View>
         </Modal>
-        {/* Symbol Selection Modal */}
+        {/* Symbol Selection Modal - Identyczny z QRScanner */}
         <Modal
           transparent={true}
           visible={symbolSelectionVisible}
           animationType="slide"
           onRequestClose={() => setSymbolSelectionVisible(false)}
         >
-          <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-            <View
-              className="w-3/4 rounded-lg shadow-lg"
-              style={{
-                backgroundColor: "black",
-                borderWidth: 1,
-                borderColor: "white",
-              }}
-            >
-              <View
-                className="p-4 rounded-t-lg"
-                style={{
-                  backgroundColor: "black",
-                }}
-              >
-                <Text className="text-lg font-bold text-white text-center">Wybierz Symbol</Text>
-              </View>
-              <ScrollView className="p-6">
-                {stateData
-                  ?.filter((item) => item.barcode === editData?.barcode)
-                  ?.map((item, index) => (
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalContent}>
+              <Text style={styles.currencyModalTitle}>Wybierz punkt sprzedaży</Text>
+              {getMatchingSymbols().length > 0 ? (
+                <FlatList
+                  data={getMatchingSymbols()}
+                  keyExtractor={(item) => item._id || item.symbol}
+                  renderItem={({ item }) => (
                     <TouchableOpacity
-                      key={index}
+                      style={styles.currencyModalItem}
                       onPress={() => {
                         setEditData((prev) => ({ ...prev, from: item.symbol })); // Update 'from' field
                         setSymbolSelectionVisible(false); // Close modal
                       }}
-                      style={{
-                        backgroundColor: "#0d6efd",
-                        paddingVertical: 10,
-                        paddingHorizontal: 20,
-                        borderRadius: 5,
-                        marginBottom: 10,
-                      }}
                     >
-                      <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>{item.symbol}</Text>
+                      <Text style={styles.currencyModalItemText}>
+                        {item.symbol}
+                      </Text>
                     </TouchableOpacity>
-                  ))}
-                <TouchableOpacity
-                  onPress={() => setSymbolSelectionVisible(false)}
-                  style={{
-                    backgroundColor: "#6c757d",
-                    paddingVertical: 10,
-                    paddingHorizontal: 20,
-                    borderRadius: 5,
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold", textAlign: "center" }}>Anuluj</Text>
-                </TouchableOpacity>
-              </ScrollView>
+                  )}
+                />
+              ) : (
+                <Text style={styles.currencyModalItemText}>
+                  {`Brak punktów sprzedaży w lokalizacji "${user?.location || 'nieznana'}"`}
+                </Text>
+              )}
+              <Pressable
+                style={styles.currencyModalCloseButton}
+                onPress={() => setSymbolSelectionVisible(false)}
+              >
+                <Text style={styles.currencyModalCloseButtonText}>Zamknij</Text>
+              </Pressable>
             </View>
           </View>
         </Modal>
@@ -1774,6 +1778,52 @@ const styles = StyleSheet.create({
     fontSize: 13, // Match font size from writeoff.jsx
     fontWeight: "bold", // Bold text for emphasis
     textAlign: "right", // Align text to the right
+  },
+  // Style identyczne z QRScanner dla modal wyboru symboli
+  currencyModalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
+  },
+  currencyModalContent: {
+    width: "80%",
+    backgroundColor: "black",
+    borderRadius: 10,
+    padding: 20,
+    alignItems: "center",
+  },
+  currencyModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: 15,
+  },
+  currencyModalItem: {
+    paddingVertical: 5, // Reduce vertical padding for shorter height
+    paddingHorizontal: 30, // Increase horizontal padding for wider items
+    marginVertical: 5, // Add vertical margin between items
+    borderBottomWidth: 1,
+    borderBottomColor: "gray",
+    width: 100, // Set the width to 100px
+    alignItems: "center",
+    backgroundColor: "rgb(13, 110, 253)", // Set background color to blue
+  },
+  currencyModalItemText: {
+    color: "white",
+    fontSize: 16,
+  },
+  currencyModalCloseButton: {
+    marginTop: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: "red",
+    borderRadius: 5,
+    alignItems: "center",
+  },
+  currencyModalCloseButtonText: {
+    color: "white",
+    fontSize: 16,
   },
 });
 export default Home; // Export the Home component
