@@ -2,8 +2,10 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Image, StyleSheet, Text, View } from "react-native";
+import { useContext } from "react";
 
 import { icons } from "../../constants";
+import { GlobalStateContext } from "../../context/GlobalState";
 
 const TabIcon = ({ icon, color, name, focused, customIcon }) => {
   return (
@@ -37,6 +39,9 @@ const TabIcon = ({ icon, color, name, focused, customIcon }) => {
 };
 
 const TabLayout = () => {
+  const { user } = useContext(GlobalStateContext);
+  const isParzygnat = user?.symbol === 'P';
+
   return (
     <>
       {/* Add a View to set the status bar background color */}
@@ -119,15 +124,32 @@ const TabLayout = () => {
         />
 
         <Tabs.Screen
+          name="cudzych"
+          options={{
+            title: "Cudzich",
+            headerShown: false,
+            href: isParzygnat ? "/cudzych" : null,
+            tabBarIcon: ({ color, focused }) => (
+              <TabIcon
+                icon={icons.book}
+                color={color}
+                name="Cudzich"
+                focused={focused}
+              />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
           name="profile"
           options={{
-            title: "Profile",
+            title: "Zamówienia",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 icon={icons.profile}
                 color={color}
-                name="Profil"
+                name="Zamówienia"
                 focused={focused}
               />
             ),

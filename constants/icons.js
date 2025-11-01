@@ -12,6 +12,7 @@ import eyeHide from "../assets/icons/eye-hide.png";
 import eye from "../assets/icons/eye.png";
 import play from "../assets/icons/play.png";
 import minus from "../assets/icons/minus.png";
+import book from "../assets/icons/book.png";
 
 export default {
   play,
@@ -27,5 +28,6 @@ export default {
   logout,
   eyeHide,
   eye,
-  minus
+  minus,
+  book
 };
