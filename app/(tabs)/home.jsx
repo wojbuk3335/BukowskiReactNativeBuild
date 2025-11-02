@@ -8,7 +8,7 @@ import tokenService from '../../services/tokenService';
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
-  const { stateData, users, fetchUsers } = useContext(GlobalStateContext); // Access state data, users and fetchUsers from global context
+  const { stateData, users, fetchUsers, goods, fetchGoods } = useContext(GlobalStateContext); // Access state data, users, goods, fetchGoods and fetchUsers from global context
   const [salesData, setSalesData] = useState([]); // State to store API data
   const [filteredData, setFilteredData] = useState([]); // State to store filtered data
   const [totals, setTotals] = useState({ cash: {}, card: {} }); // State to store aggregated totals
@@ -43,6 +43,16 @@ const Home = () => {
   const [addAmountAmount, setAddAmountAmount] = useState(""); // State for add amount amount
   const [addAmountCurrency, setAddAmountCurrency] = useState("PLN"); // State for add amount currency
   const [addAmountReason, setAddAmountReason] = useState(""); // State for add amount reason
+  
+  // New states for reason selection
+  const [reasonType, setReasonType] = useState(""); // "product" or "other"
+  const [selectedProduct, setSelectedProduct] = useState(""); // Selected product ID
+  const [products, setProducts] = useState([]); // Available products from state
+  const [productSearchQuery, setProductSearchQuery] = useState(""); // Search query for products
+  const [filteredProducts, setFilteredProducts] = useState([]); // Filtered products based on search
+  const [showProductDropdown, setShowProductDropdown] = useState(false); // Control dropdown visibility
+  const [productFinalPrice, setProductFinalPrice] = useState(""); // Final agreed price for product
+  
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
   // Funkcja identyczna z QRScanner - filtruje użytkowników z tej samej lokalizacji
@@ -179,6 +189,48 @@ const Home = () => {
     });
     setTotals(newTotals); // Update totals state
   }, [filteredData]);
+
+  // Fetch and set products from goods when component mounts
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        // Only fetch if goods is empty or not loaded yet
+        if (!goods || goods.length === 0) {
+          console.log('Fetching goods...');
+          await fetchGoods(); // This will update goods in context
+        } else {
+          console.log('Goods already loaded:', goods.length);
+        }
+      } catch (error) {
+        console.error('Error fetching goods:', error);
+      }
+    };
+    
+    loadProducts();
+  }, []); // Empty dependency array - run only once on mount
+
+  // Set products from goods when goods are loaded
+  useEffect(() => {
+    if (goods && Array.isArray(goods) && goods.length > 0) {
+      console.log('Setting products from goods:', goods.length);
+      setProducts(goods);
+      setFilteredProducts(goods); // Initialize filtered products
+    }
+  }, [goods]);
+
+  // Filter products based on search query
+  useEffect(() => {
+    if (!productSearchQuery) {
+      setFilteredProducts(products);
+    } else {
+      const filtered = products.filter(product => 
+        (product.fullName && product.fullName.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
+        (product.code && product.code.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
+        (product.name && product.name.toLowerCase().includes(productSearchQuery.toLowerCase()))
+      );
+      setFilteredProducts(filtered);
+    }
+  }, [productSearchQuery, products]);
 
   const fetchTransferredItems = async () => {
     try {
@@ -381,20 +433,61 @@ const Home = () => {
       return;
     }
     
-    if (!addAmountReason.trim()) {
+    // Validate reason selection
+    if (!reasonType) {
+      Alert.alert("Błąd", "Proszę wybrać powód dopisania.");
+      return;
+    }
+    
+    if (reasonType === 'product' && !selectedProduct) {
+      Alert.alert("Błąd", "Proszę wybrać produkt.");
+      return;
+    }
+    
+    if (reasonType === 'other' && !addAmountReason.trim()) {
       Alert.alert("Błąd", "Proszę wprowadzić powód dopisania.");
       return;
     }
     
     try {
+      // Prepare reason based on selection
+      let finalReason = '';
+      if (reasonType === 'product') {
+        const selectedProductObj = products.find(p => p._id === selectedProduct);
+        const productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        
+        if (productFinalPrice) {
+          const finalPrice = parseFloat(productFinalPrice);
+          const advance = parseFloat(addAmountAmount);
+          const remaining = finalPrice - advance;
+          finalReason = `Zaliczka na produkt: ${productName}. Cena finalna: ${finalPrice.toFixed(2)} ${addAmountCurrency}, Dopłata: ${remaining.toFixed(2)} ${addAmountCurrency}`;
+        } else {
+          finalReason = `Zaliczka na produkt: ${productName}`;
+        }
+      } else {
+        finalReason = addAmountReason.trim();
+      }
+      
       const operationData = {
         userSymbol: user.symbol,
         amount: parseFloat(addAmountAmount), // Positive amount for addition
         currency: addAmountCurrency,
         type: "addition",
-        reason: addAmountReason.trim(),
+        reason: finalReason,
         date: new Date().toISOString(),
       };
+
+      // Add product-related data if it's a product transaction
+      if (reasonType === 'product' && selectedProduct) {
+        const selectedProductObj = products.find(p => p._id === selectedProduct);
+        operationData.productId = selectedProduct;
+        operationData.productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        
+        if (productFinalPrice) {
+          operationData.finalPrice = parseFloat(productFinalPrice);
+          operationData.remainingAmount = parseFloat(productFinalPrice) - parseFloat(addAmountAmount);
+        }
+      }
       
       const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"), {
         method: "POST",
@@ -409,6 +502,11 @@ const Home = () => {
       setAddAmountAmount("");
       setAddAmountCurrency("PLN");
       setAddAmountReason("");
+      setReasonType("");
+      setSelectedProduct("");
+      setProductSearchQuery("");
+      setShowProductDropdown(false);
+      setProductFinalPrice("");
       setAddAmountModalVisible(false);
       await fetchFinancialOperations();
       
@@ -1712,7 +1810,15 @@ const Home = () => {
           transparent={true}
           visible={addAmountModalVisible}
           animationType="fade"
-          onRequestClose={() => setAddAmountModalVisible(false)}
+          onRequestClose={() => {
+            setAddAmountModalVisible(false);
+            setReasonType("");
+            setSelectedProduct("");
+            setAddAmountReason("");
+            setProductSearchQuery("");
+            setShowProductDropdown(false);
+            setProductFinalPrice("");
+          }}
         >
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { width: '85%' }]}>
@@ -1761,28 +1867,239 @@ const Home = () => {
                 </TouchableOpacity>
               </View>
               
-              {/* Reason input */}
+              {/* Reason selection */}
               <View style={{ width: '100%', marginBottom: 20 }}>
                 <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Powód dopisania:</Text>
-                <TextInput
-                  style={{
-                    backgroundColor: 'black',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 14,
-                    color: 'white',
-                    borderWidth: 1,
-                    borderColor: '#10b981', // Green border for addition
-                    minHeight: 80,
-                    textAlignVertical: 'top',
-                  }}
-                  placeholder="Wpisz powód dopisania kwoty..."
-                  placeholderTextColor="#ccc"
-                  value={addAmountReason}
-                  onChangeText={setAddAmountReason}
-                  multiline={true}
-                  numberOfLines={3}
-                />
+                
+                {/* Radio buttons */}
+                <View style={{ marginBottom: 15 }}>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginBottom: 10,
+                    }}
+                    onPress={() => {
+                      console.log('Selected product radio');
+                      setReasonType('product');
+                      setAddAmountReason('');
+                      setShowProductDropdown(false);
+                    }}
+                  >
+                    <View style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      borderWidth: 2,
+                      borderColor: '#10b981',
+                      backgroundColor: reasonType === 'product' ? '#10b981' : 'transparent',
+                      marginRight: 10,
+                    }} />
+                    <Text style={{ color: '#fff', fontSize: 14 }}>Zaliczka na produkt</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      setReasonType('other');
+                      setSelectedProduct('');
+                      setProductFinalPrice('');
+                    }}
+                  >
+                    <View style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      borderWidth: 2,
+                      borderColor: '#10b981',
+                      backgroundColor: reasonType === 'other' ? '#10b981' : 'transparent',
+                      marginRight: 10,
+                    }} />
+                    <Text style={{ color: '#fff', fontSize: 14 }}>Inny powód dopisania</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Conditional product search */}
+                {reasonType === 'product' && (
+                  <View style={{ marginBottom: 15 }}>
+                    <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz produkt:</Text>
+                    
+                    {/* Search input */}
+                    <TextInput
+                      style={{
+                        backgroundColor: 'black',
+                        borderRadius: 8,
+                        padding: 12,
+                        fontSize: 14,
+                        color: 'white',
+                        borderWidth: 1,
+                        borderColor: '#10b981',
+                        marginBottom: 10,
+                      }}
+                      placeholder="Wpisz nazwę lub kod produktu..."
+                      placeholderTextColor="#ccc"
+                      value={productSearchQuery}
+                      onChangeText={(text) => {
+                        setProductSearchQuery(text);
+                        setShowProductDropdown(true); // Show dropdown when typing
+                      }}
+                      onFocus={() => {
+                        if (productSearchQuery && !selectedProduct) {
+                          setShowProductDropdown(true);
+                        }
+                      }}
+                    />
+                    
+                    {/* Products list */}
+                    {productSearchQuery && showProductDropdown && (
+                      <View style={{
+                        maxHeight: 150,
+                        backgroundColor: 'black',
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#10b981',
+                        position: 'relative',
+                      }}>
+                        {/* Close button */}
+                        <TouchableOpacity
+                          style={{
+                            position: 'absolute',
+                            top: 5,
+                            right: 10,
+                            zIndex: 1,
+                            backgroundColor: '#333',
+                            borderRadius: 10,
+                            width: 20,
+                            height: 20,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => setShowProductDropdown(false)}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>×</Text>
+                        </TouchableOpacity>
+                        
+                        <ScrollView 
+                          nestedScrollEnabled={true}
+                        >
+                        {filteredProducts.length > 0 ? (
+                          filteredProducts.slice(0, 10).map(product => (
+                            <TouchableOpacity
+                              key={product._id}
+                              style={{
+                                padding: 12,
+                                borderBottomWidth: 1,
+                                borderBottomColor: '#333',
+                                backgroundColor: selectedProduct === product._id ? '#10b981' : 'transparent',
+                              }}
+                              onPress={() => {
+                                setSelectedProduct(product._id);
+                                setProductSearchQuery(product.fullName || product.code || product.name || 'Produkt');
+                                setShowProductDropdown(false); // Hide dropdown after selection
+                              }}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 13 }}>
+                                {product.fullName || product.code || product.name || 'Nieznany produkt'}
+                              </Text>
+                              {product.code && product.fullName && (
+                                <Text style={{ color: '#ccc', fontSize: 11 }}>
+                                  Kod: {product.code}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <View style={{ padding: 12 }}>
+                            <Text style={{ color: '#ccc', fontSize: 13, textAlign: 'center' }}>
+                              Brak produktów pasujących do wyszukiwania
+                            </Text>
+                          </View>
+                        )}
+                        </ScrollView>
+                      </View>
+                    )}
+                    
+                    {/* Product final price input - only when product is selected */}
+                    {selectedProduct && (
+                      <View style={{ marginTop: 15 }}>
+                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>
+                          Uzgodniona cena finalna produktu:
+                        </Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            padding: 12,
+                            fontSize: 14,
+                            color: 'white',
+                            borderWidth: 1,
+                            borderColor: '#10b981',
+                            textAlign: 'center',
+                          }}
+                          placeholder="0.00"
+                          placeholderTextColor="#ccc"
+                          value={productFinalPrice}
+                          onChangeText={setProductFinalPrice}
+                          keyboardType="numeric"
+                        />
+                        
+                        {/* Show calculation when both amounts are filled */}
+                        {productFinalPrice && addAmountAmount && (
+                          <View style={{
+                            marginTop: 10,
+                            padding: 10,
+                            backgroundColor: '#333',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#10b981',
+                          }}>
+                            <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center' }}>
+                              <Text style={{ fontWeight: 'bold' }}>Zaliczka:</Text> {parseFloat(addAmountAmount || 0).toFixed(2)} {addAmountCurrency}
+                            </Text>
+                            <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center', marginTop: 3 }}>
+                              <Text style={{ fontWeight: 'bold' }}>Cena finalna:</Text> {parseFloat(productFinalPrice || 0).toFixed(2)} {addAmountCurrency}
+                            </Text>
+                            <Text style={{ 
+                              color: parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0) > 0 ? '#ff6b6b' : '#10b981', 
+                              fontSize: 14, 
+                              textAlign: 'center', 
+                              marginTop: 5,
+                              fontWeight: 'bold'
+                            }}>
+                              Dopłata: {(parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0)).toFixed(2)} {addAmountCurrency}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Conditional text input */}
+                {reasonType === 'other' && (
+                  <TextInput
+                    style={{
+                      backgroundColor: 'black',
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 14,
+                      color: 'white',
+                      borderWidth: 1,
+                      borderColor: '#10b981',
+                      minHeight: 80,
+                      textAlignVertical: 'top',
+                    }}
+                    placeholder="Wpisz powód dopisania kwoty..."
+                    placeholderTextColor="#ccc"
+                    value={addAmountReason}
+                    onChangeText={setAddAmountReason}
+                    multiline={true}
+                    numberOfLines={3}
+                  />
+                )}
               </View>
               
               {/* Action buttons */}
@@ -1800,6 +2117,11 @@ const Home = () => {
                   setAddAmountAmount("");
                   setAddAmountCurrency("PLN");
                   setAddAmountReason("");
+                  setReasonType("");
+                  setSelectedProduct("");
+                  setProductSearchQuery("");
+                  setShowProductDropdown(false);
+                  setProductFinalPrice("");
                 }}
               >
                 <Text style={styles.closeText}>Anuluj</Text>
