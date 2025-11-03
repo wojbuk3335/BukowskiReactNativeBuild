@@ -340,7 +340,7 @@ const Cudzych = () => {
   };
 
   // Save scanned product transaction
-  const saveTransaction = async (type, productName, productSize, productPrice, productNotes) => {
+  const saveTransaction = async (type, productName, productSize, productPrice, productNotes, scannedBarcode = '') => {
     try {
       setLoading(true);
       
@@ -386,6 +386,47 @@ const Cudzych = () => {
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Also save as regular sale (sprzedaż) if it's 'odbior' type
+        if (type === 'odbior') {
+          try {
+            console.log('DEBUG: Saving as regular sale...');
+            
+            // Get current date and time for timestamp - use ISO format for consistent parsing
+            const now = new Date();
+            const formattedTimestamp = now.toISOString(); // Use ISO format instead of locale-dependent format
+            
+            const salesResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/save-sales'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fullName: `${productName}`, // Just product name
+                timestamp: formattedTimestamp,
+                barcode: scannedBarcode || '', // Use actual scanned barcode
+                size: productSize,
+                sellingPoint: user?.sellingPoint || 'Unknown', 
+                from: selectedOption || 'P', // Keep clean - just selling point symbol
+                cash: [{ price: parseFloat(productPrice), currency: 'PLN' }], // Price as cash payment
+                card: [], // Empty card array
+                symbol: selectedOption || 'P', // Use selected selling point symbol
+                source: 'Cudzich', // NEW FIELD: Add source information for Cudzich transactions
+                notes: 'Transakcja z systemu Cudzich' // Additional notes for identification
+              })
+            });
+            
+            if (salesResponse.ok) {
+              console.log('DEBUG: Sale saved successfully');
+            } else {
+              const salesError = await salesResponse.json();
+              console.warn('Warning: Could not save as regular sale:', salesError.error);
+            }
+          } catch (salesError) {
+            console.warn('Warning: Could not save as regular sale:', salesError);
+          }
+        }
+        
         Alert.alert(
           'Sukces', 
           `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nProdukt: ${productName} ${productSize}\nCena: ${productPrice}zł\nNowe saldo: ${data.newBalance}zł`
@@ -1412,25 +1453,32 @@ const Cudzych = () => {
                 </TouchableOpacity>
               </View>
               
-              <View style={qrStyles.modalButtons}>
+              <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Cena (PLN):</Text>
+              <TextInput
+                style={qrStyles.inputField}
+                value={scannedProductData.price}
+                editable={false}
+              />
+              
+              <View style={styles.buttonRow}>
                 <TouchableOpacity
-                  style={[qrStyles.button, qrStyles.cancelButton]}
+                  style={[styles.smallButton, { backgroundColor: 'gray' }]}
                   onPress={() => {
                     setScannedProductModalVisible(false);
                     setScanned(false);
                   }}
                 >
-                  <Text style={qrStyles.buttonText}>Anuluj</Text>
+                  <Text style={styles.smallButtonText}>Anuluj</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[qrStyles.button, qrStyles.addButton]}
+                  style={[styles.smallButton, { backgroundColor: '#28a745' }]}
                   onPress={async () => {
                     // Use price from scannedProductData
                     console.log('DEBUG: Scanned product data:', scannedProductData);
                     
                     if (scannedProductData.price && scannedProductData.price !== "Brak ceny") {
                       console.log('DEBUG: Using price:', scannedProductData.price);
-                      await saveTransaction('odbior', scannedProductData.name, scannedProductData.size, scannedProductData.price, '');
+                      await saveTransaction('odbior', scannedProductData.name, scannedProductData.size, scannedProductData.price, '', scannedProductData.barcode);
                       setScannedProductModalVisible(false);
                       setScanned(false);
                     } else {
@@ -1439,7 +1487,7 @@ const Cudzych = () => {
                     }
                   }}
                 >
-                  <Text style={qrStyles.buttonText}>Potwierdź Sprzedaż</Text>
+                  <Text style={styles.smallButtonText}>Potwierdź</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1560,6 +1608,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 10,
+  },
+  cancelButton: {
+    backgroundColor: 'gray',
+  },
+  confirmButton: {
+    backgroundColor: 'green',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginTop: 20,
+    width: '100%',
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   
   // Transactions

@@ -604,7 +604,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
 
     const payload = {
       fullName,
-      timestamp: new Date().toLocaleString(), // Format to include both date and time
+      timestamp: new Date().toISOString(), // Use ISO format for consistent date parsing
       barcode,
       size,
       sellingPoint,
