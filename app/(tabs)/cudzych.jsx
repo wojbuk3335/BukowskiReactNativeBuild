@@ -12,21 +12,52 @@ import {
   RefreshControl,
   Platform
 } from 'react-native';
-
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from "@react-navigation/native";
 import { GlobalStateContext } from '../../context/GlobalState';
 
 import { getApiUrl } from '../../config/api';
 import tokenService from '../../services/tokenService';
 
 const Cudzych = () => {
-  const { user, goods, fetchGoods, sizes, fetchSizes } = useContext(GlobalStateContext);
+  const { 
+    user, 
+    goods, 
+    fetchGoods, 
+    sizes, 
+    fetchSizes, 
+    stocks, 
+    fetchStock,
+    colors, 
+    fetchColors,
+    bags, 
+    fetchBags,
+    wallets, 
+    fetchWallets,
+    stateData,
+    fetchState,
+    users,
+    fetchUsers
+  } = useContext(GlobalStateContext);
   
   // State management
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // QR Scanner states
+  const [facing, setFacing] = useState("back");
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [scannerType, setScannerType] = useState('odbior'); // 'odbior' lub 'zwrot'
+  const [barcode, setBarcode] = useState(""); // State for barcode input
+  const [scannedProductModalVisible, setScannedProductModalVisible] = useState(false);
+  const [scannedProductData, setScannedProductData] = useState({ name: "", size: "", barcode: "", price: "" });
+  const [selectedOption, setSelectedOption] = useState(""); // State for selling point selection
+  const [sellingPointMenuVisible, setSellingPointMenuVisible] = useState(false); // State for "Sprzedano od" popup
   
   // Modal states
   const [odbiorModalVisible, setOdbiorModalVisible] = useState(false);
@@ -63,10 +94,17 @@ const Cudzych = () => {
   // Price list state
   const [cudzichPriceList, setCudzichPriceList] = useState(null);
 
-  // Load data on component mount
+  // Load data when component mounts and every time tab is focused
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Pobierz dane przy każdym wejściu w zakładkę
+  useFocusEffect(
+    React.useCallback(() => {
+      loadInitialData();
+    }, [])
+  );
 
   // Debug goods changes
   useEffect(() => {
@@ -143,7 +181,13 @@ const Cudzych = () => {
         fetchTransactions(),
         fetchCudzichPriceList(),
         fetchGoods(),
-        fetchSizes()
+        fetchSizes(),
+        fetchStock(),
+        fetchColors(),
+        fetchBags(),
+        fetchWallets(),
+        fetchState(),
+        fetchUsers()
       ]);
     } catch (error) {
       console.error('Error loading initial data:', error);
@@ -201,28 +245,7 @@ const Cudzych = () => {
 
 
 
-  // Get price from Cudzich price list
-  const getPriceFromProduct = (product) => {
-    if (!product) {
-      return 0;
-    }
 
-    // Sprawdź cenę w cenniku Cudzich
-    if (cudzichPriceList && cudzichPriceList.items && Array.isArray(cudzichPriceList.items)) {
-      // Price list loaded
-      
-      const priceItem = cudzichPriceList.items.find(item => 
-        item.fullName === product.fullName
-      );
-      
-      if (priceItem) {
-        return priceItem.price;
-      }
-    }
-
-    // Jeśli nie ma w cenniku Cudzich, użyj ceny z produktu jako fallback
-    return product.price || 0;
-  };
 
   // Handle product selection
   const handleProductSelect = (product) => {
@@ -316,6 +339,73 @@ const Cudzych = () => {
     }
   };
 
+  // Save scanned product transaction
+  const saveTransaction = async (type, productName, productSize, productPrice, productNotes) => {
+    try {
+      setLoading(true);
+      
+      // Try to find productId based on productName from goods
+      let productId = null;
+      
+      if (goods && Array.isArray(goods)) {
+        const matchedProduct = goods.find(good => 
+          good.fullName === productName
+        );
+        
+        if (matchedProduct) {
+          productId = matchedProduct._id;
+          console.log('DEBUG: Found matching product ID:', productId, 'for name:', productName);
+        } else {
+          console.log('DEBUG: No matching product found for name:', productName);
+          console.log('DEBUG: Available products sample:', goods.slice(0, 3).map(g => g.fullName));
+        }
+      }
+      
+      // If no productId found, alert user
+      if (!productId) {
+        Alert.alert('Błąd', `Nie znaleziono produktu "${productName}" w bazie danych. Sprawdź czy produkt istnieje w systemie.`);
+        return;
+      }
+      
+      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/transactions'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: type,
+          productId: productId, // Now we include found productId
+          productName: productName,
+          size: productSize,
+          price: parseFloat(productPrice),
+          userSymbol: 'P',
+          recipientId: 'cudzich',
+          notes: productNotes || ''
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        Alert.alert(
+          'Sukces', 
+          `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nProdukt: ${productName} ${productSize}\nCena: ${productPrice}zł\nNowe saldo: ${data.newBalance}zł`
+        );
+        
+        // Refresh data
+        await Promise.all([fetchBalance(), fetchTransactions()]);
+        
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Błąd', errorData.error || 'Nie udało się zapisać transakcji');
+      }
+    } catch (error) {
+      console.error('Error saving scanned transaction:', error);
+      Alert.alert('Błąd', 'Nie udało się połączyć z serwerem');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Create payment transaction (wpłata lub wypłata)
   const createPaymentTransaction = async (type) => {
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
@@ -385,6 +475,338 @@ const Cudzych = () => {
     setPaymentAmount('');
     setPaymentNotes('');
   };
+
+  // QR Scanner functions (adapted from QRScanner.jsx)
+  
+  // Helper function to build jacket name from barcode segments
+  const buildJacketNameFromBarcode = (barcodeData) => {
+    try {
+      // Check if barcode has four zeros before the last digit (e.g., 0020600100009)
+      // But exclude bag patterns (starting with 000)
+      const regex = /^(\d{3})(\d{2})(\d{3})0000(\d)$/;
+      const match = barcodeData.match(regex);
+      
+      if (!match) {
+        return null; // Not the expected pattern
+      }
+
+      const [, stockCode, colorCode, sizeCode] = match;
+      
+      // Exclude bag patterns (stockCode starting with 000)
+      if (stockCode === "000") {
+        return null; // This is a bag, not a jacket
+      }
+      
+      // Try to extract arrays from the objects
+      const stocksArray = Array.isArray(stocks) ? stocks : (stocks?.data || stocks?.stocks || []);
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const sizesArray = Array.isArray(sizes) ? sizes : (sizes?.data || sizes?.sizes || []);
+      
+      // Ensure we have arrays before proceeding
+      if (!Array.isArray(stocksArray) || !Array.isArray(colorsArray) || !Array.isArray(sizesArray)) {
+        return null;
+      }
+      
+      // Look up stock (Tow_Opis) from first 3 digits
+      const stockItem = stocksArray.find(stock => stock.Tow_Kod === stockCode);
+      const stockName = stockItem?.Tow_Opis || `Kod_${stockCode}`;
+      
+      // Look up color (Kol_Opis) from next 2 digits  
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      // Look up size name from next 3 digits
+      const sizeItem = sizesArray.find(size => size.Roz_Kod === sizeCode);
+      const sizeName = sizeItem?.Roz_Opis || `Rozmiar_${sizeCode}`;
+      
+      // Build the jacket name without size (for price lookup)
+      const jacketNameWithoutSize = `${stockName || 'Nieznany'} ${colorName || 'Nieznany'}`;
+      // Build the full jacket name with size (for display if needed)
+      const jacketNameWithSize = `${stockName || 'Nieznany'} ${colorName || 'Nieznany'} ${sizeName || 'Nieznany'}`;
+      
+      return { 
+        fullName: jacketNameWithoutSize, // Name without size for price lookup
+        fullNameWithSize: jacketNameWithSize, // Full name with size
+        sizeName: sizeName,
+        sizeObj: sizeItem
+      };
+    } catch (error) {
+      console.error("Error building jacket name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to build bag name from barcode segments
+  const buildBagNameFromBarcode = (barcodeData) => {
+    try {
+      if (barcodeData.length < 13) {
+        return null;
+      }
+
+      const first3 = barcodeData.substring(0, 3);
+      const colorCode = barcodeData.substring(3, 5);
+      const rowNumber = barcodeData.substring(5, 9);
+      const position6 = barcodeData.substring(5, 6);
+      
+      if (first3 !== "000" || position6 === "0") {
+        return null;
+      }
+
+      const rowNumberInt = parseInt(rowNumber, 10);
+      
+      if (rowNumberInt === 0 || isNaN(rowNumberInt)) {
+        return null;
+      }
+
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const bagsArray = Array.isArray(bags) ? bags : (bags?.data || bags?.bags || []);
+      
+      if (!Array.isArray(colorsArray) || !Array.isArray(bagsArray)) {
+        return null;
+      }
+      
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      const bagItem = bagsArray.find(bag => parseInt(bag.Torebki_Nr, 10) === rowNumberInt);
+      const bagName = bagItem?.Torebki_Kod || `Torebka_${rowNumberInt}`;
+      
+      const fullBagName = `${bagName} ${colorName}`;
+      
+      return fullBagName;
+    } catch (error) {
+      console.error("Error building bag name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to build wallet name from barcode segments
+  const buildWalletNameFromBarcode = (barcodeData) => {
+    try {
+      if (barcodeData.length !== 13) {
+        return null;
+      }
+
+      const first3 = barcodeData.substring(0, 3);
+      const colorCode = barcodeData.substring(3, 5);
+      const position6 = barcodeData.substring(5, 6);
+      const position7 = barcodeData.substring(6, 7);
+      const walletNumber = barcodeData.substring(6, 9);
+      
+      if (first3 !== "000" || position6 !== "0" || position7 === "0") {
+        return null;
+      }
+
+      const walletNumberInt = parseInt(walletNumber, 10);
+      
+      if (walletNumberInt === 0 || isNaN(walletNumberInt)) {
+        return null;
+      }
+
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      const walletsArray = Array.isArray(wallets) ? wallets : (wallets?.data || wallets?.wallets || []);
+      
+      if (!Array.isArray(colorsArray) || !Array.isArray(walletsArray)) {
+        return null;
+      }
+      
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      const walletItem = walletsArray.find(wallet => parseInt(wallet.Portfele_Nr, 10) === walletNumberInt);
+      const walletName = walletItem?.Portfele_Kod || `Portfel_${walletNumberInt}`;
+      
+      const fullWalletName = `${walletName} ${colorName}`;
+      
+      return fullWalletName;
+    } catch (error) {
+      console.error("Error building wallet name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to build remaining products name from barcode segments
+  const buildRemainingProductNameFromBarcode = async (barcodeData) => {
+    try {
+      if (barcodeData.length < 9) {
+        return null;
+      }
+
+      const first3 = barcodeData.substring(0, 3);
+      const colorCode = barcodeData.substring(3, 5);
+      const positions6and7 = barcodeData.substring(5, 7);
+      const productCode = barcodeData.substring(7, 9);
+      
+      if (first3 !== "000" || positions6and7 !== "00") {
+        return null;
+      }
+
+      const colorsArray = Array.isArray(colors) ? colors : (colors?.data || colors?.colors || []);
+      
+      if (!Array.isArray(colorsArray)) {
+        return null;
+      }
+      
+      const colorItem = colorsArray.find(color => color.Kol_Kod === colorCode);
+      const colorName = colorItem?.Kol_Opis || `Kolor_${colorCode}`;
+      
+      try {
+        const response = await tokenService.authenticatedFetch(getApiUrl("/excel/remaining-products/get-all-remaining-products"));
+        const responseData = await response.json();
+        
+        const remainingProducts = responseData.remainingProducts;
+        const productCodeNumber = parseInt(productCode, 10);
+        
+        const productItem = remainingProducts.find(product => 
+          product.Poz_Nr && parseInt(product.Poz_Nr, 10) === productCodeNumber
+        );
+        
+        const productName = productItem?.Poz_Kod || `Produkt_${productCode}`;
+        const fullRemainingProductName = `${productName} ${colorName}`;
+        
+        return fullRemainingProductName;
+      } catch (error) {
+        console.error("Error fetching remaining products:", error);
+        return `Produkt_${productCode} ${colorName}`;
+      }
+    } catch (error) {
+      console.error("Error building remaining product name from barcode:", error);
+      return null;
+    }
+  };
+
+  // Helper function to get price from Cudzich price list
+  const getPriceFromCudzichList = (productName) => {
+    if (cudzichPriceList && cudzichPriceList.items && Array.isArray(cudzichPriceList.items)) {
+      const priceItem = cudzichPriceList.items.find(item => 
+        item.fullName === productName
+      );
+      
+      if (priceItem) {
+        return priceItem.price.toString();
+      }
+    }
+    return "Brak ceny";
+  };
+
+  // Handle barcode scan - identical to QRScanner logic
+  const handleScan = async ({ data, type }) => {
+    if (!scanned) {
+      setScanned(true);
+      setBarcode(data); // Set the scanned barcode
+
+      let productName = "";
+      let productSize = "-";
+
+      // First, try to build remaining products name from barcode pattern (000 + XX + 00 + XX)
+      const builtRemainingProductName = await buildRemainingProductNameFromBarcode(data);
+      
+      if (builtRemainingProductName) {
+        productName = builtRemainingProductName;
+        productSize = "-";
+      } else {
+        // Second, try to build bag name from barcode pattern (000 + non-zero at position 6)
+        const builtBagName = buildBagNameFromBarcode(data);
+        
+        if (builtBagName) {
+          productName = builtBagName;
+          productSize = "-";
+        } else {
+          // Third, try to build wallet name from barcode pattern (000 + 0 at position 6 + non-zero at position 7)
+          const builtWalletName = buildWalletNameFromBarcode(data);
+          
+          if (builtWalletName) {
+            productName = builtWalletName;
+            productSize = "-";
+          } else {
+            // Fourth, try to build jacket name from barcode pattern (four zeros before last digit)
+            const builtJacketData = buildJacketNameFromBarcode(data);
+            
+            if (builtJacketData) {
+              productName = builtJacketData.fullName; // This is now without size for price lookup
+              productSize = builtJacketData.sizeName || "-";
+            } else {
+              // Fall back to original logic - match the scanned barcode with the stateData
+              const matchedItem = stateData?.find(item => item.barcode === data);
+
+              if (matchedItem) {
+                productName = `${matchedItem.fullName} ${matchedItem.size}`;
+                productSize = matchedItem.size;
+              } else {
+                productName = "Nie znaleziono produktu";
+                productSize = "-";
+              }
+            }
+          }
+        }
+      }
+
+      // Get price from Cudzich price list
+      const productPrice = getPriceFromCudzichList(productName);
+
+      // Set all product data including price
+      setScannedProductData({
+        name: productName,
+        size: productSize,
+        barcode: data,
+        price: productPrice
+      });
+
+      // Set default selling point (copied from QRScanner logic)
+      const availableOptions = getMatchingSymbols(data);
+      if (availableOptions.length > 0) {
+        // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+        const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+        if (currentUserInLocation) {
+          setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
+        } else {
+          setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
+        }
+      } else {
+        setSelectedOption(""); // Brak dostępnych opcji
+      }
+
+      setScannerVisible(false);
+      setScannedProductModalVisible(true); // Show product modal instead of closing
+    }
+  };
+
+  // Toggle camera facing
+  const toggleCameraFacing = () => {
+    setFacing((prev) => (prev === "back" ? "front" : "back"));
+  };
+
+  // Get matching symbols for selling point selection (copied from QRScanner)
+  const getMatchingSymbols = (currentBarcode = barcode) => {
+    if (!users || !user) {
+      return [];
+    }
+
+    // Filtruj użytkowników z tej samej lokalizacji co zalogowany użytkownik
+    const sameLocationUsers = users.filter(u => 
+      u.location && user.location && 
+      u.location.trim() === user.location.trim() && 
+      u.role !== 'admin' && 
+      u.role !== 'magazyn' &&
+      u.sellingPoint && 
+      u.sellingPoint.trim() !== ''
+    );
+    
+    return sameLocationUsers;
+  };
+
+  // Open selling point modal
+  const openSellingPointModal = () => {
+    setSellingPointMenuVisible(true);
+  };
+
+  // Select selling point from modal
+  const selectSellingPointFromModal = (symbol) => {
+    setSelectedOption(symbol);
+    setSellingPointMenuVisible(false);
+  };
+
+
 
   // Date filter functions
   const clearDateFilters = () => {
@@ -472,7 +894,10 @@ const Cudzych = () => {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.smallButton, { backgroundColor: '#dc3545' }]}
-            onPress={() => setOdbiorModalVisible(true)}
+            onPress={() => {
+              setScannerType('odbior');
+              setScannerVisible(true);
+            }}
           >
             <Text style={styles.smallButtonText}>Odbiór</Text>
           </TouchableOpacity>
@@ -557,10 +982,29 @@ const Cudzych = () => {
 
             {/* Product search */}
             <View style={styles.productContainer}>
-              <Text style={styles.fieldLabel}>Wybierz produkt:</Text>
+              <View style={styles.productHeaderContainer}>
+                <Text style={styles.fieldLabel}>Wybierz produkt:</Text>
+                <TouchableOpacity
+                  style={styles.scanButton}
+                  onPress={() => {
+                    if (!permission) {
+                      requestPermission();
+                      return;
+                    }
+                    if (!permission.granted) {
+                      requestPermission();
+                      return;
+                    }
+                    setScannerVisible(true);
+                    setScanned(false);
+                  }}
+                >
+                  <Text style={styles.scanButtonText}>📱 Skanuj kod</Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
                 style={styles.input}
-                placeholder="Wyszukaj kurtkę..."
+                placeholder="Wyszukaj kurtkę lub zeskanuj kod..."
                 value={productSearchText}
                 onChangeText={(text) => {
                   setProductSearchText(text);
@@ -854,6 +1298,196 @@ const Cudzych = () => {
           </View>
         </View>
       </Modal>
+
+      {/* QR Scanner Modal - identical to QRScanner component */}
+      {scannerVisible && (
+        <View style={qrStyles.container}>
+          <View style={{ flex: 1 }}>
+            <CameraView
+              style={qrStyles.camera}
+              facing={facing}
+              barcodeScannerSettings={{
+                barcodeTypes: ["qr", "ean13", "ean8", "upc_a", "upc_e", "code39", "code128"],
+              }}
+              onBarcodeScanned={handleScan}
+            />
+            {/* Overlay using absolute positioning */}
+            <View style={[qrStyles.overlay, { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }]}>
+              <View style={qrStyles.scanArea} />
+            </View>
+            
+            {/* Close button in top right corner */}
+            <TouchableOpacity
+              style={qrStyles.closeButton}
+              onPress={() => {
+                setScannerVisible(false);
+                setScanned(false);
+              }}
+            >
+              <Text style={qrStyles.closeButtonText}>X</Text>
+            </TouchableOpacity>
+            
+            {/* Przycisk do resetowania skanowania - pokazuje się tylko gdy scanned=true */}
+            {scanned && (
+              <View style={{ position: "absolute", bottom: 100, left: 0, right: 0, alignItems: "center" }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#0d6efd",
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: 0.9
+                  }}
+                  onPress={() => {
+                    setScanned(false);
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Skanuj ponownie</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Scanned Product Modal - identical to QRScanner */}
+      {scannedProductModalVisible && (
+        <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
+          <ScrollView contentContainerStyle={qrStyles.scrollViewContent}>
+            <View style={[qrStyles.modalContent, { flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
+              <TouchableOpacity
+                style={qrStyles.closeButton}
+                onPress={() => {
+                  setScannedProductModalVisible(false);
+                  setScanned(false);
+                }}
+              >
+                <Text style={qrStyles.closeButtonText}>X</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano produkt:</Text>
+              <TextInput
+                style={qrStyles.inputField}
+                value={scannedProductData.name}
+                editable={false}
+              />
+              <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Gdzie</Text>
+              <TextInput
+                style={qrStyles.inputField}
+                value={user?.sellingPoint || "Unknown"}
+                editable={false}
+                placeholder="Selling Point"
+              />
+              <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Kod kreskowy</Text>
+              <TextInput
+                style={qrStyles.inputField}
+                value={scannedProductData.barcode}
+                editable={false}
+                placeholder="Barcode"
+              />
+              <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano od:</Text>
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: "white",
+                  borderRadius: 5,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  marginBottom: 20,
+                  width: "100%",
+                }}
+              >
+                <TouchableOpacity
+                  style={{
+                    height: 40,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    backgroundColor: "black",
+                    borderRadius: 5,
+                  }}
+                  onPress={openSellingPointModal}
+                >
+                  <Text style={{ color: "white" }}>
+                    {selectedOption || "Wybierz punkt sprzedaży"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={qrStyles.modalButtons}>
+                <TouchableOpacity
+                  style={[qrStyles.button, qrStyles.cancelButton]}
+                  onPress={() => {
+                    setScannedProductModalVisible(false);
+                    setScanned(false);
+                  }}
+                >
+                  <Text style={qrStyles.buttonText}>Anuluj</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[qrStyles.button, qrStyles.addButton]}
+                  onPress={async () => {
+                    // Use price from scannedProductData
+                    console.log('DEBUG: Scanned product data:', scannedProductData);
+                    
+                    if (scannedProductData.price && scannedProductData.price !== "Brak ceny") {
+                      console.log('DEBUG: Using price:', scannedProductData.price);
+                      await saveTransaction('odbior', scannedProductData.name, scannedProductData.size, scannedProductData.price, '');
+                      setScannedProductModalVisible(false);
+                      setScanned(false);
+                    } else {
+                      console.log('DEBUG: No price available for product:', scannedProductData.name);
+                      Alert.alert("Błąd", `Brak ceny dla produktu ${scannedProductData.name} w cenniku Cudzich`);
+                    }
+                  }}
+                >
+                  <Text style={qrStyles.buttonText}>Potwierdź Sprzedaż</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Selling Point Selection Modal (copied from QRScanner) */}
+      {sellingPointMenuVisible && (
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={sellingPointMenuVisible}
+          onRequestClose={() => setSellingPointMenuVisible(false)}
+        >
+          <View style={qrStyles.currencyModalContainer}>
+            <View style={qrStyles.currencyModalContent}>
+              <Text style={qrStyles.currencyModalTitle}>Wybierz punkt sprzedaży</Text>
+              {getMatchingSymbols().length > 0 ? (
+                <FlatList
+                  data={getMatchingSymbols()}
+                  keyExtractor={(item) => item._id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={qrStyles.currencyModalItem}
+                      onPress={() => selectSellingPointFromModal(item.symbol)}
+                    >
+                      <Text style={qrStyles.currencyModalItemText}>
+                        {item.symbol}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <Text style={qrStyles.currencyModalItemText}>
+                  Brak dostępnych punktów sprzedaży dla tego produktu
+                </Text>
+              )}
+              <TouchableOpacity
+                style={qrStyles.currencyModalCloseButton}
+                onPress={() => setSellingPointMenuVisible(false)}
+              >
+                <Text style={qrStyles.currencyModalCloseButtonText}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 };
@@ -1252,6 +1886,225 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 
+  // Scanner styles (adapted from QRScanner.jsx)
+  productHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scanButton: {
+    backgroundColor: '#0d6efd',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  scanButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  scanArea: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: 'white',
+    borderRadius: 10,
+  },
+  scannerControls: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 20,
+  },
+  scannerButton: {
+    backgroundColor: '#0d6efd',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  scannerButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'black',
+    padding: 20,
+  },
+  permissionText: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  permissionButton: {
+    backgroundColor: '#0d6efd',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  permissionButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+});
+
+// QRScanner styles - identical to QRScanner component
+const qrStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "black", color: "white" },
+  camera: { flex: 1 },
+  overlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scanArea: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: "white",
+    borderRadius: 10,
+  },
+  closeButton: {
+    top: 10,
+    right: 10,
+    backgroundColor: "red",
+    borderRadius: 100,
+    position: "absolute",
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+  },
+  closeButtonText: {
+    color: "white",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  modalContent: {
+    width: "100%",
+    height: "100%", 
+    padding: 20,
+    backgroundColor: "black",
+    borderRadius: 0,
+    alignItems: "center",
+    zIndex: 10,
+    elevation: 5,
+    overflow: "visible",
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    padding: 20,
+  },
+  inputField: {
+    height: 40,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginBottom: 20,
+    width: "100%",
+    paddingHorizontal: 10,
+    color: "white",
+    backgroundColor: "black",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+    width: "100%",
+  },
+  button: {
+    flex: 1,
+    marginHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  cancelButton: {
+    backgroundColor: "gray",
+  },
+  addButton: {
+    backgroundColor: "green",
+  },
+  buttonText: {
+    color: "white",
+    fontSize: 16,
+  },
+  // Modal styles for selling point selection
+  currencyModalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
+  },
+  currencyModalContent: {
+    width: "80%",
+    backgroundColor: "black",
+    borderRadius: 10,
+    padding: 20,
+    alignItems: "center",
+  },
+  currencyModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: 15,
+  },
+  currencyModalItem: {
+    paddingVertical: 5, // Reduce vertical padding for shorter height
+    paddingHorizontal: 30, // Increase horizontal padding for wider items
+    marginVertical: 5, // Add vertical margin between items
+    borderBottomWidth: 1,
+    borderBottomColor: "gray",
+    width: 100, // Set the width to 100px
+    alignItems: "center",
+    backgroundColor: "rgb(13, 110, 253)", // Set background color to blue
+  },
+  currencyModalItemText: {
+    color: "white",
+    fontSize: 16,
+  },
+  currencyModalCloseButton: {
+    marginTop: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: "red",
+    borderRadius: 5,
+    alignItems: "center",
+  },
+  currencyModalCloseButtonText: {
+    color: "white",
+    fontSize: 16,
+  },
 });
 
 export default Cudzych;
