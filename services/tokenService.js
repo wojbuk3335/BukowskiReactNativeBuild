@@ -1,6 +1,7 @@
 // Token Management Service for React Native Mobile App
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl } from '../config/api';
+import AuthErrorHandler from '../utils/authErrorHandler';
 
 class TokenService {
     constructor() {
@@ -144,7 +145,9 @@ class TokenService {
         if (!refreshToken) {
             await this.clearTokens();
             this.isRefreshingToken = false;
-            throw new Error('No refresh token available');
+            const error = new Error('No refresh token available');
+            await AuthErrorHandler.handleAuthError(error, 'Token Refresh');
+            throw error;
         }
 
         this.refreshPromise = this.performRefresh(refreshToken);
@@ -156,6 +159,7 @@ class TokenService {
         } catch (error) {
             this.isRefreshingToken = false;
             await this.clearTokens();
+            await AuthErrorHandler.handleAuthError(error, 'Token Refresh');
             throw error;
         }
     }
@@ -193,7 +197,9 @@ class TokenService {
         const { accessToken } = await this.getTokens();
         
         if (!accessToken) {
-            throw new Error('No access token available');
+            const error = new Error('No access token available');
+            await AuthErrorHandler.handleAuthError(error, 'Get Access Token');
+            throw error;
         }
 
         // Check if token is expiring soon
@@ -206,6 +212,7 @@ class TokenService {
             } catch (error) {
                 // Refresh failed, clear tokens
                 await this.clearTokens();
+                await AuthErrorHandler.handleAuthError(error, 'Token Validation');
                 throw error;
             }
         }
@@ -253,6 +260,12 @@ class TokenService {
 
             // If we get 401, try to refresh token and retry once
             if (response.status === 401 && !options._retry) {
+                // Handle auth response error
+                const wasHandled = await AuthErrorHandler.handleResponseError(response, 'Authenticated Fetch');
+                if (wasHandled) {
+                    throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+                }
+                
                 try {
                     const newToken = await this.refreshAccessToken();
                     if (newToken) {
@@ -271,14 +284,18 @@ class TokenService {
                 } catch (refreshError) {
                     // Refresh failed, clear tokens
                     await this.clearTokens();
+                    await AuthErrorHandler.handleAuthError(refreshError, 'Fetch Retry');
                     throw refreshError;
                 }
             }
 
             return response;
         } catch (error) {
-            // Only log errors in non-test environment
-            if (typeof jest === 'undefined') {
+            // Handle auth errors with automatic redirect
+            const wasHandled = await AuthErrorHandler.handleFetchError(error, 'Authenticated Fetch');
+            
+            // Only log errors in non-test environment if not auth-related
+            if (typeof jest === 'undefined' && !wasHandled) {
                 console.error('❌ authenticatedFetch error:', error);
             }
             throw error;

@@ -72,6 +72,7 @@ const Cudzych = () => {
   const [size, setSize] = useState('');
   const [price, setPrice] = useState('');
   const [notes, setNotes] = useState('');
+  const [isHistoricalSale, setIsHistoricalSale] = useState(false);
   
   // Dropdown states
   const [productDropdownVisible, setProductDropdownVisible] = useState(false);
@@ -315,6 +316,84 @@ const Cudzych = () => {
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Handle historical sale creation or return marking if it's 'zwrot' type
+        if (type === 'zwrot') {
+          if (isHistoricalSale) {
+            // Create historical sale first, then mark it as returned
+            try {
+              const historicalSaleResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/create-historical-sale'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fullName: selectedProduct.fullName,
+                  size: size,
+                  price: parseFloat(price),
+                  sellingPoint: user?.sellingPoint || 'Unknown',
+                  symbol: 'P',
+                  source: 'Cudzich',
+                  notes: 'Sprzedaż historyczna - dodana przy zwrocie',
+                  historicalDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days ago as default
+                })
+              });
+              
+              if (historicalSaleResponse.ok) {
+                
+                // Now mark it as returned
+                const returnResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/mark-as-returned'), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    fullName: selectedProduct.fullName,
+                    size: size,
+                    source: 'Cudzich',
+                    returnReason: 'Zwrot produktu sprzedanego przed systemem',
+                    returnDate: new Date().toISOString()
+                  })
+                });
+                
+                if (!returnResponse.ok) {
+                  const returnError = await returnResponse.json();
+                  console.warn('Warning: Could not mark historical sale as returned:', returnError.error);
+                }
+              } else {
+                const historicalError = await historicalSaleResponse.json();
+                console.warn('Warning: Could not create historical sale:', historicalError.error);
+              }
+            } catch (historicalError) {
+              console.warn('Warning: Could not create historical sale:', historicalError);
+            }
+          } else {
+            // Normal return - just mark existing sales as returned
+            try {
+              const returnResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/mark-as-returned'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fullName: selectedProduct.fullName,
+                  size: size,
+                  source: 'Cudzich',
+                  returnReason: 'Zwrot przez Cudzich (formularz)',
+                  returnDate: new Date().toISOString()
+                })
+              });
+              
+              if (!returnResponse.ok) {
+                const returnError = await returnResponse.json();
+                console.warn('Warning: Could not mark sales as returned (manual):', returnError.error);
+              }
+            } catch (returnError) {
+              console.warn('Warning: Could not mark sales as returned (manual):', returnError);
+            }
+          }
+        }
+        
         Alert.alert(
           'Sukces', 
           `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nNowe saldo: ${data.newBalance}zł`
@@ -427,6 +506,37 @@ const Cudzych = () => {
           }
         }
         
+        // Mark related sales as returned if it's 'zwrot' type
+        if (type === 'zwrot') {
+          try {
+            console.log('DEBUG: Marking related sales as returned...');
+            
+            const returnResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/mark-as-returned'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fullName: productName,
+                size: productSize,
+                source: 'Cudzich', // Only mark Cudzich sales as returned
+                returnReason: 'Zwrot przez Cudzich',
+                returnDate: new Date().toISOString()
+              })
+            });
+            
+            if (returnResponse.ok) {
+              const returnData = await returnResponse.json();
+              console.log('DEBUG: Sales marked as returned:', returnData.modifiedCount);
+            } else {
+              const returnError = await returnResponse.json();
+              console.warn('Warning: Could not mark sales as returned:', returnError.error);
+            }
+          } catch (returnError) {
+            console.warn('Warning: Could not mark sales as returned:', returnError);
+          }
+        }
+        
         Alert.alert(
           'Sukces', 
           `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nProdukt: ${productName} ${productSize}\nCena: ${productPrice}zł\nNowe saldo: ${data.newBalance}zł`
@@ -507,6 +617,7 @@ const Cudzych = () => {
     setSize('');
     setPrice('');
     setNotes('');
+    setIsHistoricalSale(false);
     setProductDropdownVisible(false);
     setSizeDropdownVisible(false);
   };
@@ -728,6 +839,14 @@ const Cudzych = () => {
       }
     }
     return "Brak ceny";
+  };
+
+  // Helper function to get price from product object (wrapper for getPriceFromCudzichList)
+  const getPriceFromProduct = (product) => {
+    if (!product || !product.fullName) {
+      return "0";
+    }
+    return getPriceFromCudzichList(product.fullName);
   };
 
   // Handle barcode scan - identical to QRScanner logic
@@ -1025,23 +1144,25 @@ const Cudzych = () => {
             <View style={styles.productContainer}>
               <View style={styles.productHeaderContainer}>
                 <Text style={styles.fieldLabel}>Wybierz produkt:</Text>
-                <TouchableOpacity
-                  style={styles.scanButton}
-                  onPress={() => {
-                    if (!permission) {
-                      requestPermission();
-                      return;
-                    }
-                    if (!permission.granted) {
-                      requestPermission();
-                      return;
-                    }
-                    setScannerVisible(true);
-                    setScanned(false);
-                  }}
-                >
-                  <Text style={styles.scanButtonText}>📱 Skanuj kod</Text>
-                </TouchableOpacity>
+                {odbiorModalVisible && (
+                  <TouchableOpacity
+                    style={styles.scanButton}
+                    onPress={() => {
+                      if (!permission) {
+                        requestPermission();
+                        return;
+                      }
+                      if (!permission.granted) {
+                        requestPermission();
+                        return;
+                      }
+                      setScannerVisible(true);
+                      setScanned(false);
+                    }}
+                  >
+                    <Text style={styles.scanButtonText}>📱 Skanuj kod</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               <TextInput
                 style={styles.input}
@@ -1166,6 +1287,28 @@ const Cudzych = () => {
               multiline
               placeholderTextColor="#666"
             />
+
+            {/* Historical sale checkbox - only for zwrot */}
+            {zwrotModalVisible && (
+              <View style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={styles.checkbox}
+                  onPress={() => setIsHistoricalSale(!isHistoricalSale)}
+                >
+                  <View style={[styles.checkboxInner, isHistoricalSale && styles.checkboxChecked]}>
+                    {isHistoricalSale && <Text style={styles.checkmark}>✓</Text>}
+                  </View>
+                  <Text style={styles.checkboxLabel}>
+                    Sprzedaż historyczna (sprzed systemu)
+                  </Text>
+                </TouchableOpacity>
+                {isHistoricalSale && (
+                  <Text style={styles.checkboxHelp}>
+                    System automatycznie utworzy wpis sprzedażowy z datą wsteczną
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Modal buttons */}
             <View style={styles.modalButtons}>
@@ -1962,6 +2105,27 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
 
+  // Scanner styles
+  productHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scanButton: {
+    backgroundColor: '#0d6efd',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  scanButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+
   // Scanner styles (adapted from QRScanner.jsx)
   productHeaderContainer: {
     flexDirection: 'row',
@@ -1982,6 +2146,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  
+  // Checkbox styles
+  checkboxContainer: {
+    marginTop: 15,
+    marginBottom: 10,
+  },
+  checkbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  checkboxInner: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: 'white',
+    borderRadius: 3,
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#0d6efd',
+  },
+  checkmark: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  checkboxHelp: {
+    color: '#ccc',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginLeft: 30,
+  },
+  
   scannerContainer: {
     flex: 1,
     backgroundColor: 'black',

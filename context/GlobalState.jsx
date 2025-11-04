@@ -3,6 +3,7 @@ import { router } from "expo-router"; // Import router
 import React, { createContext, useState } from "react";
 import { getApiUrl } from "../config/api"; // Import API config
 import tokenService from "../services/tokenService"; // Import token service
+import AuthErrorHandler from "../utils/authErrorHandler"; // Import auth error handler
 
 export const GlobalStateContext = createContext();
 
@@ -32,12 +33,27 @@ export const GlobalStateProvider = ({ children }) => {
                 signal: controller.signal,
             });
             clearTimeout(timeoutId);
+            
+            // Check if response indicates auth error
+            if (response && (response.status === 401 || response.status === 403)) {
+                await AuthErrorHandler.handleResponseError(response, 'Global State Fetch');
+                throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+            }
+            
             return response;
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
                 throw new Error('Request timeout - no response from server after 10 seconds');
             }
+            
+            // Handle auth errors with automatic redirect
+            const wasHandled = await AuthErrorHandler.handleFetchError(error, 'Global State Fetch');
+            if (wasHandled) {
+                // Auth error was handled, still throw to let caller know request failed
+                throw new Error('Authentication error - redirected to login');
+            }
+            
             throw error;
         }
     };
