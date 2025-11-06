@@ -37,6 +37,11 @@ const Profile = () => {
   const [colorInputFocused, setColorInputFocused] = useState(false);
   const [sizeInputFocused, setSizeInputFocused] = useState(false);
   const [descriptionInputFocused, setDescriptionInputFocused] = useState(false);
+  
+  // Validation error states
+  const [productValidationError, setProductValidationError] = useState(false);
+  const [colorValidationError, setColorValidationError] = useState(false);
+  const [sizeValidationError, setSizeValidationError] = useState(false);
 
   // Description state
   const [description, setDescription] = useState('');
@@ -429,10 +434,30 @@ const Profile = () => {
   // Generate order ID
   // Validate form
   const validateForm = () => {
-    if (!selectedProduct) {
-      Alert.alert('Błąd', 'Proszę wybrać produkt');
-      return false;
+    let hasErrors = false;
+    
+    // Validate product selection (real-time validation already handles this)
+    if (!selectedProduct || productValidationError) {
+      if (!productValidationError) setProductValidationError(true);
+      Alert.alert('Błąd', 'Proszę wybrać poprawny produkt z listy');
+      hasErrors = true;
     }
+    
+    // Validate color selection (real-time validation already handles this)
+    if (!selectedColor || colorValidationError) {
+      if (!colorValidationError) setColorValidationError(true);
+      Alert.alert('Błąd', 'Proszę wybrać poprawny kolor z listy');
+      hasErrors = true;
+    }
+    
+    // Validate size selection (real-time validation already handles this)
+    if (!selectedSize || sizeValidationError) {
+      if (!sizeValidationError) setSizeValidationError(true);
+      Alert.alert('Błąd', 'Proszę wybrać poprawny rozmiar z listy');
+      hasErrors = true;
+    }
+    
+    if (hasErrors) return false;
     if (!customerName.trim()) {
       Alert.alert('Błąd', 'Proszę podać imię i nazwisko');
       return false;
@@ -733,18 +758,21 @@ const Profile = () => {
     setSelectedProduct(product);
     setProductSearchText(product.Tow_Opis || product.name || '');
     setProductDropdownVisible(false);
+    setProductValidationError(false); // Always reset error when selecting from dropdown
   };
 
   const handleColorSelect = (color) => {
     setSelectedColor(color);
     setColorSearchText(color.Kol_Opis || color.name || '');
     setColorDropdownVisible(false);
+    setColorValidationError(false); // Always reset error when selecting from dropdown
   };
 
   const handleSizeSelect = (size) => {
     setSelectedSize(size);
     setSizeSearchText(size.Roz_Opis || size.name || '');
     setSizeDropdownVisible(false);
+    setSizeValidationError(false); // Always reset error when selecting from dropdown
   };
 
   // Clear form function
@@ -818,15 +846,33 @@ const Profile = () => {
                   <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>Produkt:</Text>
                   <TextInput
-                    style={[styles.input, productInputFocused && styles.inputFocused]}
+                    style={[
+                      styles.input, 
+                      productInputFocused && styles.inputFocused,
+                      productValidationError && styles.errorBorder
+                    ]}
                     placeholder="Wyszukaj produkt..."
                     value={productSearchText}
                     onChangeText={(text) => {
                       setProductSearchText(text);
                       setProductDropdownVisible(text.length > 0);
-                      // Clear selected product if text doesn't match
-                      if (selectedProduct && !(selectedProduct.Tow_Opis || selectedProduct.name || '').toLowerCase().includes(text.toLowerCase())) {
+                      
+                      // Real-time validation
+                      if (text.length > 0) {
+                        const matchingProduct = products.find(product => 
+                          (product.Tow_Opis || product.name || '').toLowerCase() === text.toLowerCase()
+                        );
+                        
+                        if (matchingProduct) {
+                          setSelectedProduct(matchingProduct);
+                          setProductValidationError(false);
+                        } else {
+                          setSelectedProduct(null);
+                          setProductValidationError(true);
+                        }
+                      } else {
                         setSelectedProduct(null);
+                        setProductValidationError(false);
                       }
                     }}
                     onFocus={() => {
@@ -868,15 +914,33 @@ const Profile = () => {
                 <View style={styles.fieldContainer}>
                   <Text style={styles.fieldLabel}>Kolor:</Text>
                   <TextInput
-                    style={[styles.input, colorInputFocused && styles.inputFocused]}
+                    style={[
+                      styles.input, 
+                      colorInputFocused && styles.inputFocused,
+                      colorValidationError && styles.errorBorder
+                    ]}
                     placeholder="Wyszukaj kolor..."
                     value={colorSearchText}
                     onChangeText={(text) => {
                       setColorSearchText(text);
                       setColorDropdownVisible(text.length > 0);
-                      // Clear selected color if text doesn't match
-                      if (selectedColor && !(selectedColor.Kol_Opis || selectedColor.name || '').toLowerCase().includes(text.toLowerCase())) {
+                      
+                      // Real-time validation
+                      if (text.length > 0) {
+                        const matchingColor = colors.find(color => 
+                          (color.Kol_Opis || color.name || '').toLowerCase() === text.toLowerCase()
+                        );
+                        
+                        if (matchingColor) {
+                          setSelectedColor(matchingColor);
+                          setColorValidationError(false);
+                        } else {
+                          setSelectedColor(null);
+                          setColorValidationError(true);
+                        }
+                      } else {
                         setSelectedColor(null);
+                        setColorValidationError(false);
                       }
                     }}
                     onFocus={() => {
@@ -918,15 +982,33 @@ const Profile = () => {
                 <View style={styles.fieldContainer}>
                   <Text style={styles.fieldLabel}>Rozmiar:</Text>
                   <TextInput
-                    style={[styles.input, sizeInputFocused && styles.inputFocused]}
+                    style={[
+                      styles.input, 
+                      sizeInputFocused && styles.inputFocused,
+                      sizeValidationError && styles.errorBorder
+                    ]}
                     placeholder="Wyszukaj rozmiar..."
                     value={sizeSearchText}
                     onChangeText={(text) => {
                       setSizeSearchText(text);
                       setSizeDropdownVisible(text.length > 0);
-                      // Clear selected size if text doesn't match
-                      if (selectedSize && !(selectedSize.Roz_Opis || selectedSize.name || '').toLowerCase().includes(text.toLowerCase())) {
+                      
+                      // Real-time validation
+                      if (text.length > 0) {
+                        const matchingSize = sizes.find(size => 
+                          (size.Roz_Opis || size.name || '').toLowerCase() === text.toLowerCase()
+                        );
+                        
+                        if (matchingSize) {
+                          setSelectedSize(matchingSize);
+                          setSizeValidationError(false);
+                        } else {
+                          setSelectedSize(null);
+                          setSizeValidationError(true);
+                        }
+                      } else {
                         setSelectedSize(null);
+                        setSizeValidationError(false);
                       }
                     }}
                     onFocus={() => {
@@ -1720,5 +1802,9 @@ const styles = StyleSheet.create({
   deliveryOptionTextSelected: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  errorBorder: {
+    borderColor: '#ff4444',
+    borderWidth: 2,
   },
 });

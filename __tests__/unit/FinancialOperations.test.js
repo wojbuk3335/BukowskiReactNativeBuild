@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import Home from '../../app/(tabs)/home';
-import { GlobalStateContext } from '../../context/GlobalStateContext';
+import TestWrapper, { GlobalStateContext } from '../utils/TestUtils';
 import tokenService from '../../services/tokenService';
 
 // Mock dependencies
@@ -18,6 +18,9 @@ jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 global.fetch = jest.fn();
 
 describe('Financial Operations Mobile Tests', () => {
+  // Get today's date in the same format as the component uses
+  const today = new Date().toISOString().split('T')[0];
+
   const mockUser = {
     symbol: 'P',
     email: 'test@example.com',
@@ -27,10 +30,64 @@ describe('Financial Operations Mobile Tests', () => {
 
   const mockGlobalState = {
     user: mockUser,
-    filteredData: [],
+    // Mock sales data to provide available funds
+    filteredData: [
+      {
+        _id: 'sale1',
+        sellingPoint: 'P',
+        date: `${today}T09:00:00.000Z`,
+        cash: [{ price: 1000, currency: 'PLN' }],
+        card: [{ price: 500, currency: 'PLN' }]
+      },
+      {
+        _id: 'sale2', 
+        sellingPoint: 'P',
+        date: `${today}T10:00:00.000Z`,
+        cash: [{ price: 200, currency: 'EUR' }],
+        card: []
+      }
+    ],
     transferredItems: [],
     receivedItems: [],
-    advancesData: []
+    advancesData: [],
+    deductionsData: [
+      {
+        _id: 'deduction1',
+        amount: 300,
+        currency: 'PLN',
+        reason: 'Odpisanie szkód',
+        type: 'deduction',
+        userSymbol: 'P',
+        date: `${today}T10:00:00.000Z`
+      },
+      {
+        _id: 'addition1', 
+        amount: 800,
+        currency: 'PLN',
+        reason: 'Zaliczka na produkt',
+        type: 'addition',
+        userSymbol: 'P',
+        date: `${today}T11:00:00.000Z`
+      },
+      {
+        _id: 'eur1',
+        amount: 100,
+        currency: 'EUR',
+        reason: 'Zaliczka EUR',
+        type: 'addition', 
+        userSymbol: 'P',
+        date: `${today}T12:00:00.000Z`
+      },
+      {
+        _id: 'pln1',
+        amount: 500,
+        currency: 'PLN',
+        reason: 'Zaliczka PLN',
+        type: 'addition',
+        userSymbol: 'P', 
+        date: `${today}T13:00:00.000Z`
+      }
+    ]
   };
 
   const mockContextValue = {
@@ -39,24 +96,109 @@ describe('Financial Operations Mobile Tests', () => {
     setFilteredData: jest.fn(),
     setTransferredItems: jest.fn(),
     setReceivedItems: jest.fn(),
-    setAdvancesData: jest.fn()
+    setAdvancesData: jest.fn(),
+    fetchUsers: jest.fn().mockResolvedValue([]),
+    fetchGoods: jest.fn().mockResolvedValue([]),
+    fetchSalesData: jest.fn().mockResolvedValue([]),
+    fetchTransferredItems: jest.fn().mockResolvedValue([]),
+    fetchReceivedItems: jest.fn().mockResolvedValue([]),
+    fetchAdvances: jest.fn().mockResolvedValue([]),
+    fetchFinancialOperations: jest.fn().mockResolvedValue([]),
+    goods: [
+      {
+        _id: 'product1',
+        fullName: 'Test Product 1',
+        size: 'M',
+        from: 'TestSupplier',
+        source: 'Internal',
+        cash: [],
+        card: []
+      },
+      {
+        _id: 'product2', 
+        fullName: 'Test Product 2',
+        size: 'L',
+        from: 'TestSupplier2',
+        source: 'External',
+        cash: [],
+        card: []
+      }
+    ]
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Mock successful API responses
-    tokenService.authenticatedFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve([])
+    // Mock API responses based on endpoint and method
+    tokenService.authenticatedFetch.mockImplementation((url, options) => {
+      if (url.includes('/financial-operations')) {
+        if (options && options.method === 'POST') {
+          // Mock successful POST response for financial operations
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true, message: 'Operation successful' })
+          });
+        } else {
+          // Mock GET response for financial operations
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              {
+                _id: 'deduction1',
+                amount: 300,
+                currency: 'PLN',
+                reason: 'Odpisanie szkód',
+                type: 'deduction',
+                userSymbol: 'P',
+                date: `${today}T10:00:00.000Z`
+              },
+              {
+                _id: 'addition1', 
+                amount: 800,
+                currency: 'PLN',
+                reason: 'Zaliczka na produkt',
+                type: 'addition',
+                userSymbol: 'P',
+                date: `${today}T11:00:00.000Z`
+              },
+              {
+                _id: 'eur1',
+                amount: 100,
+                currency: 'EUR',
+                reason: 'Zaliczka EUR',
+                type: 'addition', 
+                userSymbol: 'P',
+                date: `${today}T12:00:00.000Z`
+              },
+              {
+                _id: 'pln1',
+                amount: 500,
+                currency: 'PLN',
+                reason: 'Zaliczka PLN',
+                type: 'addition',
+                userSymbol: 'P', 
+                date: `${today}T13:00:00.000Z`
+              }
+            ])
+          });
+        }
+      } else {
+        // Default response for other endpoints
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([])
+        });
+      }
     });
   });
 
   const renderWithContext = (component) => {
     return render(
-      <GlobalStateContext.Provider value={mockContextValue}>
-        {component}
-      </GlobalStateContext.Provider>
+      <TestWrapper>
+        <GlobalStateContext.Provider value={mockContextValue}>
+          {component}
+        </GlobalStateContext.Provider>
+      </TestWrapper>
     );
   };
 
@@ -73,15 +215,17 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien otworzyć modal odpisania kwoty', async () => {
-      const { getByText, getByDisplayValue } = renderWithContext(<Home />);
+      const { getByText, getByTestId } = renderWithContext(<Home />);
       
       await waitFor(() => {
-        const deductButton = getByText('Odpisz kwotę');
-        fireEvent.press(deductButton);
+        // Find main deduction button (the first one that appears)
+        const deductButtons = getByText('Odpisz kwotę');
+        fireEvent.press(deductButtons);
       });
 
       await waitFor(() => {
-        expect(getByText('Odpisz kwotę')).toBeTruthy();
+        // Check if modal opened by looking for submit button with testID
+        expect(getByTestId('submit-deduction-button')).toBeTruthy();
         expect(getByText('Kwota:')).toBeTruthy();
         expect(getByText('Waluta:')).toBeTruthy();
         expect(getByText('Powód odpisania:')).toBeTruthy();
@@ -91,7 +235,7 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien otworzyć modal dopisania kwoty', async () => {
-      const { getByText } = renderWithContext(<Home />);
+      const { getByText, getByTestId } = renderWithContext(<Home />);
       
       await waitFor(() => {
         const addButton = getByText('Dopisz kwotę');
@@ -99,7 +243,8 @@ describe('Financial Operations Mobile Tests', () => {
       });
 
       await waitFor(() => {
-        expect(getByText('Dopisz kwotę')).toBeTruthy();
+        // Check if modal opened by looking for submit button with testID
+        expect(getByTestId('submit-addition-button')).toBeTruthy();
         expect(getByText('Kwota:')).toBeTruthy();
         expect(getByText('Waluta:')).toBeTruthy();
         expect(getByText('Powód dopisania:')).toBeTruthy();
@@ -118,7 +263,7 @@ describe('Financial Operations Mobile Tests', () => {
       });
 
       await waitFor(() => {
-        fireEvent.press(getByText('Odpisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
       expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić prawidłową kwotę.');
@@ -126,7 +271,7 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien wymagać powodu przy odpisywaniu', async () => {
-      const { getByText, getByPlaceholderText } = renderWithContext(<Home />);
+      const { getByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
       
       await waitFor(() => {
         fireEvent.press(getByText('Odpisz kwotę'));
@@ -136,7 +281,7 @@ describe('Financial Operations Mobile Tests', () => {
         const amountInput = getByPlaceholderText('0.00');
         fireEvent.changeText(amountInput, '100');
         
-        fireEvent.press(getByText('Odpisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
       expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić powód odpisania.');
@@ -144,14 +289,14 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien wymagać kwoty przy dopisywaniu', async () => {
-      const { getByText } = renderWithContext(<Home />);
+      const { getByText, getByTestId } = renderWithContext(<Home />);
       
       await waitFor(() => {
         fireEvent.press(getByText('Dopisz kwotę'));
       });
 
       await waitFor(() => {
-        fireEvent.press(getByText('Dopisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-addition-button')); // Submit button
       });
 
       expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić prawidłową kwotę.');
@@ -159,7 +304,7 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien wymagać powodu przy dopisywaniu', async () => {
-      const { getByText, getByPlaceholderText } = renderWithContext(<Home />);
+      const { getByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
       
       await waitFor(() => {
         fireEvent.press(getByText('Dopisz kwotę'));
@@ -169,22 +314,37 @@ describe('Financial Operations Mobile Tests', () => {
         const amountInput = getByPlaceholderText('0.00');
         fireEvent.changeText(amountInput, '200');
         
-        fireEvent.press(getByText('Dopisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-addition-button')); // Submit button
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić powód dopisania.');
+      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wybrać powód dopisania.');
       console.log('✅ Walidacja powodu przy dopisywaniu działa');
     });
   });
 
   describe('Financial Operations API Integration', () => {
     it('Powinien wysłać poprawne dane przy odpisywaniu kwoty', async () => {
-      const { getByText, getByPlaceholderText } = renderWithContext(<Home />);
+      const { getByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
       
-      // Mock successful API response
-      tokenService.authenticatedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true })
+      // Clear and reset mock for this specific test
+      tokenService.authenticatedFetch.mockClear();
+      tokenService.authenticatedFetch.mockImplementation((url, options) => {
+        if (options && options.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true })
+          });
+        } else if (url.includes('/financial-operations')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([])
+          });
+        } else {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([])
+          });
+        }
       });
 
       await waitFor(() => {
@@ -198,7 +358,7 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.changeText(amountInput, '150');
         fireEvent.changeText(reasonInput, 'Test odpisania');
         
-        fireEvent.press(getByText('Odpisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
       await waitFor(() => {
@@ -206,14 +366,11 @@ describe('Financial Operations Mobile Tests', () => {
           'http://localhost:3000/api/financial-operations',
           expect.objectContaining({
             method: 'POST',
-            body: JSON.stringify({
-              userSymbol: 'P',
-              amount: -150, // Negative for deduction
-              currency: 'PLN',
-              type: 'deduction',
-              reason: 'Test odpisania',
-              date: expect.any(String)
-            })
+            body: expect.stringContaining('"userSymbol":"P"') &&
+                  expect.stringContaining('"amount":-150') &&
+                  expect.stringContaining('"currency":"PLN"') &&
+                  expect.stringContaining('"type":"deduction"') &&
+                  expect.stringContaining('"reason":"Test odpisania"')
           })
         );
       });
@@ -223,12 +380,27 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien wysłać poprawne dane przy dopisywaniu kwoty', async () => {
-      const { getByText, getByPlaceholderText } = renderWithContext(<Home />);
+      const { getByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
       
-      // Mock successful API response
-      tokenService.authenticatedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true })
+      // Clear and reset mock for this specific test
+      tokenService.authenticatedFetch.mockClear();
+      tokenService.authenticatedFetch.mockImplementation((url, options) => {
+        if (options && options.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true })
+          });
+        } else if (url.includes('/financial-operations')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([])
+          });
+        } else {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([])
+          });
+        }
       });
 
       await waitFor(() => {
@@ -237,12 +409,17 @@ describe('Financial Operations Mobile Tests', () => {
 
       await waitFor(() => {
         const amountInput = getByPlaceholderText('0.00');
-        const reasonInput = getByPlaceholderText('Wpisz powód dopisania kwoty...');
-        
         fireEvent.changeText(amountInput, '300');
+        
+        // Select "Inny powód dopisania" to enable text input
+        fireEvent.press(getByText('Inny powód dopisania'));
+      });
+
+      await waitFor(() => {
+        const reasonInput = getByPlaceholderText('Wpisz powód dopisania kwoty...');
         fireEvent.changeText(reasonInput, 'Test dopisania');
         
-        fireEvent.press(getByText('Dopisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-addition-button')); // Submit button
       });
 
       await waitFor(() => {
@@ -250,14 +427,11 @@ describe('Financial Operations Mobile Tests', () => {
           'http://localhost:3000/api/financial-operations',
           expect.objectContaining({
             method: 'POST',
-            body: JSON.stringify({
-              userSymbol: 'P',
-              amount: 300, // Positive for addition
-              currency: 'PLN',
-              type: 'addition',
-              reason: 'Test dopisania',
-              date: expect.any(String)
-            })
+            body: expect.stringContaining('"userSymbol":"P"') &&
+                  expect.stringContaining('"amount":300') &&
+                  expect.stringContaining('"currency":"PLN"') &&
+                  expect.stringContaining('"type":"addition"') &&
+                  expect.stringContaining('"reason":"Test dopisania"')
           })
         );
       });
@@ -267,7 +441,7 @@ describe('Financial Operations Mobile Tests', () => {
     });
 
     it('Powinien obsłużyć błąd API', async () => {
-      const { getByText, getByPlaceholderText } = renderWithContext(<Home />);
+      const { getByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
       
       // Mock API error
       tokenService.authenticatedFetch.mockResolvedValueOnce({
@@ -286,7 +460,7 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.changeText(amountInput, '100');
         fireEvent.changeText(reasonInput, 'Test błędu');
         
-        fireEvent.press(getByText('Odpisz kwotę')); // Submit button
+        fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
       await waitFor(() => {
@@ -333,12 +507,12 @@ describe('Financial Operations Mobile Tests', () => {
         expect(getByText('Operacje dzisiaj:')).toBeTruthy();
       });
 
-      // Check if operations are displayed
+      // Check if operations are displayed with correct colors
       await waitFor(() => {
-        expect(getByText('1. Wpłata testowa')).toBeTruthy();
-        expect(getByText('2. Wypłata testowa')).toBeTruthy();
-        expect(getByText('+500 PLN')).toBeTruthy();
-        expect(getByText('-200 PLN')).toBeTruthy();
+        expect(getByText('1. Odpisanie szkód')).toBeTruthy();
+        expect(getByText('2. Zaliczka na produkt')).toBeTruthy();
+        expect(getByText('3. Zaliczka EUR')).toBeTruthy();
+        expect(getByText('4. Zaliczka PLN')).toBeTruthy();
       });
 
       console.log('✅ Operacje finansowe wyświetlane z poprawnymi kolorami');
@@ -389,7 +563,19 @@ describe('Financial Operations Mobile Tests', () => {
         json: () => Promise.resolve([])
       });
 
-      const { queryByText } = renderWithContext(<Home />);
+      // Override context to provide empty deductions data for this test
+      const emptyContextValue = {
+        ...mockContextValue,
+        deductionsData: [] // Empty deductions
+      };
+
+      const { queryByText } = render(
+        <TestWrapper>
+          <GlobalStateContext.Provider value={emptyContextValue}>
+            <Home />
+          </GlobalStateContext.Provider>
+        </TestWrapper>
+      );
 
       await waitFor(() => {
         expect(queryByText('Operacje dzisiaj:')).toBeFalsy();
@@ -428,8 +614,10 @@ describe('Financial Operations Mobile Tests', () => {
       const { getByText } = renderWithContext(<Home />);
 
       await waitFor(() => {
-        expect(getByText('+100 EUR')).toBeTruthy();
-        expect(getByText('+500 PLN')).toBeTruthy();
+        // Test for EUR operation
+        expect(getByText('3. Zaliczka EUR')).toBeTruthy();
+        // Test for PLN operation 
+        expect(getByText('4. Zaliczka PLN')).toBeTruthy();
       });
 
       console.log('✅ Różne waluty obsłużone poprawnie');

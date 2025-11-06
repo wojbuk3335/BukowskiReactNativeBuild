@@ -26,6 +26,16 @@ jest.mock('../../services/tokenService', () => ({
 jest.spyOn(Alert, 'alert');
 
 describe('Home Simplified Tests', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Set flag to enable API calls testing for this test suite
+    window.__TESTING_API_CALLS__ = true;
+  });
+
+  afterEach(() => {
+    // Clean up flag after each test
+    delete window.__TESTING_API_CALLS__;
+  });
   const mockSalesData = [
     {
       _id: 'sale1',
@@ -85,7 +95,22 @@ describe('Home Simplified Tests', () => {
         barcode: '0010702300002',
         price: 110.00
       }
-    ]
+    ],
+    // Add missing functions that Home component needs
+    fetchUsers: jest.fn().mockResolvedValue([]),
+    fetchGoods: jest.fn().mockResolvedValue([]),
+    fetchSalesData: jest.fn().mockResolvedValue([]),
+    fetchTransferredItems: jest.fn().mockResolvedValue([]),
+    fetchReceivedItems: jest.fn().mockResolvedValue([]),
+    fetchFinancialOperations: jest.fn().mockResolvedValue([]),
+    setProducts: jest.fn(),
+    setGoods: jest.fn(),
+    products: [],
+    goods: [],
+    users: [],
+    setUsers: jest.fn(),
+    financialOperations: [],
+    setFinancialOperations: jest.fn()
   };
 
   beforeEach(() => {
