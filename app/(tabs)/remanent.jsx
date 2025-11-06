@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -34,6 +35,10 @@ const Remanent = () => {
   const [remanentPriceList, setRemanentPriceList] = useState(null);
   const [lastScannedCode, setLastScannedCode] = useState('');
   const [scanningEnabled, setScanningEnabled] = useState(true);
+  
+  // Comparison modal states
+  const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
+  const [comparisonResults, setComparisonResults] = useState(null);
 
   // Fetch remanent data
   const fetchRemanentData = async () => {
@@ -325,72 +330,66 @@ const Remanent = () => {
 
   const checkCurrentState = async () => {
     try {
-      // Fetch current state from the database for comparison
-      const response = await tokenService.authenticatedFetch(getApiUrl('/remanent/current-state'));
+      // Pobierz stan magazynowy z endpointu /state
+      const response = await tokenService.authenticatedFetch(getApiUrl('/state'));
       
       if (response.ok) {
-        const result = await response.json();
-        const currentState = result.data || [];
+        const allStateData = await response.json();
         
-        // Compare remanent data with current state
-        const missingItems = [];
-        const extraItems = [];
+        // Filtruj produkty dla aktualnego użytkownika
+        const currentState = allStateData.filter(item => item.symbol === user?.symbol);
         
-        // Check if scanned items exist in current state
-        remanentData.forEach(scannedItem => {
+        // Porównaj remanent z aktualnym stanem
+        const missingItems = []; // Produkty w stanie, ale nie w remanencie
+        const extraItems = []; // Produkty w remanencie, ale nie w stanie
+        
+        // Sprawdź co brakuje (jest w stanie, ale nie zeskanowane)
+        currentState.forEach(stateItem => {
+          const existsInRemanent = remanentData.find(remanentItem => 
+            remanentItem.code === stateItem.barcode
+          );
+          
+          if (!existsInRemanent) {
+            missingItems.push({
+              name: stateItem.fullName,
+              size: stateItem.size,
+              code: stateItem.barcode,
+              price: stateItem.price
+            });
+          }
+        });
+        
+        // Sprawdź co się nadwyżkuje (zeskanowane, ale nie ma w stanie)
+        remanentData.forEach(remanentItem => {
           const existsInState = currentState.find(stateItem => 
-            stateItem.code === scannedItem.code || 
-            stateItem.barcode === scannedItem.code
+            stateItem.barcode === remanentItem.code
           );
           
           if (!existsInState) {
-            extraItems.push(scannedItem);
+            extraItems.push({
+              name: remanentItem.name,
+              size: remanentItem.size || 'Nieznany',
+              code: remanentItem.code,
+              price: remanentItem.value
+            });
           }
         });
         
-        // Check if state items are missing from remanent
-        currentState.forEach(stateItem => {
-          const scannedMatch = remanentData.find(scannedItem => 
-            scannedItem.code === stateItem.code || 
-            scannedItem.code === stateItem.barcode
-          );
-          
-          if (!scannedMatch) {
-            missingItems.push(stateItem);
-          }
+        // Pokaż wyniki w modalu
+        console.log('🔍 Porównanie:', {
+          currentStateCount: currentState.length,
+          remanentCount: remanentData.length,
+          missingItems: missingItems,
+          extraItems: extraItems
         });
         
-        // Show comparison results
-        let message = `Sprawdzenie remanent vs stan aktualny:\n\n`;
-        message += `✅ Zeskanowane produkty: ${remanentData.length}\n`;
-        message += `📊 Produkty w stanie: ${currentState.length}\n\n`;
-        
-        if (extraItems.length > 0) {
-          message += `⚠️ Produkty zeskanowane, ale nie ma ich w stanie (${extraItems.length}):\n`;
-          extraItems.slice(0, 3).forEach(item => {
-            message += `• ${item.name} (${item.code})\n`;
-          });
-          if (extraItems.length > 3) {
-            message += `... i ${extraItems.length - 3} więcej\n`;
-          }
-          message += `\n`;
-        }
-        
-        if (missingItems.length > 0) {
-          message += `❌ Produkty w stanie, ale nie zeskanowane (${missingItems.length}):\n`;
-          missingItems.slice(0, 3).forEach(item => {
-            message += `• ${item.fullName || item.name} (${item.code || item.barcode})\n`;
-          });
-          if (missingItems.length > 3) {
-            message += `... i ${missingItems.length - 3} więcej\n`;
-          }
-        }
-        
-        if (extraItems.length === 0 && missingItems.length === 0) {
-          message += `🎉 Wszystko się zgadza! Remanent jest zgodny ze stanem.`;
-        }
-        
-        Alert.alert('Wyniki sprawdzenia', message);
+        setComparisonResults({
+          currentStateCount: currentState.length,
+          remanentCount: remanentData.length,
+          missingItems: missingItems,
+          extraItems: extraItems
+        });
+        setComparisonModalVisible(true);
         
       } else {
         console.error('❌ Failed to fetch current state:', response.status);
@@ -859,6 +858,90 @@ const Remanent = () => {
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Modal porównania remanent vs stan */}
+      <Modal
+        visible={comparisonModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={[styles.modalContainer]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Porównanie Remanent vs Stan</Text>
+            <TouchableOpacity
+              onPress={() => setComparisonModalVisible(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {comparisonResults ? (
+            <ScrollView style={styles.comparisonContent} showsVerticalScrollIndicator={false}>
+              {/* Statystyki */}
+              <View style={styles.statsContainer}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{comparisonResults.currentStateCount || 0}</Text>
+                  <Text style={styles.statLabel}>Na stanie</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{comparisonResults.remanentCount || 0}</Text>
+                  <Text style={styles.statLabel}>Zeskanowane</Text>
+                </View>
+              </View>
+
+              {/* Produkty brakujące */}
+              {comparisonResults.missingItems && comparisonResults.missingItems.length > 0 && (
+                <View style={styles.resultSection}>
+                  <Text style={styles.sectionTitle}>
+                    ❌ Brakuje ({comparisonResults.missingItems.length})
+                  </Text>
+                  <Text style={styles.sectionSubtitle}>Produkty w stanie, ale nie zeskanowane</Text>
+                  {comparisonResults.missingItems.map((item, index) => (
+                    <View key={index} style={styles.resultItem}>
+                      <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
+                      <Text style={styles.itemDetails}>
+                        {item.size || 'Brak'} • {item.code || 'Brak kodu'} • {item.price || 0} PLN
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Produkty nadwyżkowe */}
+              {comparisonResults.extraItems && comparisonResults.extraItems.length > 0 && (
+                <View style={styles.resultSection}>
+                  <Text style={styles.sectionTitle}>
+                    ⚠️ Nadwyżka ({comparisonResults.extraItems.length})
+                  </Text>
+                  <Text style={styles.sectionSubtitle}>Produkty zeskanowane, ale nie ma ich w stanie</Text>
+                  {comparisonResults.extraItems.map((item, index) => (
+                    <View key={index} style={styles.resultItem}>
+                      <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
+                      <Text style={styles.itemDetails}>
+                        {item.size || 'Brak'} • {item.code || 'Brak kodu'} • {item.price || 0} PLN
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Wszystko OK */}
+              {(!comparisonResults.missingItems || comparisonResults.missingItems.length === 0) && 
+               (!comparisonResults.extraItems || comparisonResults.extraItems.length === 0) && (
+                <View style={styles.resultSection}>
+                  <Text style={styles.successTitle}>🎉 Wszystko się zgadza!</Text>
+                  <Text style={styles.successSubtitle}>Remanent jest zgodny ze stanem magazynowym</Text>
+                </View>
+              )}
+            </ScrollView>
+          ) : (
+            <View style={styles.comparisonContent}>
+              <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>Ładowanie danych...</Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1178,6 +1261,95 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  // Styles for comparison modal
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#232533',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  comparisonContent: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: '#000000',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    backgroundColor: '#232533',
+    borderRadius: 12,
+    padding: 20,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#0d6efd',
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 4,
+  },
+  resultSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 12,
+  },
+  resultItem: {
+    backgroundColor: '#232533',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+    marginBottom: 4,
+  },
+  itemDetails: {
+    fontSize: 14,
+    color: '#888',
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#28a745',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
   },
 });
 
