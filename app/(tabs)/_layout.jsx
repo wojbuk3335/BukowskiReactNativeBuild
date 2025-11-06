@@ -13,9 +13,9 @@ const TabIcon = ({ icon, color, name, focused, customIcon }) => {
       {customIcon ? (
         <Ionicons
           name={customIcon}
-          size={29}
+          size={22}
           color={color}
-          style={{ marginBottom: 0 }}
+          style={{ marginBottom: 4 }}
         />
       ) : (
         <Image
@@ -155,6 +155,22 @@ const TabLayout = () => {
             ),
           }}
         />
+
+        <Tabs.Screen
+          name="remanent"
+          options={{
+            title: "Remanent",
+            headerShown: false,
+            tabBarIcon: ({ color, focused }) => (
+              <TabIcon
+                customIcon={focused ? "archive" : "archive-outline"}
+                color={color}
+                name="Reman"
+                focused={focused}
+              />
+            ),
+          }}
+        />
       </Tabs>
 
       <StatusBar style="light" />
@@ -166,19 +182,21 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: "center",
     justifyContent: "center",
-    width: 80,
-    paddingTop: 16,
-    height: 60,
-    gap: 8,
+    width: 70,
+    paddingTop: 12,
+    height: 56,
+    gap: 5,
   },
   icon: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     marginBottom: 4,
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 11,
     textAlign: "center",
+    minHeight: 14,
+    lineHeight: 14,
   },
   tabTextFocused: {
     fontWeight: "600",
