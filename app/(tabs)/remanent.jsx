@@ -12,6 +12,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { GlobalStateContext } from '../../context/GlobalState';
@@ -39,6 +40,7 @@ const Remanent = () => {
   // Comparison modal states
   const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
   const [comparisonResults, setComparisonResults] = useState(null);
+  const [sentCorrections, setSentCorrections] = useState(new Set()); // Zestaw wysłanych korekt
 
   // Fetch remanent data
   const fetchRemanentData = async () => {
@@ -124,6 +126,9 @@ const Remanent = () => {
         return;
       }
     }
+    
+    // Reset stanu wysłanych korekt przy rozpoczęciu nowego skanowania (bez alertu)
+    await resetSentCorrections(false);
     
     setScannedJackets([]);
     setScannerVisible(true);
@@ -330,6 +335,40 @@ const Remanent = () => {
 
   const checkCurrentState = async () => {
     try {
+      // Pytaj użytkownika czy chce zresetować korekty przed nowym sprawdzeniem
+      if (sentCorrections.size > 0) {
+        Alert.alert(
+          'Nowe sprawdzenie stanu',
+          `Masz już ${sentCorrections.size} wysłanych korekt. Czy chcesz je zresetować i móc wysłać ponownie?`,
+          [
+            {
+              text: 'Nie',
+              onPress: () => performStateCheck(),
+              style: 'cancel',
+            },
+            {
+              text: 'Tak, resetuj',
+              onPress: async () => {
+                await resetSentCorrections(false); // Reset bez alertu
+                performStateCheck();
+              },
+            },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        performStateCheck();
+      }
+    } catch (error) {
+      console.error('❌ Error in checkCurrentState:', error);
+      Alert.alert('Błąd', 'Wystąpił błąd podczas sprawdzania stanu');
+    }
+  };
+
+  const performStateCheck = async () => {
+    try {
+      // NIE resetuj wysłanych korekt - pozostaw je zapamiętane
+      
       // Pobierz stan magazynowy z endpointu /state
       const response = await tokenService.authenticatedFetch(getApiUrl('/state'));
       
@@ -401,9 +440,129 @@ const Remanent = () => {
     }
   };
 
+  // Funkcja do wysyłania korekty
+  const sendToCorrections = async (item, errorType) => {
+    try {
+      // Sprawdź czy już wysłane
+      const correctionKey = `${item.code}_${errorType}`;
+      if (sentCorrections.has(correctionKey)) {
+        // Korekta już wysłana - nie rób nic
+        return;
+      }
+
+      // Określ typ operacji na podstawie błędu
+      const attemptedOperation = errorType === 'MISSING_IN_STATE' ? 'REMANENT_BRAK' : 'REMANENT_NADWYŻKA';
+      
+      const correctionData = {
+        fullName: item.name,
+        size: item.size,
+        barcode: item.code,
+        sellingPoint: user?.sellingPoint || user?.location || user?.symbol || 'Nieznany punkt', // sellingPoint PIERWSZY - to jest nazwa punktu!
+        symbol: user?.symbol || 'Nieznany',
+        errorType: errorType, // 'MISSING_IN_STATE' lub 'EXTRA_IN_REMANENT'
+        description: errorType === 'MISSING_IN_STATE' 
+          ? `Remanent - Brak: Produkt jest w stanie, ale nie został zeskanowany podczas remanentu` 
+          : `Remanent - Nadwyżka: Produkt został zeskanowany, ale nie ma go w stanie magazynowym`,
+        attemptedOperation: attemptedOperation, // 'REMANENT_BRAK' lub 'REMANENT_NADWYŻKA'
+        originalPrice: item.price,
+        discountPrice: item.price,
+        transactionId: `REMANENT_${user?.symbol || 'UNKNOWN'}_${Date.now()}`
+      };
+
+      console.log('📤 Wysyłanie korekty:', correctionData);
+
+      const response = await tokenService.authenticatedFetch(getApiUrl('/corrections'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(correctionData)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Korekta wysłana:', result);
+        
+        // Dodaj do wysłanych korekt i zapisz do localStorage
+        const newSentCorrections = new Set(sentCorrections).add(correctionKey);
+        setSentCorrections(newSentCorrections);
+        await saveSentCorrections(newSentCorrections);
+        
+        // Usuń alert - tylko zmień wygląd przycisku
+      } else {
+        console.error('❌ Błąd wysyłania korekty:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Error details:', errorText);
+        Alert.alert('Błąd', 'Nie udało się wysłać korekty do systemu');
+      }
+    } catch (error) {
+      console.error('❌ Error sending correction:', error);
+      Alert.alert('Błąd', 'Wystąpił błąd podczas wysyłania korekty');
+    }
+  };
+
+  // Funkcja sprawdzająca czy korekta została już wysłana
+  const isCorrectionSent = (item, errorType) => {
+    const correctionKey = `${item.code}_${errorType}`;
+    return sentCorrections.has(correctionKey);
+  };
+
+  // Funkcje do zarządzania trwałym przechowywaniem wysłanych korekt
+  const loadSentCorrections = async () => {
+    try {
+      const userKey = `sentCorrections_${user?.symbol || 'unknown'}`;
+      const savedCorrections = await AsyncStorage.getItem(userKey);
+      if (savedCorrections) {
+        const parsed = JSON.parse(savedCorrections);
+        setSentCorrections(new Set(parsed));
+        console.log('📥 Załadowano wysłane korekty:', parsed.length);
+      }
+    } catch (error) {
+      console.error('❌ Błąd ładowania wysłanych korekt:', error);
+    }
+  };
+
+  const saveSentCorrections = async (corrections) => {
+    try {
+      const userKey = `sentCorrections_${user?.symbol || 'unknown'}`;
+      const correctionsArray = Array.from(corrections);
+      await AsyncStorage.setItem(userKey, JSON.stringify(correctionsArray));
+      console.log('💾 Zapisano wysłane korekty:', correctionsArray.length);
+    } catch (error) {
+      console.error('❌ Błąd zapisywania wysłanych korekt:', error);
+    }
+  };
+
+  // Funkcja resetowania wysłanych korekt (do debugowania)
+  const resetSentCorrections = async (showAlert = true) => {
+    try {
+      const userKey = `sentCorrections_${user?.symbol || 'unknown'}`;
+      await AsyncStorage.removeItem(userKey);
+      setSentCorrections(new Set());
+      console.log('🗑️ Zresetowano wysłane korekty');
+      
+      // Pokaż krótkie potwierdzenie tylko jeśli showAlert = true
+      if (showAlert) {
+        Alert.alert(
+          'Reset wykonany',
+          'Wszystkie korekty mogą być teraz wysłane ponownie',
+          [{ text: 'OK' }],
+          { cancelable: true }
+        );
+      }
+    } catch (error) {
+      console.error('❌ Błąd resetowania korekt:', error);
+    }
+  };
+
   useEffect(() => {
     fetchRemanentData();
     fetchRemanentPriceList();
+    
+    // Załaduj wysłane korekty dla tego użytkownika
+    if (user?.symbol) {
+      loadSentCorrections();
+    }
     
     // Ensure lookup data is loaded
     const loadLookupData = async () => {
@@ -423,7 +582,7 @@ const Remanent = () => {
     };
     
     loadLookupData();
-  }, []);
+  }, [user?.symbol]); // Dodano user?.symbol jako dependency
 
   // Helper function to build jacket name from barcode
   const buildJacketNameFromBarcode = (barcodeData) => {
@@ -663,7 +822,7 @@ const Remanent = () => {
         
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Punkt sprzedaży:</Text>
-          <Text style={styles.detailValue}>{user?.symbol || user?.location || 'Nieznany punkt'}</Text>
+          <Text style={styles.detailValue}>{user?.sellingPoint || user?.location || user?.symbol || 'Nieznany punkt'}</Text>
         </View>
       </View>
 
@@ -724,8 +883,20 @@ const Remanent = () => {
   return (
     <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Remanenty</Text>
-        <Text style={styles.headerSubtitle}>Stan magazynowy</Text>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>Remanenty</Text>
+            <Text style={styles.headerSubtitle}>Stan magazynowy</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.resetButton}
+            onPress={resetSentCorrections}
+            title="Resetuj wysłane korekty"
+          >
+            <Ionicons name="refresh" size={20} color="white" />
+            <Text style={styles.resetButtonText}>Reset korekt</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {remanentData.length === 0 ? (
@@ -899,10 +1070,28 @@ const Remanent = () => {
                   <Text style={styles.sectionSubtitle}>Produkty w stanie, ale nie zeskanowane</Text>
                   {comparisonResults.missingItems.map((item, index) => (
                     <View key={index} style={styles.resultItem}>
-                      <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
-                      <Text style={styles.itemDetails}>
-                        {item.size || 'Brak'} • {item.code || 'Brak kodu'} • {item.price || 0} PLN
-                      </Text>
+                      <View style={styles.resultItemContent}>
+                        <Text style={styles.itemName}>
+                          {item.name && item.size ? `${item.name} ${item.size}` : item.name || 'Nieznany produkt'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.sendCorrectionButton, 
+                          isCorrectionSent(item, 'MISSING_IN_STATE') && styles.sentButton
+                        ]}
+                        onPress={() => sendToCorrections(item, 'MISSING_IN_STATE')}
+                        disabled={isCorrectionSent(item, 'MISSING_IN_STATE')}
+                      >
+                        <Ionicons 
+                          name={isCorrectionSent(item, 'MISSING_IN_STATE') ? "checkmark" : "send"} 
+                          size={16} 
+                          color="white" 
+                        />
+                        <Text style={styles.sendButtonText}>
+                          {isCorrectionSent(item, 'MISSING_IN_STATE') ? 'Wysłano' : 'Wyślij do korekt'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
@@ -917,10 +1106,26 @@ const Remanent = () => {
                   <Text style={styles.sectionSubtitle}>Produkty zeskanowane, ale nie ma ich w stanie</Text>
                   {comparisonResults.extraItems.map((item, index) => (
                     <View key={index} style={styles.resultItem}>
-                      <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
-                      <Text style={styles.itemDetails}>
-                        {item.size || 'Brak'} • {item.code || 'Brak kodu'} • {item.price || 0} PLN
-                      </Text>
+                      <View style={styles.resultItemContent}>
+                        <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.sendCorrectionButton, 
+                          isCorrectionSent(item, 'EXTRA_IN_REMANENT') && styles.sentButton
+                        ]}
+                        onPress={() => sendToCorrections(item, 'EXTRA_IN_REMANENT')}
+                        disabled={isCorrectionSent(item, 'EXTRA_IN_REMANENT')}
+                      >
+                        <Ionicons 
+                          name={isCorrectionSent(item, 'EXTRA_IN_REMANENT') ? "checkmark" : "send"} 
+                          size={16} 
+                          color="white" 
+                        />
+                        <Text style={styles.sendButtonText}>
+                          {isCorrectionSent(item, 'EXTRA_IN_REMANENT') ? 'Wysłano' : 'Wyślij do korekt'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
@@ -952,6 +1157,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#232533',
   },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -961,6 +1171,20 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#CDCDE0',
+  },
+  resetButton: {
+    backgroundColor: '#6c757d',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  resetButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -1328,6 +1552,31 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  resultItemContent: {
+    flex: 1,
+  },
+  sendCorrectionButton: {
+    backgroundColor: '#dc3545',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginLeft: 12,
+  },
+  sentButton: {
+    backgroundColor: '#28a745',
+    opacity: 0.7,
+  },
+  sendButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   itemName: {
     fontSize: 16,
