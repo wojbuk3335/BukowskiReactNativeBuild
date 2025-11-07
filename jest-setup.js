@@ -16,6 +16,32 @@ jest.mock('expo-router', () => ({
   },
 }));
 
+// Mock tokenService
+jest.mock('./services/tokenService', () => {
+  const mockTokenService = {
+    getTokens: jest.fn(() => Promise.resolve({ accessToken: null, refreshToken: null })),
+    setTokens: jest.fn(() => Promise.resolve()),
+    clearTokens: jest.fn(() => Promise.resolve()),
+    parseJWT: jest.fn(() => null),
+    isTokenExpiring: jest.fn(() => false),
+    refreshAccessToken: jest.fn(() => Promise.resolve('mock-token')),
+    getValidAccessToken: jest.fn(() => Promise.resolve('mock-token')),
+    getAuthHeaders: jest.fn(() => Promise.resolve({
+      'Authorization': 'Bearer mock-token',
+      'Content-Type': 'application/json'
+    })),
+    authenticatedFetch: jest.fn(() => Promise.resolve(new Response('{}', { status: 200 }))),
+    isAuthenticated: jest.fn(() => Promise.resolve(false)),
+    logout: jest.fn(() => Promise.resolve()),
+    setAutoLogoutCallback: jest.fn(),
+    startAutoLogoutMonitoring: jest.fn(),
+    performAutoLogout: jest.fn(() => Promise.resolve()),
+    clearAutoLogoutTimer: jest.fn(),
+    stopAutoLogoutMonitoring: jest.fn(),
+  };
+  return { __esModule: true, default: mockTokenService };
+});
+
 // Global cleanup for preventing memory leaks
 global.beforeEach(() => {
   // Clear all timers

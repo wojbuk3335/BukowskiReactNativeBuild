@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router"; // Import router
 import React, { createContext, useState } from "react";
-import { getApiUrl } from "../config/api"; // Import API config
+import { getApiUrl, API_CONFIG } from "../config/api"; // Import API config
 import tokenService from "../services/tokenService"; // Import token service
 import AuthErrorHandler from "../utils/authErrorHandler"; // Import auth error handler
 
@@ -24,6 +24,11 @@ export const GlobalStateProvider = ({ children }) => {
 
     // Helper function for fetch with timeout and authentication
     const fetchWithTimeout = async (url, timeout = 10000) => {
+        // Skip fetch during logout
+        if (tokenService.isLoggingOut) {
+            throw new Error('Request cancelled: logout in progress');
+        }
+        
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
@@ -36,7 +41,9 @@ export const GlobalStateProvider = ({ children }) => {
             
             // Check if response indicates auth error
             if (response && (response.status === 401 || response.status === 403)) {
-                await AuthErrorHandler.handleResponseError(response, 'Global State Fetch');
+                if (!tokenService.isLoggingOut) {
+                    await AuthErrorHandler.handleResponseError(response, 'Global State Fetch');
+                }
                 throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
             }
             
@@ -47,11 +54,13 @@ export const GlobalStateProvider = ({ children }) => {
                 throw new Error('Request timeout - no response from server after 10 seconds');
             }
             
-            // Handle auth errors with automatic redirect
-            const wasHandled = await AuthErrorHandler.handleFetchError(error, 'Global State Fetch');
-            if (wasHandled) {
-                // Auth error was handled, still throw to let caller know request failed
-                throw new Error('Authentication error - redirected to login');
+            // Handle auth errors with automatic redirect (but not during logout)
+            if (!tokenService.isLoggingOut) {
+                const wasHandled = await AuthErrorHandler.handleFetchError(error, 'Global State Fetch');
+                if (wasHandled) {
+                    // Auth error was handled, still throw to let caller know request failed
+                    throw new Error('Authentication error - redirected to login');
+                }
             }
             
             throw error;
@@ -244,8 +253,12 @@ export const GlobalStateProvider = ({ children }) => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || "Login failed");
+                try {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || "Login failed");
+                } catch (parseError) {
+                    throw new Error(`Login failed with status ${response.status}: ${response.statusText}`);
+                }
             }
 
             const data = await response.json();
@@ -257,13 +270,15 @@ export const GlobalStateProvider = ({ children }) => {
                 await tokenService.setTokens(accessToken, refreshToken);
             }
             
+            // Wait a bit to ensure AsyncStorage write is completed
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             setUser(data); // Update user state
             setIsLoggedIn(true); // Set login status to true
             await AsyncStorage.setItem("user", JSON.stringify(data)); // Save user data locally
 
             return data; // Return user data
         } catch (error) {
-            // Don't log the error to console - it will be handled by the UI
             throw error;
         } finally {
             setIsLoading(false); // Set loading to false
@@ -292,6 +307,12 @@ export const GlobalStateProvider = ({ children }) => {
 
     const logout = async () => {
         try {
+            // Set logout flag to prevent new requests
+            tokenService.isLoggingOut = true;
+            
+            // Stop auto-logout monitoring first
+            tokenService.stopAutoLogoutMonitoring();
+            
             // Clear tokens using tokenService
             await tokenService.logout();
             
@@ -307,10 +328,19 @@ export const GlobalStateProvider = ({ children }) => {
             setWallets([]); // Clear wallets
             setMatchedItems([]); // Clear matched items
             setTransferredJackets([]); // Clear transferred jackets
+            
+            // Small delay to let pending requests fail quietly
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
             await AsyncStorage.clear(); // Clear all AsyncStorage data
             router.replace("/"); // Redirect to the root route
         } catch (error) {
             // Silently handle logout errors
+        } finally {
+            // Reset logout flag after a delay to let everything settle
+            setTimeout(() => {
+                tokenService.isLoggingOut = false;
+            }, 500);
         }
     };
 
@@ -340,6 +370,28 @@ export const GlobalStateProvider = ({ children }) => {
 
         return filteredUsers;
     };
+
+    // 🧪 AUTO-LOGOUT: Setup automatic logout callback
+    React.useEffect(() => {
+        // Set up auto-logout callback
+        const handleAutoLogout = async () => {
+            // Silent logout without alert
+            await logout();
+        };
+
+        // Register the callback with tokenService
+        tokenService.setAutoLogoutCallback(handleAutoLogout);
+
+        // Start monitoring if user is already logged in
+        if (isLoggedIn && user) {
+            tokenService.startAutoLogoutMonitoring();
+        }
+
+        // Cleanup
+        return () => {
+            tokenService.clearAutoLogoutTimer();
+        };
+    }, [isLoggedIn, user]);
 
     React.useEffect(() => {
         // Nie pobieramy danych przy inicjalizacji - będą pobierane w zakładce Create

@@ -7,6 +7,9 @@ class TokenService {
     constructor() {
         this.refreshPromise = null; // Prevent multiple refresh requests
         this.isRefreshingToken = false;
+        this.autoLogoutTimer = null; // Timer for automatic logout
+        this.onAutoLogout = null; // Callback for automatic logout
+        this.isLoggingOut = false; // Flag to indicate logout in progress
     }
 
     // Get tokens from AsyncStorage
@@ -16,7 +19,7 @@ class TokenService {
             const refreshToken = await AsyncStorage.getItem('BukowskiRefreshToken');
             return { accessToken, refreshToken };
         } catch (error) {
-            console.error('Error getting tokens from AsyncStorage:', error);
+            console.error('❌ TOKEN SERVICE: Error getting tokens from AsyncStorage:', error);
             return { accessToken: null, refreshToken: null };
         }
     }
@@ -30,14 +33,18 @@ class TokenService {
                 // Also store expiry time for proactive refresh
                 const payload = this.parseJWT(accessToken);
                 if (payload && payload.exp) {
-                    await AsyncStorage.setItem('BukowskiTokenExpiry', (payload.exp * 1000).toString());
+                    const expiryTime = payload.exp * 1000;
+                    await AsyncStorage.setItem('BukowskiTokenExpiry', expiryTime.toString());
                 }
+                
+                // 🧪 AUTO-LOGOUT: Start monitoring after setting new token
+                this.startAutoLogoutMonitoring();
             }
             if (refreshToken) {
                 await AsyncStorage.setItem('BukowskiRefreshToken', refreshToken);
             }
         } catch (error) {
-            console.error('Error storing tokens in AsyncStorage:', error);
+            console.error('❌ TOKEN SERVICE: Error storing tokens:', error);
         }
     }
 
@@ -120,12 +127,12 @@ class TokenService {
     }
 
     // Check if token is expired or will expire soon
-    isTokenExpiring(token, bufferMinutes = 1) {
+    isTokenExpiring(token, bufferSeconds = 300) { // Default 5 minutes buffer for production
         const payload = this.parseJWT(token);
         if (!payload || !payload.exp) return true;
         
         const expiryTime = payload.exp * 1000; // Convert to ms
-        const bufferTime = bufferMinutes * 60 * 1000; // Buffer in ms
+        const bufferTime = bufferSeconds * 1000; // Buffer in ms
         const now = Date.now();
         
         return now >= (expiryTime - bufferTime);
@@ -198,12 +205,15 @@ class TokenService {
         
         if (!accessToken) {
             const error = new Error('No access token available');
-            await AuthErrorHandler.handleAuthError(error, 'Get Access Token');
+            // Don't handle auth error during logout process to avoid unnecessary redirects
+            if (!this.isLoggingOut) {
+                await AuthErrorHandler.handleAuthError(error, 'Get Access Token');
+            }
             throw error;
         }
 
-        // Check if token is expiring soon
-        const isExpiring = this.isTokenExpiring(accessToken);
+        // Check if token is expiring soon (use 5 minutes buffer for production)
+        const isExpiring = this.isTokenExpiring(accessToken, 300); // 5 minutes in seconds
         
         if (isExpiring) {
             try {
@@ -229,8 +239,8 @@ class TokenService {
                 'Content-Type': 'application/json'
             };
         } catch (error) {
-            // Only log errors in non-test environment
-            if (typeof jest === 'undefined') {
+            // Only log errors in non-test environment and not during logout process
+            if (typeof jest === 'undefined' && error.message !== 'No access token available') {
                 console.error('❌ getAuthHeaders error:', error);
             }
             // Return headers without authorization if token is not available
@@ -243,6 +253,11 @@ class TokenService {
     // Enhanced fetch function with automatic token handling  
     async authenticatedFetch(url, options = {}) {
         try {
+            // Skip fetch during logout to avoid unnecessary errors
+            if (this.isLoggingOut) {
+                throw new Error('Authentication failed: logout in progress');
+            }
+            
             // Get auth headers
             const authHeaders = await this.getAuthHeaders();
             
@@ -259,7 +274,7 @@ class TokenService {
             });
 
             // If we get 401, try to refresh token and retry once
-            if (response.status === 401 && !options._retry) {
+            if (response.status === 401 && !options._retry && !this.isLoggingOut) {
                 // Handle auth response error
                 const wasHandled = await AuthErrorHandler.handleResponseError(response, 'Authenticated Fetch');
                 if (wasHandled) {
@@ -283,19 +298,21 @@ class TokenService {
                     }
                 } catch (refreshError) {
                     // Refresh failed, clear tokens
-                    await this.clearTokens();
-                    await AuthErrorHandler.handleAuthError(refreshError, 'Fetch Retry');
+                    if (!this.isLoggingOut) {
+                        await this.clearTokens();
+                        await AuthErrorHandler.handleAuthError(refreshError, 'Fetch Retry');
+                    }
                     throw refreshError;
                 }
             }
 
             return response;
         } catch (error) {
-            // Handle auth errors with automatic redirect
-            const wasHandled = await AuthErrorHandler.handleFetchError(error, 'Authenticated Fetch');
+            // Handle auth errors with automatic redirect (but not during logout)
+            const wasHandled = !this.isLoggingOut ? await AuthErrorHandler.handleFetchError(error, 'Authenticated Fetch') : true;
             
-            // Only log errors in non-test environment if not auth-related
-            if (typeof jest === 'undefined' && !wasHandled) {
+            // Suppress all errors during logout - they're just noise
+            if (!this.isLoggingOut && typeof jest === 'undefined' && !wasHandled) {
                 console.error('❌ authenticatedFetch error:', error);
             }
             throw error;
@@ -314,6 +331,8 @@ class TokenService {
 
     // Manual logout
     async logout() {
+        this.isLoggingOut = true; // Set logout flag
+        
         const { refreshToken } = await this.getTokens();
         
         // Inform server about logout (best effort)
@@ -333,6 +352,111 @@ class TokenService {
         }
 
         await this.clearTokens();
+        this.clearAutoLogoutTimer(); // Clear timer on manual logout
+        this.isLoggingOut = false; // Clear logout flag
+    }
+
+    // 🧪 AUTO-LOGOUT: Set callback for automatic logout
+    setAutoLogoutCallback(callback) {
+        this.onAutoLogout = callback;
+    }
+
+    // 🧪 AUTO-LOGOUT: Start monitoring token expiration
+    startAutoLogoutMonitoring() {
+        this.clearAutoLogoutTimer(); // Clear any existing timer
+        
+        const checkTokenExpiration = async () => {
+            try {
+                const { accessToken } = await this.getTokens();
+                
+                if (!accessToken) {
+                    return;
+                }
+
+                const payload = this.parseJWT(accessToken);
+                if (!payload || !payload.exp) {
+                    await this.performAutoLogout();
+                    return;
+                }
+
+                const expiryTime = payload.exp * 1000; // Convert to ms
+                const now = Date.now();
+                const timeLeft = expiryTime - now;
+
+                // Only log when less than 1 hour left to avoid spam
+                if (timeLeft < 3600000) { // Less than 1 hour
+                    const hours = Math.floor(timeLeft / 3600000);
+                    const minutes = Math.floor((timeLeft % 3600000) / 60000);
+                    const seconds = Math.floor((timeLeft % 60000) / 1000);
+                    
+                    if (hours > 0) {
+                        console.log(`🧪 Time left: ${hours}h ${minutes}m`);
+                    } else if (minutes > 0) {
+                        console.log(`🧪 Time left: ${minutes}m ${seconds}s`);
+                    } else {
+                        console.log(`🧪 Time left: ${seconds}s`);
+                    }
+                }
+
+                if (timeLeft <= 0) {
+                    await this.performAutoLogout();
+                    return;
+                }
+
+                // Smart check intervals based on time left
+                let nextCheckIn;
+                if (timeLeft > 3600000) { // More than 1 hour - check every 10 minutes
+                    nextCheckIn = 600000;
+                } else if (timeLeft > 300000) { // More than 5 minutes - check every minute
+                    nextCheckIn = 60000;
+                } else if (timeLeft > 30000) { // More than 30 seconds - check every 10 seconds
+                    nextCheckIn = 10000;
+                } else { // Last 30 seconds - check every second
+                    nextCheckIn = 1000;
+                }
+                
+                this.autoLogoutTimer = setTimeout(checkTokenExpiration, nextCheckIn);
+
+            } catch (error) {
+                console.error('🧪 AUTO-LOGOUT: Error checking token:', error);
+                // On error, check again in 5 seconds
+                this.autoLogoutTimer = setTimeout(checkTokenExpiration, 5000);
+            }
+        };
+
+        // Start monitoring
+        checkTokenExpiration();
+    }
+
+    // 🧪 AUTO-LOGOUT: Perform automatic logout
+    async performAutoLogout() {
+        try {
+            this.isLoggingOut = true; // Set logout flag
+            await this.clearTokens();
+            this.clearAutoLogoutTimer();
+            
+            // Call the callback if set
+            if (this.onAutoLogout) {
+                this.onAutoLogout();
+            }
+        } catch (error) {
+            console.error('🧪 AUTO-LOGOUT: Error during automatic logout:', error);
+        } finally {
+            this.isLoggingOut = false; // Clear logout flag
+        }
+    }
+
+    // 🧪 AUTO-LOGOUT: Clear the auto logout timer
+    clearAutoLogoutTimer() {
+        if (this.autoLogoutTimer) {
+            clearTimeout(this.autoLogoutTimer);
+            this.autoLogoutTimer = null;
+        }
+    }
+
+    // 🧪 AUTO-LOGOUT: Stop monitoring (call when app goes to background)
+    stopAutoLogoutMonitoring() {
+        this.clearAutoLogoutTimer();
     }
 }
 

@@ -12,6 +12,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -41,6 +42,239 @@ const Remanent = () => {
   const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
   const [comparisonResults, setComparisonResults] = useState(null);
   const [sentCorrections, setSentCorrections] = useState(new Set()); // Zestaw wysłanych korekt
+
+  // Assortment filter states
+  const [assortmentFilter, setAssortmentFilter] = useState(''); // Filtr asortymentu
+  const [availableAssortments, setAvailableAssortments] = useState([]); // Dostępne asortymenty
+  const [filteredRemanentData, setFilteredRemanentData] = useState([]); // Przefiltrowane dane
+
+  // Advanced filter modal states
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    assortment: '',
+    color: '',
+    size: ''
+  });
+  const [availableColors, setAvailableColors] = useState([]);
+  const [availableSizes, setAvailableSizes] = useState([]);
+
+  // Progress tracking states
+  const [scanProgress, setScanProgress] = useState({
+    totalExpected: 0,
+    totalScanned: 0,
+    uniqueScanned: 0,
+    percentage: 0
+  });
+  const [scanStartTime, setScanStartTime] = useState(null);
+
+  // Extract available assortments, colors, and sizes from remanent data
+  useEffect(() => {
+    if (remanentData && remanentData.length > 0) {
+      // Extract assortments (first word of product name)
+      const assortments = [...new Set(remanentData.map(item => {
+        const name = item.name || '';
+        return name.split(' ')[0];
+      }).filter(name => name))].sort();
+      
+      // Extract colors (second word of product name, if exists)
+      const colors = [...new Set(remanentData.map(item => {
+        const name = item.name || '';
+        const parts = name.split(' ');
+        return parts.length > 1 ? parts[1] : '';
+      }).filter(color => color && color !== 'XS' && color !== 'S' && color !== 'M' && color !== 'L' && color !== 'XL' && color !== 'XXL'))].sort();
+      
+      // Extract sizes (look for size patterns)
+      const sizes = [...new Set(remanentData.map(item => {
+        const name = item.name || '';
+        const sizeMatch = name.match(/\b(XS|S|M|L|XL|XXL|\d+)\b/);
+        return sizeMatch ? sizeMatch[0] : '';
+      }).filter(size => size))].sort();
+      
+      setAvailableAssortments(assortments);
+      setAvailableColors(colors);
+      setAvailableSizes(sizes);
+    } else {
+      // Fallback: try to get filter options from state endpoint
+      fetchFilterOptionsFromState();
+    }
+  }, [remanentData]);
+
+  // Fallback function to get filter options from state when no remanent data exists
+  const fetchFilterOptionsFromState = async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/state'));
+      if (response.ok) {
+        const allStateData = await response.json();
+        const currentState = allStateData.filter(item => item.symbol === user?.symbol);
+        
+        // Extract unique assortments, colors, and sizes from state
+        const assortments = [...new Set(currentState.map(item => {
+          const fullName = item.fullName || item.name || '';
+          return fullName.split(' ')[0];
+        }).filter(name => name && name.length > 1))].sort();
+        
+        const colors = [...new Set(currentState.map(item => {
+          const fullName = item.fullName || item.name || '';
+          const parts = fullName.split(' ');
+          return parts.length > 1 ? parts[1] : '';
+        }).filter(color => color && color !== 'XS' && color !== 'S' && color !== 'M' && color !== 'L' && color !== 'XL' && color !== 'XXL'))].sort();
+        
+        const sizes = [...new Set(currentState.map(item => {
+          const fullName = item.fullName || item.name || '';
+          const sizeMatch = fullName.match(/\b(XS|S|M|L|XL|XXL|\d+)\b/);
+          return sizeMatch ? sizeMatch[0] : '';
+        }).filter(size => size))].sort();
+        
+        console.log('📝 Fallback options from state - assortments:', assortments, 'colors:', colors, 'sizes:', sizes);
+        setAvailableAssortments(assortments);
+        setAvailableColors(colors);
+        setAvailableSizes(sizes);
+      }
+    } catch (error) {
+      // Ultimate fallback - common options
+      setAvailableAssortments(['ANETA', 'BARBARA', 'CLAUDIA', 'DIANA', 'ELENA']);
+      setAvailableColors(['CZARNY', 'GRANATOWY', 'BRĄZOWY', 'BEŻOWY', 'CZERWONY']);
+      setAvailableSizes(['XS', 'S', 'M', 'L', 'XL', 'XXL']);
+    }
+  };
+
+  // Filter remanent data based on advanced filters
+  useEffect(() => {
+    if (!remanentData || remanentData.length === 0) {
+      setFilteredRemanentData([]);
+      return;
+    }
+
+    let filtered = remanentData;
+
+    // Apply legacy assortment filter (for backward compatibility)
+    if (assortmentFilter && assortmentFilter !== '') {
+      filtered = filtered.filter(item => 
+        item.name && item.name.toLowerCase().includes(assortmentFilter.toLowerCase())
+      );
+    }
+
+    // Apply advanced filters
+    if (advancedFilters.assortment && advancedFilters.assortment !== '') {
+      filtered = filtered.filter(item => {
+        const name = item.name || '';
+        return name.toLowerCase().includes(advancedFilters.assortment.toLowerCase());
+      });
+    }
+
+    if (advancedFilters.color && advancedFilters.color !== '') {
+      filtered = filtered.filter(item => {
+        const name = item.name || '';
+        return name.toLowerCase().includes(advancedFilters.color.toLowerCase());
+      });
+    }
+
+    if (advancedFilters.size && advancedFilters.size !== '') {
+      filtered = filtered.filter(item => {
+        const name = item.name || '';
+        return name.toLowerCase().includes(advancedFilters.size.toLowerCase());
+      });
+    }
+
+    setFilteredRemanentData(filtered);
+  }, [remanentData, assortmentFilter, advancedFilters]);
+
+  // Calculate scan progress based on current state and scanned items
+  useEffect(() => {
+    const calculateProgress = async () => {
+      try {
+        // Get current state to know what should be scanned
+        const response = await tokenService.authenticatedFetch(getApiUrl('/state'));
+        if (response.ok) {
+          const allStateData = await response.json();
+          let expectedItems = allStateData.filter(item => item.symbol === user?.symbol);
+          
+          // Apply filters to expected items (same as in performStateCheck)
+          if (advancedFilters.assortment || advancedFilters.color || advancedFilters.size) {
+            expectedItems = expectedItems.filter(item => {
+              const fullName = item.fullName || item.name || '';
+              let matches = true;
+              
+              if (advancedFilters.assortment) {
+                matches = matches && fullName.toLowerCase().includes(advancedFilters.assortment.toLowerCase());
+              }
+              if (advancedFilters.color) {
+                matches = matches && fullName.toLowerCase().includes(advancedFilters.color.toLowerCase());
+              }
+              if (advancedFilters.size) {
+                matches = matches && fullName.toLowerCase().includes(advancedFilters.size.toLowerCase());
+              }
+              
+              return matches;
+            });
+          } else if (assortmentFilter && assortmentFilter !== '') {
+            expectedItems = expectedItems.filter(item => {
+              const fullName = item.fullName || item.name || '';
+              return fullName.toLowerCase().includes(assortmentFilter.toLowerCase());
+            });
+          }
+
+          // Count unique scanned items (group by barcode)
+          const scannedGroups = {};
+          filteredRemanentData.forEach(item => {
+            scannedGroups[item.code] = true;
+          });
+          const uniqueScanned = Object.keys(scannedGroups).length;
+          
+          const totalExpected = expectedItems.length;
+          const totalScanned = filteredRemanentData.length;
+          const percentage = totalExpected > 0 ? Math.round((uniqueScanned / totalExpected) * 100) : 0;
+          
+          setScanProgress({
+            totalExpected,
+            totalScanned,
+            uniqueScanned,
+            percentage
+          });
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    };
+
+    if (user?.symbol) {
+      calculateProgress();
+    }
+  }, [filteredRemanentData, advancedFilters, assortmentFilter, user?.symbol]);
+
+  // Initialize scan start time
+  useEffect(() => {
+    if (filteredRemanentData.length > 0 && !scanStartTime) {
+      setScanStartTime(new Date());
+    } else if (filteredRemanentData.length === 0 && scanStartTime) {
+      setScanStartTime(null);
+    }
+  }, [filteredRemanentData.length, scanStartTime]);
+
+  // Timer for real-time updates
+  useEffect(() => {
+    let interval;
+    if (scanStartTime) {
+      interval = setInterval(() => {
+        // Force re-render to update timer display
+        setScanProgress(prev => ({ ...prev }));
+      }, 1000);
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [scanStartTime]);
+
+  // Format elapsed time
+  const formatElapsedTime = () => {
+    if (!scanStartTime) return '00:00';
+    const elapsed = new Date() - scanStartTime;
+    const minutes = Math.floor(elapsed / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
 
   // Fetch remanent data
   const fetchRemanentData = async () => {
@@ -78,17 +312,13 @@ const Remanent = () => {
         }
         
         setRemanentData(flattenedItems);
-        console.log('✅ Remanent data loaded from API:', flattenedItems.length, 'items');
       } else {
         // Start with empty list - only scanned items will be added
         setRemanentData([]);
-        console.log('📝 Starting with empty remanent list');
       }
     } catch (error) {
-      console.error('❌ Error fetching remanent data:', error);
       // Start with empty list on error
       setRemanentData([]);
-      console.log('📝 Using empty remanent list due to error');
     } finally {
       setLoading(false);
     }
@@ -161,6 +391,48 @@ const Remanent = () => {
     // Get jacket name from barcode
     const jacketName = await getJacketNameFromBarcode(data);
 
+    // Check if advanced filters are active and if jacket matches them
+    const activeFilters = [];
+    let shouldBlock = false;
+    
+    if (advancedFilters.assortment || advancedFilters.color || advancedFilters.size) {
+      // Check advanced filters
+      if (advancedFilters.assortment && (!jacketName || !jacketName.toLowerCase().includes(advancedFilters.assortment.toLowerCase()))) {
+        activeFilters.push(`Asortyment: ${advancedFilters.assortment}`);
+        shouldBlock = true;
+      }
+      if (advancedFilters.color && (!jacketName || !jacketName.toLowerCase().includes(advancedFilters.color.toLowerCase()))) {
+        activeFilters.push(`Kolor: ${advancedFilters.color}`);
+        shouldBlock = true;
+      }
+      if (advancedFilters.size && (!jacketName || !jacketName.toLowerCase().includes(advancedFilters.size.toLowerCase()))) {
+        activeFilters.push(`Rozmiar: ${advancedFilters.size}`);
+        shouldBlock = true;
+      }
+    } else if (assortmentFilter && assortmentFilter !== '') {
+      // Fallback to legacy assortment filter
+      if (!jacketName || !jacketName.toLowerCase().includes(assortmentFilter.toLowerCase())) {
+        activeFilters.push(`Asortyment: ${assortmentFilter}`);
+        shouldBlock = true;
+      }
+    }
+    
+    if (shouldBlock) {
+      // Show warning that this jacket doesn't match selected filters
+      Alert.alert(
+        'Niewłaściwy produkt', 
+        `Zeskanowano: ${jacketName || 'Nieznany produkt'}\n\nAktywne filtry:\n${activeFilters.join('\n')}\n\nTa kurtka nie pasuje do wybranych filtrów.`,
+        [{ text: 'OK' }]
+      );
+      
+      // Re-enable scanning
+      setTimeout(() => {
+        setScanningEnabled(true);
+        setLastScannedCode('');
+      }, 800);
+      return;
+    }
+
     // Add scanned jacket to list
     const newJacket = {
       id: Date.now(),
@@ -213,8 +485,6 @@ const Remanent = () => {
       });
 
       if (response.ok) {
-        console.log('✅ Remanent items saved to database');
-        
         // Add scanned jackets to local state
         const newRemanentItems = scannedJackets.map(jacket => {
           const price = getPriceFromProductName(jacket.name);
@@ -312,9 +582,7 @@ const Remanent = () => {
       if (response.ok) {
         // Remove from local state only after successful API call
         setRemanentData(prev => prev.filter(item => item.id !== itemId));
-        console.log('✅ Item removed from database and local state');
       } else {
-        console.error('❌ Failed to delete item from database:', response.status);
         // Still remove from local state for better UX
         setRemanentData(prev => prev.filter(item => item.id !== itemId));
       }
@@ -376,40 +644,100 @@ const Remanent = () => {
         const allStateData = await response.json();
         
         // Filtruj produkty dla aktualnego użytkownika
-        const currentState = allStateData.filter(item => item.symbol === user?.symbol);
+        let currentState = allStateData.filter(item => item.symbol === user?.symbol);
         
-        // Porównaj remanent z aktualnym stanem
+        // Jeśli są aktywne zaawansowane filtry, filtruj stan według nich
+        if (advancedFilters.assortment || advancedFilters.color || advancedFilters.size) {
+          currentState = currentState.filter(item => {
+            const fullName = item.fullName || item.name || '';
+            let matches = true;
+            
+            if (advancedFilters.assortment) {
+              matches = matches && fullName.toLowerCase().includes(advancedFilters.assortment.toLowerCase());
+            }
+            if (advancedFilters.color) {
+              matches = matches && fullName.toLowerCase().includes(advancedFilters.color.toLowerCase());
+            }
+            if (advancedFilters.size) {
+              matches = matches && fullName.toLowerCase().includes(advancedFilters.size.toLowerCase());
+            }
+            
+            return matches;
+          });
+        }
+        // Fallback na stary filtr asortymentu jeśli nie ma zaawansowanych filtrów
+        else if (assortmentFilter && assortmentFilter !== '') {
+          currentState = currentState.filter(item => {
+            const fullName = item.fullName || item.name || '';
+            return fullName.toLowerCase().includes(assortmentFilter.toLowerCase());
+          });
+        }
+        
+        // Porównaj remanent z aktualnym stanem (uwzględniając filtr asortymentu)
         const missingItems = []; // Produkty w stanie, ale nie w remanencie
         const extraItems = []; // Produkty w remanencie, ale nie w stanie
         
-        // Sprawdź co brakuje (jest w stanie, ale nie zeskanowane)
+        // Grupuj zeskanowane produkty według kodu i policz ilości
+        const remanentGroups = {};
+        filteredRemanentData.forEach(remanentItem => {
+          const code = remanentItem.code;
+          if (!remanentGroups[code]) {
+            remanentGroups[code] = {
+              name: remanentItem.name,
+              size: remanentItem.size || 'Nieznany',
+              code: code,
+              price: remanentItem.value,
+              count: 0
+            };
+          }
+          remanentGroups[code].count++;
+        });
+
+        // Sprawdź co brakuje lub jest w nadwyżce
         currentState.forEach(stateItem => {
-          const existsInRemanent = remanentData.find(remanentItem => 
-            remanentItem.code === stateItem.barcode
-          );
+          const code = stateItem.barcode;
+          const remanentGroup = remanentGroups[code];
           
-          if (!existsInRemanent) {
+          if (!remanentGroup) {
+            // Brak całkowity - jest w stanie, ale nie zeskanowany
             missingItems.push({
               name: stateItem.fullName,
               size: stateItem.size,
               code: stateItem.barcode,
-              price: stateItem.price
+              price: stateItem.price,
+              expectedCount: 1,
+              actualCount: 0
+            });
+          } else if (remanentGroup.count > 1) {
+            // Nadwyżka - zeskanowano więcej niż powinno być
+            extraItems.push({
+              name: remanentGroup.name,
+              size: remanentGroup.size,
+              code: code,
+              price: remanentGroup.price,
+              expectedCount: 1,
+              actualCount: remanentGroup.count,
+              excessCount: remanentGroup.count - 1
             });
           }
+          // Jeśli remanentGroup.count === 1, to jest OK (nie dodajemy do żadnej listy)
         });
         
-        // Sprawdź co się nadwyżkuje (zeskanowane, ale nie ma w stanie)
-        remanentData.forEach(remanentItem => {
+        // Sprawdź produkty zeskanowane, których nie ma w stanie
+        Object.values(remanentGroups).forEach(remanentGroup => {
           const existsInState = currentState.find(stateItem => 
-            stateItem.barcode === remanentItem.code
+            stateItem.barcode === remanentGroup.code
           );
           
           if (!existsInState) {
             extraItems.push({
-              name: remanentItem.name,
-              size: remanentItem.size || 'Nieznany',
-              code: remanentItem.code,
-              price: remanentItem.value
+              name: remanentGroup.name,
+              size: remanentGroup.size,
+              code: remanentGroup.code,
+              price: remanentGroup.price,
+              expectedCount: 0,
+              actualCount: remanentGroup.count,
+              excessCount: remanentGroup.count
             });
           }
         });
@@ -417,14 +745,14 @@ const Remanent = () => {
         // Pokaż wyniki w modalu
         console.log('🔍 Porównanie:', {
           currentStateCount: currentState.length,
-          remanentCount: remanentData.length,
+          remanentCount: filteredRemanentData.length,
           missingItems: missingItems,
           extraItems: extraItems
         });
         
         setComparisonResults({
           currentStateCount: currentState.length,
-          remanentCount: remanentData.length,
+          remanentCount: filteredRemanentData.length,
           missingItems: missingItems,
           extraItems: extraItems
         });
@@ -888,15 +1216,58 @@ const Remanent = () => {
             <Text style={styles.headerTitle}>Remanenty</Text>
             <Text style={styles.headerSubtitle}>Stan magazynowy</Text>
           </View>
-          <TouchableOpacity
-            style={styles.resetButton}
-            onPress={resetSentCorrections}
-            title="Resetuj wysłane korekty"
+        </View>
+        
+        {/* Przycisk filtrów na pełnej szerokości */}
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={styles.filterButton}
+            onPress={() => setShowFilterModal(true)}
           >
-            <Ionicons name="refresh" size={20} color="white" />
-            <Text style={styles.resetButtonText}>Reset korekt</Text>
+            <Ionicons name="filter" size={16} color="white" />
+            <Text style={styles.filterButtonText}>
+              Filtry
+              {(advancedFilters.assortment || advancedFilters.color || advancedFilters.size || assortmentFilter) 
+                && ` (${[advancedFilters.assortment, advancedFilters.color, advancedFilters.size, assortmentFilter].filter(f => f).length})`
+              }
+            </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Pasek postępu skanowania */}
+        {scanProgress.totalExpected > 0 && (
+          <View style={styles.progressContainer}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>Postęp skanowania</Text>
+                  <Text style={styles.progressStats}>
+                    {scanProgress.uniqueScanned}/{scanProgress.totalExpected} ({scanProgress.percentage}%)
+                  </Text>
+                </View>
+                
+                <View style={styles.progressBarContainer}>
+                  <View 
+                    style={[
+                      styles.progressBarFill, 
+                      { width: `${scanProgress.percentage}%` }
+                    ]} 
+                  />
+                </View>
+                
+                <View style={styles.progressDetails}>
+                  <Text style={styles.progressDetailText}>
+                    📦 Produkty: {scanProgress.uniqueScanned}/{scanProgress.totalExpected}
+                  </Text>
+                  <Text style={styles.progressDetailText}>
+                    🔍 Skanowania: {scanProgress.totalScanned}
+                  </Text>
+                  {scanStartTime && (
+                    <Text style={styles.progressDetailText}>
+                      ⏱️ Czas: {formatElapsedTime()}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
       </View>
 
       {remanentData.length === 0 ? (
@@ -909,7 +1280,7 @@ const Remanent = () => {
         </View>
       ) : (
         <FlatList
-          data={remanentData}
+          data={filteredRemanentData}
           renderItem={renderRemanentItem}
           keyExtractor={(item, index) => item.id?.toString() || index.toString()}
           contentContainerStyle={styles.listContainer}
@@ -1038,7 +1409,13 @@ const Remanent = () => {
       >
         <SafeAreaView style={[styles.modalContainer]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Porównanie Remanent vs Stan</Text>
+            <Text style={styles.modalTitle}>
+              Porównanie Remanent vs Stan
+              {(advancedFilters.assortment || advancedFilters.color || advancedFilters.size) 
+                && ` - ${[advancedFilters.assortment, advancedFilters.color, advancedFilters.size].filter(f => f).join(' ')}`}
+              {(!advancedFilters.assortment && !advancedFilters.color && !advancedFilters.size && assortmentFilter) 
+                && ` - ${assortmentFilter}`}
+            </Text>
             <TouchableOpacity
               onPress={() => setComparisonModalVisible(false)}
               style={styles.closeButton}
@@ -1074,6 +1451,11 @@ const Remanent = () => {
                         <Text style={styles.itemName}>
                           {item.name && item.size ? `${item.name} ${item.size}` : item.name || 'Nieznany produkt'}
                         </Text>
+                        {item.expectedCount !== undefined && (
+                          <Text style={styles.itemQuantity}>
+                            Oczekiwano: {item.expectedCount}, zeskanowano: {item.actualCount || 0}
+                          </Text>
+                        )}
                       </View>
                       <TouchableOpacity
                         style={[
@@ -1108,6 +1490,14 @@ const Remanent = () => {
                     <View key={index} style={styles.resultItem}>
                       <View style={styles.resultItemContent}>
                         <Text style={styles.itemName}>{item.name || 'Nieznany produkt'}</Text>
+                        {item.excessCount !== undefined && (
+                          <Text style={styles.itemQuantity}>
+                            {item.expectedCount === 0 
+                              ? `Nie powinno być w stanie, a zeskanowano: ${item.actualCount}`
+                              : `Nadwyżka: ${item.excessCount} szt. (zeskanowano ${item.actualCount}, powinno być ${item.expectedCount})`
+                            }
+                          </Text>
+                        )}
                       </View>
                       <TouchableOpacity
                         style={[
@@ -1145,6 +1535,145 @@ const Remanent = () => {
               <Text style={[styles.sectionTitle, { textAlign: 'center' }]}>Ładowanie danych...</Text>
             </View>
           )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* Modal filtrów zaawansowanych */}
+      <Modal
+        visible={showFilterModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={[styles.modalContainer]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filtry Remanentów</Text>
+            <TouchableOpacity
+              onPress={() => setShowFilterModal(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.filterModalContent} showsVerticalScrollIndicator={false}>
+            {/* Asortyment */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Asortyment</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={advancedFilters.assortment}
+                  onValueChange={(value) => setAdvancedFilters(prev => ({...prev, assortment: value}))}
+                  style={styles.picker}
+                  dropdownIconColor="#fff"
+                >
+                  <Picker.Item label="Wszystkie asortymenty" value="" />
+                  {availableAssortments.map((assortment) => (
+                    <Picker.Item key={assortment} label={assortment} value={assortment} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            {/* Kolor */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Kolor</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={advancedFilters.color}
+                  onValueChange={(value) => setAdvancedFilters(prev => ({...prev, color: value}))}
+                  style={styles.picker}
+                  dropdownIconColor="#fff"
+                >
+                  <Picker.Item label="Wszystkie kolory" value="" />
+                  {availableColors.map((color) => (
+                    <Picker.Item key={color} label={color} value={color} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            {/* Rozmiar */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Rozmiar</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={advancedFilters.size}
+                  onValueChange={(value) => setAdvancedFilters(prev => ({...prev, size: value}))}
+                  style={styles.picker}
+                  dropdownIconColor="#fff"
+                >
+                  <Picker.Item label="Wszystkie rozmiary" value="" />
+                  {availableSizes.map((size) => (
+                    <Picker.Item key={size} label={size} value={size} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            {/* Aktywne filtry */}
+            {(advancedFilters.assortment || advancedFilters.color || advancedFilters.size) && (
+              <View style={styles.activeFiltersSection}>
+                <Text style={styles.filterSectionTitle}>Aktywne filtry:</Text>
+                <View style={styles.activeFiltersContainer}>
+                  {advancedFilters.assortment && (
+                    <View style={styles.activeFilterTag}>
+                      <Text style={styles.activeFilterText}>📦 {advancedFilters.assortment}</Text>
+                      <TouchableOpacity 
+                        onPress={() => setAdvancedFilters(prev => ({...prev, assortment: ''}))}
+                        style={styles.removeFilterButton}
+                      >
+                        <Ionicons name="close-circle" size={16} color="#ff6b6b" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {advancedFilters.color && (
+                    <View style={styles.activeFilterTag}>
+                      <Text style={styles.activeFilterText}>🎨 {advancedFilters.color}</Text>
+                      <TouchableOpacity 
+                        onPress={() => setAdvancedFilters(prev => ({...prev, color: ''}))}
+                        style={styles.removeFilterButton}
+                      >
+                        <Ionicons name="close-circle" size={16} color="#ff6b6b" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {advancedFilters.size && (
+                    <View style={styles.activeFilterTag}>
+                      <Text style={styles.activeFilterText}>📏 {advancedFilters.size}</Text>
+                      <TouchableOpacity 
+                        onPress={() => setAdvancedFilters(prev => ({...prev, size: ''}))}
+                        style={styles.removeFilterButton}
+                      >
+                        <Ionicons name="close-circle" size={16} color="#ff6b6b" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Przyciski akcji */}
+            <View style={styles.filterActionsContainer}>
+              <TouchableOpacity 
+                style={styles.clearFiltersButton}
+                onPress={() => {
+                  setAdvancedFilters({assortment: '', color: '', size: ''});
+                  setAssortmentFilter('');
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="white" />
+                <Text style={styles.clearFiltersText}>Wyczyść wszystkie</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.applyFiltersButton}
+                onPress={() => setShowFilterModal(false)}
+              >
+                <Ionicons name="checkmark" size={20} color="white" />
+                <Text style={styles.applyFiltersText}>Zastosuj filtry</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -1599,6 +2128,192 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#888',
     textAlign: 'center',
+  },
+  // Styles for assortment filter
+  filterContainer: {
+    marginTop: 12,
+    backgroundColor: '#2A2A3E',
+    borderRadius: 8,
+    padding: 8,
+  },
+  filterLabel: {
+    fontSize: 12,
+    color: '#CDCDE0',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  pickerContainer: {
+    backgroundColor: '#1E1E2D',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  picker: {
+    height: 35,
+    color: 'white',
+    fontSize: 14,
+  },
+  // Filter button styles
+  filterButton: {
+    backgroundColor: '#007bff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  filterButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  // Header buttons container
+  headerButtons: {
+    flexDirection: 'row',
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Filter modal styles
+  filterModalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  activeFiltersSection: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#2A2A3E',
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  activeFiltersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  activeFilterTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007bff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  activeFilterText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  removeFilterButton: {
+    marginLeft: 4,
+  },
+  filterActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#3C3C43',
+  },
+  clearFiltersButton: {
+    flex: 1,
+    backgroundColor: '#6c757d',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  clearFiltersText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  applyFiltersButton: {
+    flex: 1,
+    backgroundColor: '#28a745',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  applyFiltersText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  itemQuantity: {
+    fontSize: 12,
+    color: '#CDCDE0',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  // Progress bar styles
+  progressContainer: {
+    marginTop: 16,
+    backgroundColor: '#2A2A3E',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#3C3C43',
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressTitle: {
+    fontSize: 14,
+    color: 'white',
+    fontWeight: '600',
+  },
+  progressStats: {
+    fontSize: 14,
+    color: '#007bff',
+    fontWeight: 'bold',
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#1E1E2D',
+    borderRadius: 4,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#28a745',
+    borderRadius: 4,
+    transition: 'width 0.3s ease',
+  },
+  progressDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+  },
+  progressDetailText: {
+    fontSize: 11,
+    color: '#CDCDE0',
+    marginRight: 8,
   },
 });
 

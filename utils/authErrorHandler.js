@@ -37,7 +37,10 @@ class AuthErrorHandler {
     
     // Handle authentication errors with automatic redirect
     static async handleAuthError(error, context = 'Unknown') {
-        console.log(`🔄 Auth error detected in ${context}:`, error?.message || error);
+        // Don't log during logout process to keep console clean
+        if (!tokenService.isLoggingOut) {
+            console.log(`🔄 Auth error detected in ${context}:`, error?.message || error);
+        }
         
         try {
             // Clear all tokens and user data
@@ -46,7 +49,10 @@ class AuthErrorHandler {
             // Redirect to login page
             router.replace("/(auth)/sign-in");
             
-            console.log('✅ User redirected to login page');
+            // Don't log during logout process
+            if (!tokenService.isLoggingOut) {
+                console.log('✅ User redirected to login page');
+            }
         } catch (redirectError) {
             console.error('❌ Error during redirect:', redirectError);
             // Fallback - try to go to root
