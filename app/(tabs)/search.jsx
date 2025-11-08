@@ -3,6 +3,7 @@ import { useCallback, useContext, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GlobalStateContext } from '../../context/GlobalState';
 import QRScannerSearch from '../QRScannerSearch';
+import LogoutButton from '../../components/LogoutButton';
 
 const SearchScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
@@ -157,6 +158,7 @@ const SearchScreen = () => {
 
   return (
     <View style={styles.container}>
+      <LogoutButton position="top-right" />
       <Modal
         visible={modalVisible}
         transparent

@@ -4,6 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
 import { getApiUrl } from '../../config/api';
+import LogoutButton from '../../components/LogoutButton';
 
 const Profile = () => {
   const { logout, user } = useContext(GlobalStateContext); // Access logout function
@@ -101,10 +102,6 @@ const Profile = () => {
 
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleLogout = async () => {
-    await logout(); // Call the logout function
-  };
 
   // Function to fetch cities by postal code
   const fetchCitiesByPostalCode = async (zipCode) => {
@@ -791,13 +788,14 @@ const Profile = () => {
   return (
     <>
       <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+        <LogoutButton position="top-right" />
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <View style={{ marginVertical: 24, paddingHorizontal: 16 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <View style={{ flexDirection: "row", justifyContent: "flex-start", alignItems: "center", marginBottom: 24 }}>
               <View>
                 <Text style={{ fontSize: 14, color: "#f3f4f6" }}>
                   Zalogowany jako: <Text style={{ fontWeight: 'bold' }}>{user?.email}</Text>
@@ -810,12 +808,6 @@ const Profile = () => {
                   })}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={handleLogout}
-                style={{ backgroundColor: "#0d6efd", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
-              >
-                <Text style={{ fontSize: 14, color: "#fff", fontWeight: "bold" }}>Wyloguj</Text>
-              </TouchableOpacity>
             </View>
           </View>
           <ScrollView 

@@ -19,6 +19,7 @@ import { GlobalStateContext } from '../../context/GlobalState';
 
 import { getApiUrl } from '../../config/api';
 import tokenService from '../../services/tokenService';
+import LogoutButton from '../../components/LogoutButton';
 
 const Cudzych = () => {
   const { 
@@ -1030,6 +1031,7 @@ const Cudzych = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
       <ScrollView 
         style={styles.scrollView}
         refreshControl={

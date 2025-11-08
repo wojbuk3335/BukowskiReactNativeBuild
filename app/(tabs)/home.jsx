@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAre
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import tokenService from '../../services/tokenService';
+import LogoutButton from '../../components/LogoutButton';
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
@@ -53,6 +54,12 @@ const Home = () => {
   const [showProductDropdown, setShowProductDropdown] = useState(false); // Control dropdown visibility
   const [productFinalPrice, setProductFinalPrice] = useState(""); // Final agreed price for product
   const [availableFunds, setAvailableFunds] = useState({}); // State for available funds to ensure re-rendering
+  
+  // States for salesperson management
+  const [salespersonModalVisible, setSalespersonModalVisible] = useState(false); // State for salesperson modal
+  const [employees, setEmployees] = useState([]); // State for employees list
+  const [selectedSalespeople, setSelectedSalespeople] = useState([]); // State for selected salespeople (multiple)
+  const [assignedSalespeople, setAssignedSalespeople] = useState([]); // State for currently assigned salespeople (multiple)
   
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
@@ -245,6 +252,11 @@ const Home = () => {
     setAvailableFunds(newAvailableFunds);
   }, [filteredData, transferredItems, deductionsData]);
 
+  // Fetch employees on component mount
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
   // Filter products based on search query
   useEffect(() => {
     if (!productSearchQuery) {
@@ -396,6 +408,117 @@ const Home = () => {
     });
     
     return availableFunds;
+  };
+
+  // Employee/Salesperson management functions
+  const fetchEmployees = async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/employees'));
+      if (response.ok) {
+        const data = await response.json();
+        const employeesArray = Array.isArray(data) ? data : (data?.employees || data?.data || []);
+        setEmployees(employeesArray);
+      } else {
+        console.error('Failed to fetch employees:', response.status);
+      }
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      setEmployees([]);
+    }
+  };
+
+  const assignSalesperson = (employee) => {
+    if (!assignedSalespeople.find(person => person._id === employee._id)) {
+      const updatedSalespeople = [...assignedSalespeople, employee];
+      setAssignedSalespeople(updatedSalespeople);
+      
+      Alert.alert(
+        "Sukces", 
+        `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu.`,
+        [{ text: "OK" }]
+      );
+    } else {
+      Alert.alert(
+        "Informacja", 
+        `Sprzedawca ${employee.firstName} ${employee.lastName} jest już przypisany.`,
+        [{ text: "OK" }]
+      );
+    }
+  };
+
+  const removeSalesperson = (employeeId) => {
+    const employeeToRemove = assignedSalespeople.find(person => person._id === employeeId);
+    
+    Alert.alert(
+      "Potwierdź",
+      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu?`,
+      [
+        { text: "Anuluj", style: "cancel" },
+        { 
+          text: "Usuń", 
+          onPress: () => {
+            const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+            setAssignedSalespeople(updatedSalespeople);
+            Alert.alert("Sukces", "Sprzedawca został usunięty z zespołu.");
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSalespersonSelection = (employee) => {
+    if (!employee || !employee._id) return;
+    
+    setSelectedSalespeople(prevSelected => {
+      const isSelected = prevSelected.find(person => person._id === employee._id);
+      
+      if (isSelected) {
+        // Remove from selection
+        return prevSelected.filter(person => person._id !== employee._id);
+      } else {
+        // Add to selection
+        return [...prevSelected, employee];
+      }
+    });
+  };
+
+  const assignSelectedSalespeople = () => {
+    if (selectedSalespeople.length === 0) {
+      Alert.alert("Błąd", "Proszę wybrać co najmniej jednego sprzedawcę.");
+      return;
+    }
+
+    let addedCount = 0;
+    let alreadyAssignedNames = [];
+
+    selectedSalespeople.forEach(employee => {
+      if (!assignedSalespeople.find(person => person._id === employee._id)) {
+        addedCount++;
+      } else {
+        alreadyAssignedNames.push(`${employee.firstName} ${employee.lastName}`);
+      }
+    });
+
+    // Add only new salespeople
+    const newSalespeople = selectedSalespeople.filter(employee => 
+      !assignedSalespeople.find(person => person._id === employee._id)
+    );
+    
+    setAssignedSalespeople([...assignedSalespeople, ...newSalespeople]);
+    setSalespersonModalVisible(false);
+    setSelectedSalespeople([]);
+
+    // Show appropriate message
+    let message = "";
+    if (addedCount > 0 && alreadyAssignedNames.length > 0) {
+      message = `Dodano ${addedCount} sprzedawców. Już przypisani: ${alreadyAssignedNames.join(", ")}`;
+    } else if (addedCount > 0) {
+      message = `Dodano ${addedCount} sprzedawców do zespołu.`;
+    } else {
+      message = `Wszyscy wybrani sprzedawcy są już przypisani: ${alreadyAssignedNames.join(", ")}`;
+    }
+
+    Alert.alert("Informacja", message, [{ text: "OK" }]);
   };
 
   const submitDeduction = async () => {
@@ -708,6 +831,7 @@ const Home = () => {
   return (
     <>
       <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+        <LogoutButton position="top-right" />
         <FlatList
           testID="home-flatlist"
           data={filteredData}
@@ -761,6 +885,58 @@ const Home = () => {
                         day: '2-digit',
                       })}
                     </Text>
+                    {assignedSalespeople.length > 0 && (
+                      <View style={{ marginTop: 8 }}>
+                        <View style={{ 
+                          flexDirection: "row", 
+                          alignItems: "center", 
+                          marginBottom: 8,
+                          padding: 8,
+                          backgroundColor: '#1f2937',
+                          borderRadius: 6,
+                          borderLeftWidth: 3,
+                          borderLeftColor: '#007bff'
+                        }}>
+                          <Text style={{ fontSize: 14, color: "#10b981", fontWeight: 'bold' }}>
+                            � Zespół sprzedażowy ({assignedSalespeople.length})
+                          </Text>
+                        </View>
+                        
+                        {assignedSalespeople.map((salesperson, index) => (
+                          <View 
+                            key={salesperson._id} 
+                            style={{ 
+                              flexDirection: "row", 
+                              alignItems: "center", 
+                              marginBottom: 4,
+                              padding: 6,
+                              backgroundColor: '#374151',
+                              borderRadius: 4,
+                              marginLeft: 10
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, color: "#ffffff", flex: 1 }}>
+                              {index + 1}. {salesperson.firstName} {salesperson.lastName}
+                              {salesperson.employeeId && (
+                                <Text style={{ color: '#9ca3af', fontSize: 11 }}> (ID: {salesperson.employeeId})</Text>
+                              )}
+                            </Text>
+                            <TouchableOpacity 
+                              onPress={() => removeSalesperson(salesperson._id)}
+                              style={{ 
+                                backgroundColor: '#dc3545',
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 3,
+                                marginLeft: 8
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 </View>
                 
@@ -769,7 +945,8 @@ const Home = () => {
                   flexDirection: "row", 
                   justifyContent: "center", 
                   marginBottom: 10,
-                  gap: 10
+                  gap: 10,
+                  flexWrap: "wrap"
                 }}>
                   <TouchableOpacity
                     testID="deduct-amount-button"
@@ -802,6 +979,23 @@ const Home = () => {
                   >
                     <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
                       Dopisz kwotę
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    testID="add-salesperson-button"
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                    }}
+                    onPress={() => setSalespersonModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                      Dodaj sprzedawców
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -2224,6 +2418,127 @@ const Home = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Salesperson selection modal */}
+        <Modal
+          key="salesperson-modal"
+          animationType="slide"
+          transparent={true}
+          visible={salespersonModalVisible}
+          onRequestClose={() => setSalespersonModalVisible(false)}
+        >
+          <View style={styles.salespersonModalOverlay}>
+            <View style={styles.salespersonModalContent}>
+              <Text style={styles.salespersonModalTitle}>Wybierz sprzedawców</Text>
+              <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                Możesz wybrać wielu sprzedawców dla tego stanowiska
+              </Text>
+              
+              <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
+                {employees.length > 0 ? (
+                  employees.map((employee) => {
+                    const isSelected = selectedSalespeople.find(person => person._id === employee._id);
+                    const isAlreadyAssigned = assignedSalespeople.find(person => person._id === employee._id);
+                    
+                    return (
+                      <TouchableOpacity
+                        key={employee._id}
+                        style={[styles.salespersonOptionButton, {
+                          backgroundColor: isSelected ? '#28a745' : (isAlreadyAssigned ? '#6c757d' : '#007bff'),
+                          opacity: isAlreadyAssigned ? 0.6 : 1
+                        }]}
+                        onPress={() => {
+                          if (!isAlreadyAssigned) {
+                            toggleSalespersonSelection(employee);
+                          }
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.salespersonOptionText}>
+                              {employee.firstName} {employee.lastName}
+                            </Text>
+                            {employee.employeeId && (
+                              <Text style={[styles.salespersonOptionText, { fontSize: 12, opacity: 0.8 }]}>
+                                ID: {employee.employeeId}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          <View style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                            backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                          }}>
+                            {isSelected && (
+                              <Text style={{ color: '#28a745', fontSize: 16, fontWeight: 'bold' }}>✓</Text>
+                            )}
+                          </View>
+                          
+                          {isAlreadyAssigned && (
+                            <Text style={{ 
+                              color: '#ffffff', 
+                              fontSize: 12, 
+                              fontWeight: 'bold',
+                              marginLeft: 8,
+                              backgroundColor: 'rgba(0,0,0,0.3)',
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 10
+                            }}>
+                              Przypisany
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <View style={{ padding: 20 }}>
+                    <Text style={{ color: 'white', textAlign: 'center', fontSize: 16 }}>
+                      Brak dostępnych pracowników
+                    </Text>
+                    <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 14, marginTop: 5 }}>
+                      Dodaj pracowników w panelu administracyjnym
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+
+              <View style={styles.salespersonModalButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.salespersonModalButton, styles.salespersonAssignButton, {
+                    opacity: selectedSalespeople.length > 0 ? 1 : 0.5
+                  }]}
+                  onPress={() => {
+                    if (selectedSalespeople.length > 0) {
+                      assignSelectedSalespeople();
+                    }
+                  }}
+                >
+                  <Text style={styles.salespersonModalButtonText}>
+                    ✓ Dodaj ({selectedSalespeople.length})
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.salespersonModalButton, styles.salespersonCancelButton]}
+                  onPress={() => {
+                    setSalespersonModalVisible(false);
+                    setSelectedSalespeople([]);
+                  }}
+                >
+                  <Text style={styles.salespersonModalButtonText}>✕ Anuluj</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -2461,6 +2776,77 @@ const styles = StyleSheet.create({
   currencyModalCloseButtonText: {
     color: "white",
     fontSize: 16,
+  },
+  // Salesperson modal styles
+  salespersonModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  salespersonModalContent: {
+    backgroundColor: '#1f2937',
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 2,
+    borderColor: '#007bff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  salespersonModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  salespersonOptionButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+  },
+  salespersonOptionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  salespersonModalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 15,
+    marginTop: 20,
+  },
+  salespersonModalButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+  },
+  salespersonAssignButton: {
+    backgroundColor: '#28a745',
+  },
+  salespersonCancelButton: {
+    backgroundColor: '#dc3545',
+  },
+  salespersonModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 export default Home; // Export the Home component

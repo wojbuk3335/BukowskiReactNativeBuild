@@ -19,6 +19,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
 import { getApiUrl } from '../../config/api';
+import LogoutButton from '../../components/LogoutButton';
 
 const Remanent = () => {
   const { user, sizes, colors, stocks, stateData, fetchSizes, fetchColors, fetchStock } = useContext(GlobalStateContext);
@@ -1210,6 +1211,7 @@ const Remanent = () => {
 
   return (
     <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+      <LogoutButton position="top-right" />
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View>

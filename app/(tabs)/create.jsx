@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { GlobalStateContext } from "../../context/GlobalState";
 import QRScanner from "../QRScanner";
+import LogoutButton from "../../components/LogoutButton";
 
 export default function Create() {
   const { 
@@ -167,6 +168,7 @@ export default function Create() {
 
   return (
     <>
+      <LogoutButton position="top-right" />
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <View style={styles.spinnerContainer}>

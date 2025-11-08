@@ -7,6 +7,7 @@ import { GlobalStateContext } from "../../context/GlobalState";
 import tokenService from "../../services/tokenService";
 import { debugTokens } from "../../debug_tokens";
 import AuthFix from "../../components/AuthFix";
+import LogoutButton from "../../components/LogoutButton";
 
 const WriteOff = () => {
     const { 
@@ -702,6 +703,7 @@ const fetchSales = async () => {
 
     return (
         <>
+            <LogoutButton position="top-right" />
             {isLoading ? (
                 <View style={styles.loadingContainer}>
                     <View style={styles.spinnerContainer}>

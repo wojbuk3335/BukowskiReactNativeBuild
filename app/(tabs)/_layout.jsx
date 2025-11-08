@@ -57,6 +57,7 @@ const TabLayout = () => {
             borderTopWidth: 1,
             borderTopColor: "#232533",
             height: 84,
+            paddingHorizontal: 4,
           },
         }}
       >
@@ -79,13 +80,13 @@ const TabLayout = () => {
         <Tabs.Screen
           name="writeoff"
           options={{
-            title: "Odpisać",
+            title: "Stan",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 customIcon="arrow-forward-circle"
                 color={color}
-                name="Odpisać"
+                name="Stan"
                 focused={focused}
               />
             ),
@@ -149,7 +150,7 @@ const TabLayout = () => {
               <TabIcon
                 icon={icons.profile}
                 color={color}
-                name="Zamówienia"
+                name="Zamów"
                 focused={focused}
               />
             ),
@@ -165,7 +166,7 @@ const TabLayout = () => {
               <TabIcon
                 customIcon={focused ? "archive" : "archive-outline"}
                 color={color}
-                name="Reman"
+                name="Remanent"
                 focused={focused}
               />
             ),
@@ -182,10 +183,10 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: "center",
     justifyContent: "center",
-    width: 70,
-    paddingTop: 12,
+    width: 46,
+    paddingTop: 8,
     height: 56,
-    gap: 5,
+    gap: 2,
   },
   icon: {
     width: 22,
@@ -193,10 +194,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   tabText: {
-    fontSize: 11,
+    fontSize: 9,
     textAlign: "center",
-    minHeight: 14,
-    lineHeight: 14,
+    minHeight: 12,
+    lineHeight: 12,
+    flexWrap: 'nowrap',
+    numberOfLines: 1,
   },
   tabTextFocused: {
     fontWeight: "600",
