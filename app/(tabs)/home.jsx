@@ -2,6 +2,7 @@ import { useFocusEffect } from '@react-navigation/native'; // Import useFocusEff
 import React, { useContext, useEffect, useState } from 'react';
 import { Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Import AsyncStorage
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import tokenService from '../../services/tokenService';
@@ -36,6 +37,8 @@ const Home = () => {
   const [deductionAmount, setDeductionAmount] = useState(""); // State for deduction amount
   const [deductionCurrency, setDeductionCurrency] = useState("PLN"); // State for deduction currency
   const [deductionReason, setDeductionReason] = useState(""); // State for deduction reason
+  const [deductionType, setDeductionType] = useState("other"); // "other" lub "employee_advance"
+  const [selectedEmployeeForAdvance, setSelectedEmployeeForAdvance] = useState(null); // Wybrany pracownik dla zaliczki
   const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
   
@@ -60,6 +63,14 @@ const Home = () => {
   const [employees, setEmployees] = useState([]); // State for employees list
   const [selectedSalespeople, setSelectedSalespeople] = useState([]); // State for selected salespeople (multiple)
   const [assignedSalespeople, setAssignedSalespeople] = useState([]); // State for currently assigned salespeople (multiple)
+  
+  // States for work hours management
+  const [workHoursModalVisible, setWorkHoursModalVisible] = useState(false); // State for work hours modal
+  const [selectedEmployeeForHours, setSelectedEmployeeForHours] = useState(null); // Selected employee for setting hours
+  const [workStartTime, setWorkStartTime] = useState("08:00"); // Start time for work
+  const [workEndTime, setWorkEndTime] = useState("16:00"); // End time for work
+  const [workNotes, setWorkNotes] = useState(""); // Notes for work hours
+  const [todaysWorkHours, setTodaysWorkHours] = useState([]); // Today's recorded work hours
   
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
@@ -255,6 +266,7 @@ const Home = () => {
   // Fetch employees on component mount
   useEffect(() => {
     fetchEmployees();
+    fetchTodaysWorkHours();
   }, []);
 
   // Filter products based on search query
@@ -270,6 +282,11 @@ const Home = () => {
       setFilteredProducts(filtered);
     }
   }, [productSearchQuery, products]);
+
+  // Load assigned salespeople on component mount
+  useEffect(() => {
+    fetchAssignedSalespeople();
+  }, []);
 
   const fetchTransferredItems = async () => {
     try {
@@ -417,7 +434,17 @@ const Home = () => {
       if (response.ok) {
         const data = await response.json();
         const employeesArray = Array.isArray(data) ? data : (data?.employees || data?.data || []);
-        setEmployees(employeesArray);
+        
+        // Filtruj pracowników według lokalizacji zalogowanego użytkownika
+        const filteredEmployees = user?.location 
+          ? employeesArray.filter(employee => 
+              employee.workLocation && user.location &&
+              employee.workLocation.trim() === user.location.trim()
+            )
+          : employeesArray;
+          
+        setEmployees(filteredEmployees);
+        console.log(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
       } else {
         console.error('Failed to fetch employees:', response.status);
       }
@@ -427,16 +454,106 @@ const Home = () => {
     }
   };
 
-  const assignSalesperson = (employee) => {
-    if (!assignedSalespeople.find(person => person._id === employee._id)) {
-      const updatedSalespeople = [...assignedSalespeople, employee];
-      setAssignedSalespeople(updatedSalespeople);
+  // Fetch assigned salespeople from database
+  const fetchAssignedSalespeople = async () => {
+    try {
+      const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+      const userData = await AsyncStorage.getItem('user');
       
-      Alert.alert(
-        "Sukces", 
-        `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu.`,
-        [{ text: "OK" }]
-      );
+      console.log('Fetch assigned - Token:', accessToken ? 'present' : 'missing');
+      console.log('Fetch assigned - UserData:', userData ? 'present' : 'missing');
+      
+      if (!accessToken || !userData) {
+        console.log('No token or user data available');
+        return;
+      }
+
+      const user = JSON.parse(userData);
+      const sellingPoint = user.sellingPoint || user.symbol;
+
+      if (!sellingPoint) {
+        console.log('No selling point available');
+        return;
+      }
+
+      const response = await fetch(`http://192.168.1.11:3000/api/sales-assignments?sellingPoint=${encodeURIComponent(sellingPoint)}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const assignments = data.assignments || [];
+        
+        // Extract employee data from assignments
+        const assignedEmployees = assignments.map(assignment => assignment.employeeId);
+        setAssignedSalespeople(assignedEmployees);
+        console.log('Loaded assigned salespeople:', assignedEmployees.length);
+      } else {
+        console.error('Failed to fetch sales assignments:', response.status);
+      }
+    } catch (error) {
+      console.error("Error fetching assigned salespeople:", error);
+    }
+  };
+
+  const assignSalesperson = async (employee) => {
+    if (!assignedSalespeople.find(person => person._id === employee._id)) {
+      try {
+        // Pobierz dane użytkownika z localStorage
+        const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+        const userData = await AsyncStorage.getItem('user');
+        
+        console.log('Assign salesperson - Token:', accessToken ? 'present' : 'missing');
+        console.log('Assign salesperson - UserData:', userData ? 'present' : 'missing');
+        
+        if (!accessToken || !userData) {
+          Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+          return;
+        }
+
+        const user = JSON.parse(userData);
+        const sellingPoint = user.sellingPoint || user.symbol;
+
+        if (!sellingPoint) {
+          Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+          return;
+        }
+
+        // Wyślij zapytanie do API
+        const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            employeeId: employee._id,
+            sellingPoint: sellingPoint,
+            notes: `Przypisano przez ${user.email || user.symbol}`
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Dodaj do lokalnego stanu
+          const updatedSalespeople = [...assignedSalespeople, employee];
+          setAssignedSalespeople(updatedSalespeople);
+          
+          Alert.alert(
+            "Sukces", 
+            `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu i zapisany w bazie danych.`,
+            [{ text: "OK" }]
+          );
+        } else {
+          Alert.alert("Błąd", data.message || "Nie udało się dodać sprzedawcy do bazy danych");
+        }
+      } catch (error) {
+        console.error('Error assigning salesperson:', error);
+        Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
+      }
     } else {
       Alert.alert(
         "Informacja", 
@@ -446,20 +563,75 @@ const Home = () => {
     }
   };
 
-  const removeSalesperson = (employeeId) => {
+  const removeSalesperson = async (employeeId) => {
     const employeeToRemove = assignedSalespeople.find(person => person._id === employeeId);
     
     Alert.alert(
       "Potwierdź",
-      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu?`,
+      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu? Zostanie to usunięte również z bazy danych.`,
       [
         { text: "Anuluj", style: "cancel" },
         { 
           text: "Usuń", 
-          onPress: () => {
-            const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
-            setAssignedSalespeople(updatedSalespeople);
-            Alert.alert("Sukces", "Sprzedawca został usunięty z zespołu.");
+          onPress: async () => {
+            try {
+              // Pobierz dane użytkownika z localStorage
+              const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+              const userData = await AsyncStorage.getItem('user');
+              
+              console.log('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
+              console.log('Remove salesperson - UserData:', userData ? 'present' : 'missing');
+              
+              if (!accessToken || !userData) {
+                Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+                return;
+              }
+
+              const user = JSON.parse(userData);
+              const sellingPoint = user.sellingPoint || user.symbol;
+              
+              console.log('Remove salesperson - Selling point:', sellingPoint);
+              console.log('Remove salesperson - Employee ID:', employeeId);
+
+              if (!sellingPoint) {
+                Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+                return;
+              }
+
+              const url = `http://192.168.1.11:3000/api/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}`;
+              console.log('Remove salesperson - URL:', url);
+
+              // Wyślij zapytanie do API o usunięcie
+              const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+
+              console.log('Remove salesperson - Response status:', response.status);
+              
+              const data = await response.json();
+              console.log('Remove salesperson - Response data:', data);
+
+              if (response.ok) {
+                // Usuń z lokalnego stanu
+                const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+                setAssignedSalespeople(updatedSalespeople);
+                Alert.alert("Sukces", "Sprzedawca został usunięty z zespołu i z bazy danych.");
+              } else if (response.status === 404) {
+                // Przypisanie nie istnieje w bazie - usuń tylko lokalnie
+                const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+                setAssignedSalespeople(updatedSalespeople);
+                Alert.alert("Informacja", "Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
+              } else {
+                Alert.alert("Błąd", data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
+              }
+            } catch (error) {
+              console.error('Error removing salesperson:', error);
+              Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
+            }
           }
         }
       ]
@@ -482,7 +654,7 @@ const Home = () => {
     });
   };
 
-  const assignSelectedSalespeople = () => {
+  const assignSelectedSalespeople = async () => {
     if (selectedSalespeople.length === 0) {
       Alert.alert("Błąd", "Proszę wybrać co najmniej jednego sprzedawcę.");
       return;
@@ -490,35 +662,228 @@ const Home = () => {
 
     let addedCount = 0;
     let alreadyAssignedNames = [];
+    let errorCount = 0;
 
-    selectedSalespeople.forEach(employee => {
+    // Pobierz dane autoryzacji
+    const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+    const userData = await AsyncStorage.getItem('user');
+    
+    if (!accessToken || !userData) {
+      Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+      return;
+    }
+
+    const user = JSON.parse(userData);
+    const sellingPoint = user.sellingPoint || user.symbol;
+
+    if (!sellingPoint) {
+      Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+      return;
+    }
+
+    // Dodaj każdego sprzedawcę przez API
+    for (const employee of selectedSalespeople) {
       if (!assignedSalespeople.find(person => person._id === employee._id)) {
-        addedCount++;
+        try {
+          console.log(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
+          
+          const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              employeeId: employee._id,
+              sellingPoint: sellingPoint,
+              notes: `Przypisano przez ${user.email || user.symbol}`
+            })
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            addedCount++;
+            console.log(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
+          } else {
+            errorCount++;
+            console.error(`Failed to assign ${employee.firstName} ${employee.lastName}:`, data.message);
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(`Error assigning ${employee.firstName} ${employee.lastName}:`, error);
+        }
       } else {
         alreadyAssignedNames.push(`${employee.firstName} ${employee.lastName}`);
       }
-    });
+    }
 
-    // Add only new salespeople
-    const newSalespeople = selectedSalespeople.filter(employee => 
-      !assignedSalespeople.find(person => person._id === employee._id)
-    );
-    
-    setAssignedSalespeople([...assignedSalespeople, ...newSalespeople]);
+    // Odśwież listę przypisanych sprzedawców z bazy danych
+    await fetchAssignedSalespeople();
+
     setSalespersonModalVisible(false);
     setSelectedSalespeople([]);
 
-    // Show appropriate message
+    // Pokaż komunikat o wynikach
     let message = "";
-    if (addedCount > 0 && alreadyAssignedNames.length > 0) {
-      message = `Dodano ${addedCount} sprzedawców. Już przypisani: ${alreadyAssignedNames.join(", ")}`;
-    } else if (addedCount > 0) {
-      message = `Dodano ${addedCount} sprzedawców do zespołu.`;
-    } else {
-      message = `Wszyscy wybrani sprzedawcy są już przypisani: ${alreadyAssignedNames.join(", ")}`;
+    if (addedCount > 0) {
+      message += `Dodano ${addedCount} sprzedawc${addedCount === 1 ? 'a' : 'ów'} do zespołu.`;
+    }
+    if (errorCount > 0) {
+      message += `\nBłąd przy dodawaniu ${errorCount} sprzedawc${errorCount === 1 ? 'a' : 'ów'}.`;
+    }
+    if (alreadyAssignedNames.length > 0) {
+      message += `\nJuż przypisani: ${alreadyAssignedNames.join(', ')}`;
     }
 
-    Alert.alert("Informacja", message, [{ text: "OK" }]);
+    Alert.alert(
+      addedCount > 0 && errorCount === 0 ? "Sukces" : "Informacja",
+      message || "Nie dodano żadnych nowych sprzedawców."
+    );
+  };
+
+  // Work hours management functions
+  const fetchTodaysWorkHours = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl(`/work-hours?date=${today}&sellingPoint=${user?.sellingPoint}`)
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTodaysWorkHours(data.workHours || []);
+      }
+    } catch (error) {
+      console.error("Error fetching today's work hours:", error);
+    }
+  };
+
+  const openWorkHoursModal = (employee) => {
+    setSelectedEmployeeForHours(employee);
+    setWorkStartTime("08:00");
+    setWorkEndTime("16:00");
+    setWorkNotes("");
+    setWorkHoursModalVisible(true);
+  };
+
+  const saveWorkHours = async () => {
+    if (!selectedEmployeeForHours) {
+      Alert.alert("Błąd", "Nie wybrano pracownika.");
+      return;
+    }
+
+    // Validate time format
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(workStartTime)) {
+      Alert.alert("Błąd", "Nieprawidłowy format godziny rozpoczęcia. Użyj HH:MM (np. 08:00)");
+      return;
+    }
+    
+    if (!timeRegex.test(workEndTime)) {
+      Alert.alert("Błąd", "Nieprawidłowy format godziny zakończenia. Użyj HH:MM (np. 16:00)");
+      return;
+    }
+
+    // Validate time logic
+    const startParts = workStartTime.split(':');
+    const endParts = workEndTime.split(':');
+    const startMinutes = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
+    const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+
+    if (startMinutes >= endMinutes) {
+      Alert.alert("Błąd", "Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia.");
+      return;
+    }
+
+    const totalHours = (endMinutes - startMinutes) / 60;
+    if (totalHours > 16) {
+      Alert.alert("Uwaga", "Czas pracy przekracza 16 godzin. Czy na pewno chcesz kontynuować?", [
+        { text: "Anuluj", style: "cancel" },
+        { text: "Tak", onPress: () => submitWorkHours() }
+      ]);
+    } else {
+      submitWorkHours();
+    }
+  };
+
+  const submitWorkHours = async () => {
+    try {
+      const workHoursData = {
+        employeeId: selectedEmployeeForHours._id,
+        date: new Date().toISOString().split('T')[0],
+        startTime: workStartTime,
+        endTime: workEndTime,
+        sellingPoint: user?.sellingPoint || '',
+        location: user?.location || '',
+        notes: workNotes.trim()
+      };
+
+      // Sprawdź czy już istnieje wpis dla tego pracownika i daty
+      const existingRecord = todaysWorkHours.find(record => 
+        (record.employeeId?._id === selectedEmployeeForHours._id || 
+         record.employeeId === selectedEmployeeForHours._id) &&
+        record.date === workHoursData.date
+      );
+
+      let response;
+      
+      if (existingRecord) {
+        // Aktualizuj istniejący wpis
+        response = await tokenService.authenticatedFetch(getApiUrl(`/work-hours/${existingRecord._id}`), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            startTime: workStartTime,
+            endTime: workEndTime,
+            notes: workNotes.trim()
+          })
+        });
+      } else {
+        // Utwórz nowy wpis
+        response = await tokenService.authenticatedFetch(getApiUrl('/work-hours'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(workHoursData)
+        });
+      }
+
+      if (response.ok) {
+        const result = await response.json();
+        Alert.alert(
+          "Sukces", 
+          `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${existingRecord ? 'zaktualizowane' : 'zapisane'}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`,
+          [{ text: "OK" }]
+        );
+        setWorkHoursModalVisible(false);
+        fetchTodaysWorkHours(); // Refresh today's work hours
+      } else {
+        const errorData = await response.json();
+        Alert.alert("Błąd", errorData.message || "Nie udało się zapisać godzin pracy.");
+      }
+    } catch (error) {
+      console.error("Error saving work hours:", error);
+      Alert.alert("Błąd", "Wystąpił błąd podczas zapisywania godzin pracy.");
+    }
+  };
+
+  const formatTime = (timeString) => {
+    return timeString;
+  };
+
+  const generateTimeOptions = () => {
+    const times = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        times.push(timeString);
+      }
+    }
+    return times;
   };
 
   const submitDeduction = async () => {
@@ -527,9 +892,16 @@ const Home = () => {
       return;
     }
     
-    if (!deductionReason.trim()) {
-      Alert.alert("Błąd", "Proszę wprowadzić powód odpisania.");
-      return;
+    if (deductionType === "employee_advance") {
+      if (!selectedEmployeeForAdvance) {
+        Alert.alert("Błąd", "Proszę wybrać pracownika dla zaliczki.");
+        return;
+      }
+    } else {
+      if (!deductionReason.trim()) {
+        Alert.alert("Błąd", "Proszę wprowadzić powód odpisania.");
+        return;
+      }
     }
     
     // Check if there are sufficient funds
@@ -546,14 +918,23 @@ const Home = () => {
     }
     
     try {
-      const operationData = {
+      let operationData = {
         userSymbol: user.symbol,
         amount: -parseFloat(deductionAmount), // Negative for deduction
         currency: deductionCurrency,
-        type: "deduction",
-        reason: deductionReason.trim(),
+        type: deductionType === "employee_advance" ? "employee_advance" : "deduction",
+        reason: deductionType === "employee_advance" 
+          ? `Zaliczka dla ${selectedEmployeeForAdvance.firstName} ${selectedEmployeeForAdvance.lastName}${deductionReason.trim() ? ` - ${deductionReason.trim()}` : ''}`
+          : deductionReason.trim(),
         date: new Date().toISOString(),
       };
+
+      // Dodaj dane pracownika dla zaliczek
+      if (deductionType === "employee_advance") {
+        operationData.employeeId = selectedEmployeeForAdvance._id;
+        operationData.employeeName = `${selectedEmployeeForAdvance.firstName} ${selectedEmployeeForAdvance.lastName}`;
+        operationData.employeeCode = selectedEmployeeForAdvance.employeeId;
+      }
       
       const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"), {
         method: "POST",
@@ -568,6 +949,8 @@ const Home = () => {
       setDeductionAmount("");
       setDeductionCurrency("PLN");
       setDeductionReason("");
+      setDeductionType("other");
+      setSelectedEmployeeForAdvance(null);
       setDeductionModalVisible(false);
       await fetchFinancialOperations();
       
@@ -872,70 +1255,85 @@ const Home = () => {
           )}
           ListHeaderComponent={() => {
             return (
-              <View style={{ marginVertical: 24, paddingHorizontal: 16 }}>
+              <View style={{ marginVertical: 24, paddingHorizontal: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <View>
-                    <Text style={{ fontSize: 14, color: "#f3f4f6" }}>
-                      Zalogowany jako: <Text style={{ fontWeight: 'bold' }}>{user?.email}</Text>
-                    </Text>
-                    <Text style={{ fontSize: 14, color: "#f3f4f6" }}>
-                      {new Date().toLocaleDateString('pl-PL', {
+                  <View style={{ width: '100%' }}>
+                    <Text style={{ fontSize: 14, color: "#f3f4f6", marginBottom: 12 }}>
+                      Zalogowany jako: <Text style={{ fontWeight: 'bold' }}>{user?.email}</Text> | {new Date().toLocaleDateString('pl-PL', {
                         year: 'numeric',
                         month: '2-digit',
                         day: '2-digit',
                       })}
                     </Text>
                     {assignedSalespeople.length > 0 && (
-                      <View style={{ marginTop: 8 }}>
-                        <View style={{ 
-                          flexDirection: "row", 
-                          alignItems: "center", 
-                          marginBottom: 8,
-                          padding: 8,
-                          backgroundColor: '#1f2937',
-                          borderRadius: 6,
-                          borderLeftWidth: 3,
-                          borderLeftColor: '#007bff'
-                        }}>
-                          <Text style={{ fontSize: 14, color: "#10b981", fontWeight: 'bold' }}>
-                            � Zespół sprzedażowy ({assignedSalespeople.length})
-                          </Text>
-                        </View>
-                        
-                        {assignedSalespeople.map((salesperson, index) => (
-                          <View 
-                            key={salesperson._id} 
-                            style={{ 
-                              flexDirection: "row", 
-                              alignItems: "center", 
-                              marginBottom: 4,
-                              padding: 6,
-                              backgroundColor: '#374151',
-                              borderRadius: 4,
-                              marginLeft: 10
-                            }}
-                          >
-                            <Text style={{ fontSize: 13, color: "#ffffff", flex: 1 }}>
-                              {index + 1}. {salesperson.firstName} {salesperson.lastName}
-                              {salesperson.employeeId && (
-                                <Text style={{ color: '#9ca3af', fontSize: 11 }}> (ID: {salesperson.employeeId})</Text>
-                              )}
-                            </Text>
-                            <TouchableOpacity 
-                              onPress={() => removeSalesperson(salesperson._id)}
+                      <>
+                        {assignedSalespeople.map((salesperson, index) => {
+                          // Check if work hours are already recorded for this employee today
+                          const todaysRecord = todaysWorkHours.find(record => 
+                            record.employeeId?._id === salesperson._id || 
+                            record.employeeId === salesperson._id
+                          );
+                          
+                          return (
+                            <View 
+                              key={salesperson._id} 
                               style={{ 
-                                backgroundColor: '#dc3545',
-                                paddingHorizontal: 6,
-                                paddingVertical: 2,
-                                borderRadius: 3,
-                                marginLeft: 8
+                                flexDirection: "row", 
+                                alignItems: "center", 
+                                marginBottom: 4,
+                                padding: 6,
+                                backgroundColor: todaysRecord ? '#1f5f3f' : '#374151',
+                                borderRadius: 4,
+                                borderLeftWidth: todaysRecord ? 3 : 0,
+                                borderLeftColor: '#10b981',
+                                width: '100%'
                               }}
                             >
-                              <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>✕</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                      </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, color: "#ffffff" }}>
+                                  {index + 1}. {salesperson.firstName} {salesperson.lastName}
+                                  {salesperson.employeeId && (
+                                    <Text style={{ color: '#9ca3af', fontSize: 11 }}> (ID: {salesperson.employeeId})</Text>
+                                  )}
+                                </Text>
+                                {todaysRecord && (
+                                  <Text style={{ color: '#10b981', fontSize: 11, marginTop: 2 }}>
+                                    ⏰ {todaysRecord.startTime} - {todaysRecord.endTime} ({todaysRecord.totalHours}h)
+                                  </Text>
+                                )}
+                              </View>
+                              
+                              <TouchableOpacity 
+                                onPress={() => openWorkHoursModal(salesperson)}
+                                style={{ 
+                                  backgroundColor: todaysRecord ? '#0d9488' : '#0ea5e9',
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 4,
+                                  borderRadius: 3,
+                                  marginLeft: 4
+                                }}
+                              >
+                                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                                  {todaysRecord ? '⏱️' : '⏰'}
+                                </Text>
+                              </TouchableOpacity>
+                              
+                              <TouchableOpacity 
+                                onPress={() => removeSalesperson(salesperson._id)}
+                                style={{ 
+                                  backgroundColor: '#dc3545',
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 3,
+                                  marginLeft: 4
+                                }}
+                              >
+                                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>✕</Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </>
                     )}
                   </View>
                 </View>
@@ -1355,7 +1753,7 @@ const Home = () => {
                       {Object.keys(operationsTotals).length > 0 && (
                         <View style={{ marginBottom: 12 }}>
                           <Text style={{ fontSize: 14, color: "#fbbf24", fontWeight: "bold", marginBottom: 4 }}>
-                            � OPERACJE FINANSOWE:
+                            OPERACJE FINANSOWE:
                           </Text>
                           {Object.entries(operationsTotals).map(([currency, total]) => (
                             <Text key={`operations-${currency}`} style={{ 
@@ -1984,9 +2382,109 @@ const Home = () => {
                 </TouchableOpacity>
               </View>
               
+              {/* Typ odpisania */}
+              <View style={{ width: '100%', marginBottom: 15 }}>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Typ odpisania:</Text>
+                
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    paddingVertical: 8,
+                  }}
+                  onPress={() => setDeductionType("other")}
+                >
+                  <View style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    marginRight: 10,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}>
+                    {deductionType === "other" && (
+                      <View style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: '#0d6efd',
+                      }} />
+                    )}
+                  </View>
+                  <Text style={{ color: '#fff', fontSize: 14 }}>Inne odpisanie</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    paddingVertical: 8,
+                  }}
+                  onPress={() => setDeductionType("employee_advance")}
+                >
+                  <View style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    marginRight: 10,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}>
+                    {deductionType === "employee_advance" && (
+                      <View style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: '#0d6efd',
+                      }} />
+                    )}
+                  </View>
+                  <Text style={{ color: '#fff', fontSize: 14 }}>Zaliczka pracownika</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Wybór pracownika dla zaliczki */}
+              {deductionType === "employee_advance" && (
+                <View style={{ width: '100%', marginBottom: 15 }}>
+                  <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Wybierz pracownika:</Text>
+                  <View style={{ maxHeight: 150 }}>
+                    <FlatList
+                      data={employees}
+                      keyExtractor={(item) => item._id}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: selectedEmployeeForAdvance?._id === item._id ? '#0d6efd' : 'black',
+                            borderWidth: 1,
+                            borderColor: selectedEmployeeForAdvance?._id === item._id ? '#0d6efd' : 'white',
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 8,
+                          }}
+                          onPress={() => setSelectedEmployeeForAdvance(item)}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 14 }}>
+                            {item.firstName} {item.lastName}
+                            {item.employeeId && <Text style={{ color: '#ccc' }}> (ID: {item.employeeId})</Text>}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                  </View>
+                </View>
+              )}
+              
               {/* Reason input */}
               <View style={{ width: '100%', marginBottom: 20 }}>
-                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Powód odpisania:</Text>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
+                  {deductionType === "employee_advance" ? "Dodatkowe uwagi (opcjonalne):" : "Powód odpisania:"}
+                </Text>
                 <TextInput
                   style={{
                     backgroundColor: 'black',
@@ -1999,7 +2497,7 @@ const Home = () => {
                     minHeight: 80,
                     textAlignVertical: 'top',
                   }}
-                  placeholder="Wpisz powód odpisania kwoty..."
+                  placeholder={deductionType === "employee_advance" ? "Dodatkowe uwagi do zaliczki (opcjonalne)..." : "Wpisz powód odpisania kwoty..."}
                   placeholderTextColor="#ccc"
                   value={deductionReason}
                   onChangeText={setDeductionReason}
@@ -2024,6 +2522,8 @@ const Home = () => {
                   setDeductionAmount("");
                   setDeductionCurrency("PLN");
                   setDeductionReason("");
+                  setDeductionType("other");
+                  setSelectedEmployeeForAdvance(null);
                 }}
               >
                 <Text style={styles.closeText}>Anuluj</Text>
@@ -2539,6 +3039,139 @@ const Home = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Work Hours Modal */}
+        <Modal
+          key="work-hours-modal"
+          animationType="slide"
+          transparent={true}
+          visible={workHoursModalVisible}
+          onRequestClose={() => setWorkHoursModalVisible(false)}
+        >
+          <View style={styles.workHoursModalOverlay}>
+            <View style={styles.workHoursModalContent}>
+              <Text style={styles.workHoursModalTitle}>
+                Ustaw godziny pracy
+              </Text>
+              
+              {selectedEmployeeForHours && (
+                <Text style={styles.workHoursEmployeeName}>
+                  {selectedEmployeeForHours.firstName} {selectedEmployeeForHours.lastName}
+                </Text>
+              )}
+              
+              <Text style={styles.workHoursDateText}>
+                Data: {new Date().toLocaleDateString('pl-PL')}
+              </Text>
+
+              <View style={styles.workHoursTimeContainer}>
+                <View style={styles.workHoursTimeSection}>
+                  <Text style={styles.workHoursTimeLabel}>Godzina rozpoczęcia:</Text>
+                  <View style={styles.workHoursTimePickerContainer}>
+                    <TextInput
+                      style={styles.workHoursTimeInput}
+                      value={workStartTime}
+                      onChangeText={(text) => {
+                        // Validate format HH:MM
+                        if (text.length <= 5) {
+                          // Auto-format: add colon after 2 digits
+                          if (text.length === 2 && !text.includes(':')) {
+                            text = text + ':';
+                          }
+                          setWorkStartTime(text);
+                        }
+                      }}
+                      placeholder="08:00"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="numeric"
+                      maxLength={5}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.workHoursTimeSection}>
+                  <Text style={styles.workHoursTimeLabel}>Godzina zakończenia:</Text>
+                  <View style={styles.workHoursTimePickerContainer}>
+                    <TextInput
+                      style={styles.workHoursTimeInput}
+                      value={workEndTime}
+                      onChangeText={(text) => {
+                        // Validate format HH:MM
+                        if (text.length <= 5) {
+                          // Auto-format: add colon after 2 digits
+                          if (text.length === 2 && !text.includes(':')) {
+                            text = text + ':';
+                          }
+                          setWorkEndTime(text);
+                        }
+                      }}
+                      placeholder="16:00"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="numeric"
+                      maxLength={5}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Work hours calculation preview */}
+              {(() => {
+                const start = workStartTime.split(':');
+                const end = workEndTime.split(':');
+                const startMinutes = parseInt(start[0]) * 60 + parseInt(start[1]);
+                const endMinutes = parseInt(end[0]) * 60 + parseInt(end[1]);
+                const totalMinutes = endMinutes > startMinutes ? endMinutes - startMinutes : 0;
+                const totalHours = totalMinutes / 60;
+                const hourlyRate = selectedEmployeeForHours?.hourlyRate || 0;
+                const dailyPay = totalHours * hourlyRate;
+
+                return (
+                  <View style={styles.workHoursPreview}>
+                    <Text style={styles.workHoursPreviewText}>
+                      ⏱️ Łączny czas pracy: {totalHours.toFixed(1)} godz.
+                    </Text>
+                    <Text style={styles.workHoursPreviewText}>
+                      💰 Dzienna wypłata: {dailyPay.toFixed(2)} PLN
+                    </Text>
+                  </View>
+                );
+              })()}
+
+              <View style={styles.workHoursNotesContainer}>
+                <Text style={styles.workHoursNotesLabel}>Notatki (opcjonalne):</Text>
+                <TextInput
+                  style={styles.workHoursNotesInput}
+                  value={workNotes}
+                  onChangeText={setWorkNotes}
+                  placeholder="Dodaj notatki dotyczące pracy..."
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              <View style={styles.workHoursModalButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.workHoursModalButton, styles.workHoursSaveButton]}
+                  onPress={saveWorkHours}
+                >
+                  <Text style={styles.workHoursModalButtonText}>💾 Zapisz godziny</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.workHoursModalButton, styles.workHoursCancelButton]}
+                  onPress={() => {
+                    setWorkHoursModalVisible(false);
+                    setSelectedEmployeeForHours(null);
+                    setWorkNotes("");
+                  }}
+                >
+                  <Text style={styles.workHoursModalButtonText}>✕ Anuluj</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -2844,6 +3477,151 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc3545',
   },
   salespersonModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Work Hours Modal Styles
+  workHoursModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  workHoursModalContent: {
+    backgroundColor: '#1f2937',
+    borderRadius: 15,
+    padding: 25,
+    width: '95%',
+    maxHeight: '85%',
+    borderWidth: 2,
+    borderColor: '#0ea5e9',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  workHoursModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  workHoursEmployeeName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#10b981',
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  workHoursDateText: {
+    fontSize: 16,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  workHoursTimeContainer: {
+    marginBottom: 20,
+  },
+  workHoursTimeSection: {
+    marginBottom: 15,
+  },
+  workHoursTimeLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  workHoursTimePickerContainer: {
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#0ea5e9',
+  },
+  workHoursTimeInput: {
+    padding: 15,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0ea5e9',
+    textAlign: 'center',
+  },
+  workHoursTimePicker: {
+    backgroundColor: '#374151',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#0ea5e9',
+    alignItems: 'center',
+  },
+  workHoursTimeText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0ea5e9',
+  },
+  workHoursPreview: {
+    backgroundColor: '#065f46',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#10b981',
+  },
+  workHoursPreviewText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 5,
+  },
+  workHoursPreviewTextSmall: {
+    fontSize: 14,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+  },
+  workHoursNotesContainer: {
+    marginBottom: 20,
+  },
+  workHoursNotesLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  workHoursNotesInput: {
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#6b7280',
+    padding: 12,
+    color: '#ffffff',
+    fontSize: 16,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  workHoursModalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 15,
+  },
+  workHoursModalButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+  },
+  workHoursSaveButton: {
+    backgroundColor: '#059669',
+  },
+  workHoursCancelButton: {
+    backgroundColor: '#dc2626',
+  },
+  workHoursModalButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
