@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'; // Import 
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import tokenService from '../../services/tokenService';
+import CurrencyService from '../../services/currencyService'; // Import currency service
 import LogoutButton from '../../components/LogoutButton';
 
 const Home = () => {
@@ -78,6 +79,26 @@ const Home = () => {
   const [workEndTime, setWorkEndTime] = useState("16:00"); // End time for work
   const [workNotes, setWorkNotes] = useState(""); // Notes for work hours
   const [todaysWorkHours, setTodaysWorkHours] = useState([]); // Today's recorded work hours
+  
+  // States for product currency system
+  const [productSaleCurrency, setProductSaleCurrency] = useState("PLN"); // Currency selected for product sale
+  const [productCurrencyModalVisible, setProductCurrencyModalVisible] = useState(false); // Modal for selecting product currency
+  const [exchangeRates, setExchangeRates] = useState({}); // Exchange rates cache
+  const [productPriceInCurrency, setProductPriceInCurrency] = useState(""); // Product price converted to selected currency
+  const [showCurrencyConversion, setShowCurrencyConversion] = useState(false); // Show conversion info
+  
+  // States for manual currency rates
+  const [editingCurrencyRate, setEditingCurrencyRate] = useState(null); // Which currency rate is being edited
+  const [tempCurrencyRate, setTempCurrencyRate] = useState(""); // Temporary rate input value
+  const [currencyRateModalVisible, setCurrencyRateModalVisible] = useState(false); // Modal for editing currency rate
+  
+  // States for add amount currency rate input
+  const [addAmountCurrencyRate, setAddAmountCurrencyRate] = useState(""); // Rate input for add amount currency
+  const [showAddAmountRateInput, setShowAddAmountRateInput] = useState(false); // Show rate input for add amount
+
+  // States for product currency rate input
+  const [productSaleCurrencyRate, setProductSaleCurrencyRate] = useState(""); // Rate input for product currency
+  const [showProductRateInput, setShowProductRateInput] = useState(false); // Show rate input for product currency
   
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
 
@@ -1123,18 +1144,76 @@ const Home = () => {
       return;
     }
     
+    // Validate currency rate for non-PLN currencies
+    if (addAmountCurrency !== 'PLN' && showAddAmountRateInput) {
+      if (!addAmountCurrencyRate || parseFloat(addAmountCurrencyRate) <= 0) {
+        setSuccessMessage(`Proszę wprowadzić prawidłowy kurs dla ${addAmountCurrency} (większy od 0).`);
+        setSuccessModalVisible(true);
+        return;
+      }
+    }
+    
     try {
-      // Prepare reason based on selection
+      // Prepare reason based on selection with currency conversion
       let finalReason = '';
+      let conversionInfo = null;
+      
       if (reasonType === 'product') {
         const selectedProductObj = products.find(p => p._id === selectedProduct);
         const productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
         
         if (productFinalPrice) {
-          const finalPrice = parseFloat(productFinalPrice);
-          const advance = parseFloat(addAmountAmount);
-          const remaining = finalPrice - advance;
-          finalReason = `Zaliczka na produkt: ${productName}. Cena finalna: ${finalPrice.toFixed(2)} ${addAmountCurrency}, Dopłata: ${remaining.toFixed(2)} ${addAmountCurrency}`;
+          const finalPricePLN = parseFloat(productFinalPrice); // Always store original PLN price
+          const advanceAmount = parseFloat(addAmountAmount);
+          
+          // If advance is in different currency, calculate conversion info
+          if (addAmountCurrency !== 'PLN') {
+            try {
+              // Use manual rate if provided, otherwise use stored rate
+              let rateToUse = null;
+              if (addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0) {
+                rateToUse = parseFloat(addAmountCurrencyRate);
+                // Also update stored rate for future use
+                await CurrencyService.updateCurrencyRate(addAmountCurrency, rateToUse);
+              }
+              
+              conversionInfo = await calculateAdvanceWithConversion(
+                advanceAmount, 
+                addAmountCurrency, 
+                finalPricePLN,
+                rateToUse // Pass custom rate
+              );
+              
+              if (conversionInfo) {
+                const remainingPLN = finalPricePLN - conversionInfo.advanceInPLN;
+                const remainingInCurrency = productSaleCurrency === 'PLN' 
+                  ? remainingPLN 
+                  : await CurrencyService.convertCurrency(remainingPLN, 'PLN', productSaleCurrency);
+                
+                finalReason = `Zaliczka na produkt: ${productName}. ` +
+                  `Cena: ${finalPricePLN.toFixed(2)} PLN` + 
+                  (productSaleCurrency !== 'PLN' ? ` (${productPriceInCurrency} ${productSaleCurrency})` : '') +
+                  `. Zaliczka: ${advanceAmount} ${addAmountCurrency} = ${conversionInfo.advanceInPLN.toFixed(2)} PLN` +
+                  `. Pozostało: ${remainingInCurrency.toFixed(2)} ${productSaleCurrency}`;
+              }
+            } catch (error) {
+              console.error('Currency conversion error:', error);
+              // Fallback to simple calculation
+              const remaining = finalPricePLN - advanceAmount;
+              finalReason = `Zaliczka na produkt: ${productName}. Cena finalna: ${finalPricePLN.toFixed(2)} PLN, Dopłata: ${remaining.toFixed(2)} PLN`;
+            }
+          } else {
+            // Both in PLN - simple calculation
+            const remaining = finalPricePLN - advanceAmount;
+            const remainingInDisplayCurrency = productSaleCurrency === 'PLN' 
+              ? remaining 
+              : parseFloat(productPriceInCurrency) - advanceAmount;
+              
+            finalReason = `Zaliczka na produkt: ${productName}. ` +
+              `Cena: ${finalPricePLN.toFixed(2)} PLN` + 
+              (productSaleCurrency !== 'PLN' ? ` (${productPriceInCurrency} ${productSaleCurrency})` : '') +
+              `. Pozostało: ${remainingInDisplayCurrency.toFixed(2)} ${productSaleCurrency}`;
+          }
         } else {
           finalReason = `Zaliczka na produkt: ${productName}`;
         }
@@ -1149,6 +1228,16 @@ const Home = () => {
         type: "addition",
         reason: finalReason,
         date: new Date().toISOString(),
+        // Add currency conversion info
+        ...(conversionInfo && {
+          currencyConversion: {
+            originalAmount: conversionInfo.advanceAmount,
+            originalCurrency: conversionInfo.advanceCurrency,
+            convertedAmount: conversionInfo.advanceInPLN,
+            exchangeRate: conversionInfo.exchangeRate,
+            conversionDate: conversionInfo.conversionDate
+          }
+        })
       };
 
       // Add product-related data if it's a product transaction
@@ -1161,10 +1250,19 @@ const Home = () => {
           operationData.productName = 'Produkt do wyboru';
         }
         
-        // Always include final price for product advances
+        // Always include final price for product advances - ALWAYS IN PLN for turnover calculation
         if (productFinalPrice) {
-          operationData.finalPrice = parseFloat(productFinalPrice);
-          operationData.remainingAmount = parseFloat(productFinalPrice) - parseFloat(addAmountAmount);
+          const finalPricePLN = parseFloat(productFinalPrice); // Input is always in PLN
+          
+          operationData.finalPrice = finalPricePLN; // Always PLN for turnover and web display
+          operationData.finalPricePLN = finalPricePLN; // Explicit PLN price
+          operationData.remainingAmount = finalPricePLN - (conversionInfo?.advanceInPLN || parseFloat(addAmountAmount));
+          
+          // Add display currency info for mobile app only
+          operationData.productDisplayCurrency = productSaleCurrency;
+          if (productSaleCurrency !== 'PLN' && productPriceInCurrency) {
+            operationData.finalPriceInDisplayCurrency = parseFloat(productPriceInCurrency);
+          }
         }
       }
       
@@ -1186,6 +1284,8 @@ const Home = () => {
       setProductSearchQuery("");
       setShowProductDropdown(false);
       setProductFinalPrice("");
+      setShowAddAmountRateInput(false);
+      setAddAmountCurrencyRate("");
       setAddAmountModalVisible(false);
       
       // In test environment, add operation directly to state
@@ -1366,10 +1466,246 @@ const Home = () => {
   };
 
   // Function to handle currency selection for "Dopisz kwotę" (Add Amount)
-  const selectCurrencyForAddAmount = (currency) => {
+  const selectCurrencyForAddAmount = async (currency) => {
     setAddAmountCurrency(currency);
     setAddAmountCurrencyModalVisible(false);
+    
+    if (currency === 'PLN') {
+      setShowAddAmountRateInput(false);
+      setAddAmountCurrencyRate("");
+    } else {
+      // Show rate input for non-PLN currencies
+      setShowAddAmountRateInput(true);
+      // Load current rate from storage as default
+      try {
+        const currentRate = await CurrencyService.getCurrencyRate(currency);
+        setAddAmountCurrencyRate(currentRate.toString());
+      } catch (error) {
+        console.error('Error loading currency rate:', error);
+        setAddAmountCurrencyRate("1.0");
+      }
+    }
   };
+
+  // Function to handle product currency selection
+  const selectProductCurrency = async (currency) => {
+    setProductSaleCurrency(currency);
+    setProductCurrencyModalVisible(false);
+    
+    if (currency === 'PLN') {
+      setShowProductRateInput(false);
+      setProductSaleCurrencyRate("");
+    } else {
+      // Show rate input for non-PLN currencies
+      setShowProductRateInput(true);
+      // Load current rate from storage as default
+      try {
+        const currentRate = await CurrencyService.getCurrencyRate(currency);
+        setProductSaleCurrencyRate(currentRate.toString());
+        
+        // Update local exchangeRates state immediately
+        setExchangeRates(prev => ({
+          ...prev,
+          [currency]: currentRate
+        }));
+        
+      } catch (error) {
+        console.error('Error loading currency rate:', error);
+        setProductSaleCurrencyRate("1.0");
+        
+        // Set default rate in exchangeRates as well
+        setExchangeRates(prev => ({
+          ...prev,
+          [currency]: 1.0
+        }));
+      }
+    }
+    
+    // Convert product price to selected currency if product is selected and price is set
+    if (selectedProduct && productFinalPrice) {
+      convertProductPrice(parseFloat(productFinalPrice), currency);
+    }
+  };
+
+  // Function to convert price to different currencies
+  const convertPriceToMultipleCurrencies = async (pricePLN, targetCurrencies) => {
+    const results = { PLN: pricePLN.toFixed(2) };
+    
+    for (const currency of targetCurrencies) {
+      if (currency === 'PLN') {
+        continue;
+      }
+      
+      try {
+        // Get rate from manual input or storage
+        let rate = null;
+        
+        if (currency === productSaleCurrency && productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0) {
+          rate = parseFloat(productSaleCurrencyRate);
+        } else if (currency === addAmountCurrency && addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0) {
+          rate = parseFloat(addAmountCurrencyRate);
+        } else {
+          rate = exchangeRates[currency];
+        }
+        
+        if (rate && rate > 0) {
+          results[currency] = (pricePLN / rate).toFixed(2);
+        }
+      } catch (error) {
+        console.error(`Error converting to ${currency}:`, error);
+      }
+    }
+    
+    return results;
+  };
+
+  // Function to load exchange rates
+  const loadExchangeRates = async () => {
+    try {
+      const rates = await CurrencyService.getAllExchangeRates();
+      setExchangeRates(rates);
+      return rates;
+    } catch (error) {
+      console.error('Error loading exchange rates:', error);
+      // Use default rates
+      const defaultRates = CurrencyService.getDefaultRates();
+      setExchangeRates(defaultRates);
+      return defaultRates;
+    }
+  };
+
+  // Function to handle currency rate editing
+  const startEditingRate = (currency, currentRate) => {
+    if (currency === 'PLN') return; // PLN rate can't be changed
+    
+    setEditingCurrencyRate(currency);
+    setTempCurrencyRate(currentRate.toString());
+    setCurrencyRateModalVisible(true);
+  };
+
+  // Function to save edited currency rate
+  const saveCurrencyRate = async () => {
+    if (!editingCurrencyRate || !tempCurrencyRate) return;
+    
+    const newRate = parseFloat(tempCurrencyRate);
+    if (isNaN(newRate) || newRate <= 0) {
+      setSuccessMessage("Proszę wprowadzić prawidłową wartość kursu (większą od 0).");
+      setSuccessModalVisible(true);
+      return;
+    }
+    
+    try {
+      const success = await CurrencyService.updateCurrencyRate(editingCurrencyRate, newRate);
+      if (success) {
+        await loadExchangeRates(); // Reload rates
+        
+        // Recalculate product price if needed
+        if (selectedProduct && productFinalPrice && productSaleCurrency === editingCurrencyRate) {
+          await convertProductPrice(parseFloat(productFinalPrice), productSaleCurrency);
+        }
+        
+        setSuccessMessage(`Kurs ${editingCurrencyRate} został zaktualizowany do ${newRate} PLN`);
+        setSuccessModalVisible(true);
+      } else {
+        setSuccessMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
+        setSuccessModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Error saving currency rate:', error);
+      setSuccessMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
+      setSuccessModalVisible(true);
+    }
+    
+    setCurrencyRateModalVisible(false);
+    setEditingCurrencyRate(null);
+    setTempCurrencyRate("");
+  };
+
+  // Function to cancel currency rate editing
+  const cancelEditingRate = () => {
+    setCurrencyRateModalVisible(false);
+    setEditingCurrencyRate(null);
+    setTempCurrencyRate("");
+  };
+
+  // Function to convert product price from PLN to selected currency
+  const convertProductPrice = async (pricePLN, targetCurrency) => {
+    try {
+      if (targetCurrency === 'PLN') {
+        setProductPriceInCurrency(pricePLN.toFixed(2));
+        setShowCurrencyConversion(false);
+        return;
+      }
+
+      // Use manual rate if available, otherwise fall back to stored rates
+      let rate = null;
+      if (productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0) {
+        rate = parseFloat(productSaleCurrencyRate);
+      } else {
+        // Fallback to stored rates
+        let rates = exchangeRates;
+        if (!rates[targetCurrency]) {
+          rates = await loadExchangeRates();
+        }
+        rate = rates[targetCurrency];
+      }
+
+      if (rate) {
+        const convertedPrice = pricePLN / rate;
+        setProductPriceInCurrency(convertedPrice.toFixed(2));
+        setShowCurrencyConversion(true);
+      }
+    } catch (error) {
+      console.error('Error converting price:', error);
+      setProductPriceInCurrency(pricePLN.toFixed(2));
+      setShowCurrencyConversion(false);
+    }
+  };
+
+  // Function to calculate advance percentage with currency conversion
+  const calculateAdvanceWithConversion = async (advanceAmount, advanceCurrency, productPricePLN, customRate = null) => {
+    try {
+      // If custom rate provided, use it temporarily
+      if (customRate && customRate > 0) {
+        // Manual conversion with custom rate
+        const advanceInPLN = advanceAmount * customRate;
+        const percentage = (advanceInPLN / productPricePLN) * 100;
+        
+        return {
+          advanceAmount,
+          advanceCurrency,
+          advanceInPLN: Math.round(advanceInPLN * 100) / 100,
+          productPrice: productPricePLN,
+          percentage: Math.round(percentage * 100) / 100,
+          exchangeRate: customRate,
+          conversionDate: new Date().toISOString()
+        };
+      } else {
+        // Use stored rate via service
+        const calculation = await CurrencyService.calculateAdvancePercentage(
+          advanceAmount, 
+          advanceCurrency, 
+          productPricePLN
+        );
+        return calculation;
+      }
+    } catch (error) {
+      console.error('Error calculating advance percentage:', error);
+      return null;
+    }
+  };
+
+  // Load exchange rates on component mount
+  useEffect(() => {
+    loadExchangeRates();
+  }, []);
+
+  // Convert product price when currency or price changes
+  useEffect(() => {
+    if (productFinalPrice && parseFloat(productFinalPrice) > 0) {
+      convertProductPrice(parseFloat(productFinalPrice), productSaleCurrency);
+    }
+  }, [productFinalPrice, productSaleCurrency]);
 
   return (
     <>
@@ -2789,12 +3125,19 @@ const Home = () => {
           }}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { width: '85%' }]}>
+            <View style={[styles.modalContent, { width: '85%', maxHeight: '90%' }]}>
               <Text style={styles.modalTitle}>Dopisz kwotę</Text>
+              
+              <ScrollView 
+                style={{ width: '100%' }}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              >
               
               {/* Amount input */}
               <View style={{ width: '100%', marginBottom: 15 }}>
-                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Kwota:</Text>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Kwota jaką klient wpłaca:</Text>
                 <TextInput
                   style={{
                     backgroundColor: 'black',
@@ -2834,6 +3177,48 @@ const Home = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+              
+              {/* Currency rate input - show only for non-PLN currencies */}
+              {showAddAmountRateInput && addAmountCurrency !== 'PLN' && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
+                    Kurs {addAmountCurrency} (1 {addAmountCurrency} = ? PLN):
+                  </Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: '#1a1a1a',
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 16,
+                      color: 'white',
+                      borderWidth: 2,
+                      borderColor: '#f39c12',
+                      textAlign: 'center',
+                    }}
+                    placeholder="0.00"
+                    placeholderTextColor="#666"
+                    value={addAmountCurrencyRate}
+                    onChangeText={(value) => {
+                      setAddAmountCurrencyRate(value);
+                      // Save rate to storage when user types
+                      if (value && parseFloat(value) > 0) {
+                        CurrencyService.updateCurrencyRate(addAmountCurrency, parseFloat(value)).catch(console.error);
+                      }
+                    }}
+                    keyboardType="decimal-pad"
+                  />
+                  {addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
+                    <Text style={{
+                      color: '#4ecdc4',
+                      fontSize: 12,
+                      textAlign: 'center',
+                      marginTop: 5
+                    }}>
+                      1 {addAmountCurrency} = {parseFloat(addAmountCurrencyRate).toFixed(2)} PLN
+                    </Text>
+                  )}
+                </View>
+              )}
               
               {/* Reason selection */}
               <View style={{ width: '100%', marginBottom: 20 }}>
@@ -2994,7 +3379,7 @@ const Home = () => {
                     {reasonType === 'product' && (
                       <View style={{ marginTop: 15 }}>
                         <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>
-                          Uzgodniona cena finalna produktu (zaliczka + dopłata):
+                          Uzgodniona cena finalna produktu (w PLN - dla obrotu):
                         </Text>
                         <TextInput
                           style={{
@@ -3007,12 +3392,140 @@ const Home = () => {
                             borderColor: '#0d6efd',
                             textAlign: 'center',
                           }}
-                          placeholder="0.00"
+                          placeholder="0.00 PLN"
                           placeholderTextColor="#ccc"
                           value={productFinalPrice}
-                          onChangeText={setProductFinalPrice}
+                          onChangeText={(value) => {
+                            setProductFinalPrice(value);
+                            // Convert price to selected currency when user types
+                            if (value && parseFloat(value) > 0) {
+                              convertProductPrice(parseFloat(value), productSaleCurrency);
+                            }
+                          }}
                           keyboardType="numeric"
                         />
+
+                        {/* Product Currency Selection */}
+                        <View style={{ marginTop: 15 }}>
+                          <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>
+                            Waluta w której klient dopłaci:
+                          </Text>
+                          <TouchableOpacity
+                            testID="product-currency-select-button"
+                            style={{
+                              backgroundColor: 'black',
+                              borderRadius: 8,
+                              padding: 12,
+                              borderWidth: 1,
+                              borderColor: '#0d6efd',
+                              alignItems: 'center',
+                            }}
+                            onPress={() => setProductCurrencyModalVisible(true)}
+                          >
+                            <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                              {productSaleCurrency}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Currency rate input for product - show only for non-PLN currencies */}
+                        {showProductRateInput && productSaleCurrency !== 'PLN' && (
+                          <View style={{ width: '100%', marginTop: 15 }}>
+                            <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
+                              Kurs {productSaleCurrency} (1 {productSaleCurrency} = ? PLN):
+                            </Text>
+                            <TextInput
+                              style={{
+                                backgroundColor: '#1a1a1a',
+                                borderRadius: 8,
+                                padding: 12,
+                                fontSize: 16,
+                                color: 'white',
+                                borderWidth: 2,
+                                borderColor: '#0d6efd',
+                                textAlign: 'center',
+                              }}
+                              placeholder="0.00"
+                              placeholderTextColor="#666"
+                              value={productSaleCurrencyRate}
+                              onChangeText={(value) => {
+                                setProductSaleCurrencyRate(value);
+                                // Save rate to storage when user types
+                                if (value && parseFloat(value) > 0) {
+                                  const newRate = parseFloat(value);
+                                  CurrencyService.updateCurrencyRate(productSaleCurrency, newRate).catch(console.error);
+                                  
+                                  // Update local exchangeRates state immediately
+                                  setExchangeRates(prev => ({
+                                    ...prev,
+                                    [productSaleCurrency]: newRate
+                                  }));
+                                  
+                                  // Trigger price conversion with new rate
+                                  if (productFinalPrice) {
+                                    convertProductPrice(parseFloat(productFinalPrice), productSaleCurrency);
+                                  }
+                                }
+                              }}
+                              keyboardType="decimal-pad"
+                            />
+                            {productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0 && (
+                              <Text style={{
+                                color: '#4ecdc4',
+                                fontSize: 12,
+                                textAlign: 'center',
+                                marginTop: 5
+                              }}>
+                                1 {productSaleCurrency} = {parseFloat(productSaleCurrencyRate).toFixed(2)} PLN
+                              </Text>
+                            )}
+                          </View>
+                        )}
+
+                        {/* Show converted price if product is selected and has price */}
+                        {productFinalPrice && (
+                          <View style={{
+                            marginTop: 10,
+                            padding: 10,
+                            backgroundColor: '#1a1a2e',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#4ecdc4',
+                          }}>
+                            <Text style={{ color: '#4ecdc4', fontSize: 12, textAlign: 'center', fontWeight: 'bold', marginBottom: 8 }}>
+                              Cena dla klienta:
+                            </Text>
+                            
+                            {/* Price in PLN (always) */}
+                            <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginBottom: 3 }}>
+                              PLN: {parseFloat(productFinalPrice).toFixed(2)}
+                            </Text>
+                            
+                            {/* Price in deposit currency if different from PLN */}
+                            {addAmountCurrency && addAmountCurrency !== 'PLN' && (
+                              <Text style={{ color: '#0d6efd', fontSize: 14, textAlign: 'center', marginBottom: 3 }}>
+                                {addAmountCurrency}: {(() => {
+                                  const rate = addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 
+                                    ? parseFloat(addAmountCurrencyRate) 
+                                    : exchangeRates[addAmountCurrency] || 1;
+                                  return (parseFloat(productFinalPrice) / rate).toFixed(2);
+                                })()}
+                              </Text>
+                            )}
+                            
+                            {/* Price in payment currency if different from PLN and deposit currency */}
+                            {productSaleCurrency && productSaleCurrency !== 'PLN' && productSaleCurrency !== addAmountCurrency && (
+                              <Text style={{ color: '#f39c12', fontSize: 14, textAlign: 'center', marginBottom: 3 }}>
+                                {productSaleCurrency}: {(() => {
+                                  const rate = productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0 
+                                    ? parseFloat(productSaleCurrencyRate) 
+                                    : exchangeRates[productSaleCurrency] || 1;
+                                  return (parseFloat(productFinalPrice) / rate).toFixed(2);
+                                })()}
+                              </Text>
+                            )}
+                          </View>
+                        )}
                         
                         {/* Show calculation when both amounts are filled */}
                         {productFinalPrice && addAmountAmount && (
@@ -3024,21 +3537,107 @@ const Home = () => {
                             borderWidth: 1,
                             borderColor: '#0d6efd',
                           }}>
+                            {/* Advance Amount */}
                             <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center' }}>
                               <Text style={{ fontWeight: 'bold' }}>Zaliczka:</Text> {parseFloat(addAmountAmount || 0).toFixed(2)} {addAmountCurrency}
+                              {addAmountCurrency !== 'PLN' && (
+                                <Text style={{ color: '#ccc', fontSize: 11 }}>
+                                  {' '}(≈ {(() => {
+                                    // Use manual rate if provided, otherwise use stored rate
+                                    const rate = addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 
+                                      ? parseFloat(addAmountCurrencyRate)
+                                      : exchangeRates[addAmountCurrency] || 1;
+                                    return (parseFloat(addAmountAmount || 0) * rate).toFixed(2);
+                                  })()} PLN)
+                                  {addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
+                                    <Text style={{ color: '#f39c12', fontWeight: 'bold' }}> *</Text>
+                                  )}
+                                </Text>
+                              )}
                             </Text>
+                            
+                            {/* Show rate info if manual rate is used */}
+                            {addAmountCurrency !== 'PLN' && addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
+                              <Text style={{ 
+                                color: '#f39c12', 
+                                fontSize: 10, 
+                                textAlign: 'center', 
+                                marginTop: 2,
+                                fontStyle: 'italic'
+                              }}>
+                                * Używa wprowadzonego kursu: 1 {addAmountCurrency} = {parseFloat(addAmountCurrencyRate).toFixed(2)} PLN
+                              </Text>
+                            )}
+                            
+                            {/* Product Price */}
                             <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center', marginTop: 3 }}>
-                              <Text style={{ fontWeight: 'bold' }}>Cena finalna:</Text> {parseFloat(productFinalPrice || 0).toFixed(2)} {addAmountCurrency}
+                              <Text style={{ fontWeight: 'bold' }}>Cena dla obrotu:</Text> {parseFloat(productFinalPrice || 0).toFixed(2)} PLN
                             </Text>
-                            <Text style={{ 
-                              color: parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0) > 0 ? '#ff6b6b' : '#0d6efd', 
-                              fontSize: 14, 
-                              textAlign: 'center', 
-                              marginTop: 5,
-                              fontWeight: 'bold'
+                            
+                            {/* Remaining Amount Calculation */}
+                            <View style={{
+                              marginTop: 8,
+                              padding: 8,
+                              backgroundColor: '#1a1a2e',
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: '#4ecdc4',
                             }}>
-                              Dopłata: {(parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0)).toFixed(2)} {addAmountCurrency}
-                            </Text>
+                              <Text style={{ 
+                                color: '#4ecdc4', 
+                                fontSize: 12, 
+                                textAlign: 'center',
+                                fontWeight: 'bold'
+                              }}>
+                                POZOSTAŁO DO DOPŁATY:
+                              </Text>
+                              
+                              {(() => {
+                                const pricePLN = parseFloat(productFinalPrice || 0);
+                                const advanceAmountNum = parseFloat(addAmountAmount || 0);
+                                
+                                // Convert advance to PLN if needed - use manual rate if provided
+                                const advanceRate = addAmountCurrency === 'PLN' 
+                                  ? 1 
+                                  : (addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 
+                                    ? parseFloat(addAmountCurrencyRate) 
+                                    : exchangeRates[addAmountCurrency] || 1);
+                                
+                                const advanceInPLN = advanceAmountNum * advanceRate;
+                                const remainingPLN = pricePLN - advanceInPLN;
+                                
+                                // Convert remaining to display currency
+                                const remainingInDisplayCurrency = productSaleCurrency === 'PLN'
+                                  ? remainingPLN
+                                  : remainingPLN / (exchangeRates[productSaleCurrency] || 1);
+                                
+                                return (
+                                  <>
+                                    <Text style={{ 
+                                      color: remainingInDisplayCurrency > 0 ? '#ff6b6b' : '#0d6efd', 
+                                      fontSize: 16, 
+                                      textAlign: 'center', 
+                                      marginTop: 5,
+                                      fontWeight: 'bold'
+                                    }}>
+                                      {remainingInDisplayCurrency.toFixed(2)} {productSaleCurrency}
+                                    </Text>
+                                    
+                                    {/* Show PLN equivalent if display currency is different */}
+                                    {productSaleCurrency !== 'PLN' && (
+                                      <Text style={{ 
+                                        color: '#ccc', 
+                                        fontSize: 11, 
+                                        textAlign: 'center', 
+                                        marginTop: 2
+                                      }}>
+                                        (≈ {remainingPLN.toFixed(2)} PLN)
+                                      </Text>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </View>
                           </View>
                         )}
                       </View>
@@ -3115,6 +3714,7 @@ const Home = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -3537,6 +4137,210 @@ const Home = () => {
               </TouchableOpacity>
             </View>
           </View>
+        </Modal>
+
+        {/* Product Currency Selection Modal */}
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={productCurrencyModalVisible}
+          onRequestClose={() => setProductCurrencyModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
+              <Text style={styles.modalTitle}>Wybierz walutę dla klienta</Text>
+              
+              <FlatList
+                testID="product-currency-flatlist"
+                data={availableCurrencies}
+                keyExtractor={(item) => item}
+                style={{ width: '100%', marginVertical: 20 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    testID={`product-currency-option-${item}`}
+                    style={{
+                      backgroundColor: productSaleCurrency === item ? '#0d6efd' : 'transparent',
+                      padding: 15,
+                      borderRadius: 8,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: productSaleCurrency === item ? 'white' : '#444',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => selectProductCurrency(item)}
+                  >
+                    <Text style={{ 
+                      color: productSaleCurrency === item ? 'white' : '#ccc', 
+                      fontSize: 16, 
+                      fontWeight: productSaleCurrency === item ? 'bold' : 'normal' 
+                    }}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+              
+              <TouchableOpacity
+                testID="product-currency-close-button"
+                style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
+                onPress={() => setProductCurrencyModalVisible(false)}
+              >
+                <Text style={styles.optionText}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Currency Rate Edit Modal */}
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={currencyRateModalVisible}
+          onRequestClose={cancelEditingRate}
+        >
+          <TouchableWithoutFeedback onPress={cancelEditingRate}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={[styles.modalContent, { width: '85%' }]}>
+                  <Text style={styles.modalTitle}>
+                    Edytuj kurs {editingCurrencyRate}
+                  </Text>
+                  
+                  <Text style={{
+                    color: '#ccc',
+                    fontSize: 13,
+                    textAlign: 'center',
+                    marginBottom: 20,
+                    lineHeight: 18
+                  }}>
+                    Wprowadź kurs {editingCurrencyRate} w złotych.{'\n'}
+                    Przykład: 1 {editingCurrencyRate} = X PLN
+                  </Text>
+                  
+                  <View style={{
+                    width: '100%',
+                    marginBottom: 20
+                  }}>
+                    <Text style={{
+                      color: '#fff',
+                      fontSize: 14,
+                      marginBottom: 8,
+                      textAlign: 'center'
+                    }}>
+                      Kurs 1 {editingCurrencyRate} =
+                    </Text>
+                    
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 10
+                    }}>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#1a1a1a',
+                          borderRadius: 8,
+                          padding: 12,
+                          fontSize: 16,
+                          color: 'white',
+                          borderWidth: 2,
+                          borderColor: '#f39c12',
+                          textAlign: 'center',
+                          minWidth: 120,
+                          maxWidth: 150
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor="#666"
+                        value={tempCurrencyRate}
+                        onChangeText={setTempCurrencyRate}
+                        keyboardType="decimal-pad"
+                        selectTextOnFocus={true}
+                        autoFocus={true}
+                      />
+                      <Text style={{
+                        color: '#fff',
+                        fontSize: 16,
+                        fontWeight: 'bold'
+                      }}>
+                        PLN
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {/* Current rate info */}
+                  {exchangeRates[editingCurrencyRate] && (
+                    <View style={{
+                      backgroundColor: '#333',
+                      padding: 10,
+                      borderRadius: 6,
+                      marginBottom: 20,
+                      width: '100%'
+                    }}>
+                      <Text style={{
+                        color: '#ccc',
+                        fontSize: 12,
+                        textAlign: 'center'
+                      }}>
+                        Aktualny kurs: {exchangeRates[editingCurrencyRate].toFixed(2)} PLN
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {/* Action buttons */}
+                  <View style={{
+                    flexDirection: 'row',
+                    gap: 15,
+                    width: '100%',
+                    justifyContent: 'center'
+                  }}>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#28a745',
+                        paddingVertical: 12,
+                        paddingHorizontal: 25,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: 'white',
+                        minWidth: 100
+                      }}
+                      onPress={saveCurrencyRate}
+                    >
+                      <Text style={{
+                        color: 'white',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        textAlign: 'center'
+                      }}>
+                        Zapisz
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#6c757d',
+                        paddingVertical: 12,
+                        paddingHorizontal: 25,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: 'white',
+                        minWidth: 100
+                      }}
+                      onPress={cancelEditingRate}
+                    >
+                      <Text style={{
+                        color: 'white',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        textAlign: 'center'
+                      }}>
+                        Anuluj
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
         </Modal>
       </SafeAreaView>
     </>
