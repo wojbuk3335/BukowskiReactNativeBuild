@@ -46,6 +46,7 @@ const Home = () => {
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false); // State for add amount modal
   const [addAmountAmount, setAddAmountAmount] = useState(""); // State for add amount amount
   const [addAmountCurrency, setAddAmountCurrency] = useState("PLN"); // State for add amount currency
+  const [addAmountCurrencyModalVisible, setAddAmountCurrencyModalVisible] = useState(false); // State for add amount currency selection modal
   const [addAmountReason, setAddAmountReason] = useState(""); // State for add amount reason
   
   // New states for reason selection
@@ -1362,6 +1363,12 @@ const Home = () => {
       handleCardPairChange(currentCurrencyPairIndex, "currency", currency);
     }
     setCurrencyModalVisible(false);
+  };
+
+  // Function to handle currency selection for "Dopisz kwotę" (Add Amount)
+  const selectCurrencyForAddAmount = (currency) => {
+    setAddAmountCurrency(currency);
+    setAddAmountCurrencyModalVisible(false);
   };
 
   return (
@@ -2820,7 +2827,7 @@ const Home = () => {
                     borderWidth: 1,
                     borderColor: 'white',
                   }}
-                  onPress={() => {/* Currency selection logic can be added here */}}
+                  onPress={() => setAddAmountCurrencyModalVisible(true)}
                 >
                   <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
                     {addAmountCurrency}
@@ -3479,6 +3486,55 @@ const Home = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Add Amount Currency Selection Modal */}
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={addAmountCurrencyModalVisible}
+          onRequestClose={() => setAddAmountCurrencyModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
+              <Text style={styles.modalTitle}>Wybierz walutę</Text>
+              
+              <FlatList
+                data={availableCurrencies}
+                keyExtractor={(item) => item}
+                style={{ width: '100%', marginVertical: 20 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: addAmountCurrency === item ? '#0d6efd' : 'transparent',
+                      padding: 15,
+                      borderRadius: 8,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: addAmountCurrency === item ? 'white' : '#444',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => selectCurrencyForAddAmount(item)}
+                  >
+                    <Text style={{ 
+                      color: addAmountCurrency === item ? 'white' : '#ccc', 
+                      fontSize: 16, 
+                      fontWeight: addAmountCurrency === item ? 'bold' : 'normal' 
+                    }}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+              
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
+                onPress={() => setAddAmountCurrencyModalVisible(false)}
+              >
+                <Text style={styles.optionText}>Zamknij</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
