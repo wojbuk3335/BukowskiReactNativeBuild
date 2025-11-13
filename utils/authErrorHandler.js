@@ -1,8 +1,14 @@
 // Authentication Error Handler for Mobile App
 import { router } from "expo-router";
-import tokenService from "../services/tokenService";
 
 class AuthErrorHandler {
+    static tokenService = null;
+    
+    // Set token service reference to avoid circular import
+    static setTokenService(service) {
+        this.tokenService = service;
+    }
+    
     // Check if error is related to authentication/token issues
     static isAuthError(error) {
         if (!error) return false;
@@ -38,19 +44,21 @@ class AuthErrorHandler {
     // Handle authentication errors with automatic redirect
     static async handleAuthError(error, context = 'Unknown') {
         // Don't log during logout process to keep console clean
-        if (!tokenService.isLoggingOut) {
+        if (!this.tokenService?.isLoggingOut) {
             console.log(`🔄 Auth error detected in ${context}:`, error?.message || error);
         }
         
         try {
             // Clear all tokens and user data
-            await tokenService.clearTokens();
+            if (this.tokenService) {
+                await this.tokenService.clearTokens();
+            }
             
             // Redirect to login page
             router.replace("/(auth)/sign-in");
             
             // Don't log during logout process
-            if (!tokenService.isLoggingOut) {
+            if (!this.tokenService?.isLoggingOut) {
                 console.log('✅ User redirected to login page');
             }
         } catch (redirectError) {

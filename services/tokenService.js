@@ -463,4 +463,7 @@ class TokenService {
 // Create singleton instance
 const tokenService = new TokenService();
 
+// Set up the reference to avoid circular dependency
+AuthErrorHandler.setTokenService(tokenService);
+
 export default tokenService;

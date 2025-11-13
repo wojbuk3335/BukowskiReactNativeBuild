@@ -18,6 +18,15 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   const [currencyMenuVisible, setCurrencyMenuVisible] = useState(false);
   const [currentCurrencyIndex, setCurrentCurrencyIndex] = useState(null);
   const [currentCurrencyType, setCurrentCurrencyType] = useState(""); // "cash" or "card"
+  
+  // State dla funkcjonalności odbioru
+  const [isPickup, setIsPickup] = useState(false); // Checkbox "Odbiór"
+  const [advanceAmount, setAdvanceAmount] = useState(""); // Kwota zaliczki
+  const [selectedAdvance, setSelectedAdvance] = useState(null); // Wybrana zaliczka
+  const [availableAdvances, setAvailableAdvances] = useState([]); // Lista dostępnych zaliczek
+  const [currentProductName, setCurrentProductName] = useState(""); // Nazwa aktualnego produktu
+  const [currentProductSize, setCurrentProductSize] = useState(""); // Rozmiar aktualnego produktu
+  
   const [sellingPointMenuVisible, setSellingPointMenuVisible] = useState(false); // State for "Sprzedano od" popup
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"];
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false); // State for currency modal
@@ -376,6 +385,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       if (builtRemainingProductName) {
         // Use the built remaining product name
         setModalMessage(builtRemainingProductName);
+        setCurrentProductName(builtRemainingProductName);
+        setCurrentProductSize("-"); // Remaining products don't have size
         
         // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
         const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -397,6 +408,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
         if (builtBagName) {
           // Use the built bag name for bag barcodes
           setModalMessage(builtBagName);
+          setCurrentProductName(builtBagName);
+          setCurrentProductSize("-"); // Bags don't have size
           
           // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
           const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -418,6 +431,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           if (builtWalletName) {
             // Use the built wallet name for wallet barcodes
             setModalMessage(builtWalletName);
+            setCurrentProductName(builtWalletName);
+            setCurrentProductSize("-"); // Wallets don't have size
             
             // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
             const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -440,6 +455,14 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
               // Use the built jacket name for barcodes with four zeros pattern
               setModalMessage(builtJacketName);
               
+              // Extract name and size from jacket name (format: "Name Color Size")
+              const parts = builtJacketName.split(' ');
+              const sizePart = parts[parts.length - 1]; // Last part is size
+              const namePart = parts.slice(0, -1).join(' '); // Rest is name
+              
+              setCurrentProductName(namePart || builtJacketName);
+              setCurrentProductSize(sizePart || "Unknown");
+              
               // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
               const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
               if (availableOptions.length > 0) {
@@ -459,6 +482,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
 
             if (matchedItem) {
               setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
+              setCurrentProductName(matchedItem.fullName);
+              setCurrentProductSize(matchedItem.size);
               
               // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
               const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
@@ -475,6 +500,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
               }
             } else {
               setModalMessage("Nie znaleziono produktu"); // No match found
+              setCurrentProductName("Unknown Product");
+              setCurrentProductSize("Unknown");
               setSelectedOption(""); // Clear selected option if no match
             }
           }
@@ -539,6 +566,56 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       handleCardPairChange(currentCurrencyIndex, "currency", currency);
     }
     setCurrencyMenuVisible(false);
+  };
+
+  // Funkcja do wyszukiwania zaliczek na podstawie nazwy produktu i rozmiaru
+  const searchAdvances = async (productName, size) => {
+    try {
+      console.log(`🔍 Szukam zaliczek dla: ${productName}, rozmiar: ${size}`);
+      
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl(`/financial-operations/search/advances?productName=${encodeURIComponent(productName)}&size=${encodeURIComponent(size)}`),
+        {
+          method: 'GET'
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const advances = await response.json();
+      console.log(`✅ Znaleziono ${advances.length} zaliczek`);
+      
+      setAvailableAdvances(advances);
+      
+      // Jeśli jest tylko jedna zaliczka, automatycznie ją wybierz
+      if (advances.length === 1) {
+        setSelectedAdvance(advances[0]);
+        setAdvanceAmount(advances[0].amount.toString());
+      }
+      
+      return advances;
+    } catch (error) {
+      console.error('❌ Błąd wyszukiwania zaliczek:', error);
+      Alert.alert('Błąd', 'Nie udało się wyszukać zaliczek');
+      return [];
+    }
+  };
+
+  // Obsługa zmiany checkbox odbioru
+  const handlePickupChange = async (newPickupValue, currentFullName, currentSize) => {
+    setIsPickup(newPickupValue);
+    
+    if (newPickupValue && currentFullName && currentSize) {
+      // Jeśli zaznaczono odbiór, wyszukaj dostępne zaliczki
+      await searchAdvances(currentFullName, currentSize);
+    } else {
+      // Jeśli odznaczono odbiór, wyczyść dane zaliczek
+      setAvailableAdvances([]);
+      setSelectedAdvance(null);
+      setAdvanceAmount("");
+    }
   };
 
   const handleSubmit = async () => {
@@ -611,7 +688,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       from: selectedOption || symbol, // Use the selected symbol, not the default sellingPoint
       cash: validCashPrices,
       card: validCardPrices,
-      symbol // Add symbol field
+      symbol, // Add symbol field
+      isPickup: isPickup, // Add pickup information
+      advanceAmount: isPickup ? parseFloat(advanceAmount) || 0 : 0, // Add advance amount for pickups
+      relatedAdvanceId: isPickup && selectedAdvance?._id ? selectedAdvance._id : null // Add related advance ID
     };
 
     // Walidacja wymaganych pól
@@ -659,6 +739,14 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
 
     setModalVisible(false);
     setScanned(false); // Reset stanu skanowania po submit
+    
+    // Reset pickup state
+    setIsPickup(false);
+    setAdvanceAmount("");
+    setSelectedAdvance(null);
+    setAvailableAdvances([]);
+    setCurrentProductName("");
+    setCurrentProductSize("");
   };
 
   // Usuńmy to sprawdzenie - komponent powinien się renderować zawsze
@@ -805,12 +893,138 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                     </View>
                   </Modal>
                 )}
+
+                {/* Checkbox Odbiór */}
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 20,
+                  padding: 15,
+                  borderWidth: 1,
+                  borderColor: 'white',
+                  borderRadius: 8,
+                }}>
+                  <TouchableOpacity
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderWidth: 2,
+                      borderColor: 'white',
+                      borderRadius: 4,
+                      backgroundColor: isPickup ? 'rgb(13, 110, 253)' : 'transparent',
+                      marginRight: 12,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={async () => {
+                      const newPickupValue = !isPickup;
+                      await handlePickupChange(newPickupValue, currentProductName, currentProductSize);
+                    }}
+                  >
+                    {isPickup && (
+                      <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                  <Text style={{ color: 'white', fontSize: 16 }}>
+                    Odbiór (dopłata do zaliczki)
+                  </Text>
+                </View>
+
+                {/* Pole zaliczki - tylko gdy zaznaczony odbiór */}
+                {isPickup && (
+                  <View style={{
+                    marginBottom: 20,
+                    padding: 15,
+                    borderWidth: 1,
+                    borderColor: 'orange',
+                    borderRadius: 8,
+                  }}>
+                    <Text style={{
+                      color: 'orange',
+                      fontSize: 14,
+                      marginBottom: 10,
+                      textAlign: 'center',
+                      fontWeight: 'bold'
+                    }}>
+                      Dostępne zaliczki ({availableAdvances.length})
+                    </Text>
+                    
+                    {availableAdvances.length > 0 ? (
+                      <ScrollView style={{ maxHeight: 150 }}>
+                        {availableAdvances.map((advance, index) => (
+                          <TouchableOpacity
+                            key={advance._id}
+                            style={{
+                              backgroundColor: selectedAdvance?._id === advance._id ? '#4CAF50' : '#333',
+                              padding: 10,
+                              marginVertical: 3,
+                              borderRadius: 5,
+                              borderWidth: 1,
+                              borderColor: selectedAdvance?._id === advance._id ? '#4CAF50' : 'orange'
+                            }}
+                            onPress={() => {
+                              setSelectedAdvance(advance);
+                              setAdvanceAmount(advance.amount.toString());
+                            }}
+                          >
+                            <Text style={{ color: 'white', textAlign: 'center' }}>
+                              {advance.amount} {advance.currency} - {new Date(advance.date).toLocaleDateString()}
+                            </Text>
+                            <Text style={{ color: '#ccc', fontSize: 12, textAlign: 'center' }}>
+                              {advance.reason}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    ) : (
+                      <Text style={{ color: '#ccc', textAlign: 'center', fontStyle: 'italic' }}>
+                        Brak dostępnych zaliczek dla tego produktu
+                      </Text>
+                    )}
+                    
+                    {/* Manual input field for advance amount */}
+                    <Text style={{
+                      color: 'orange',
+                      fontSize: 14,
+                      marginTop: 15,
+                      marginBottom: 5,
+                      textAlign: 'center',
+                    }}>
+                      Lub wprowadź kwotę ręcznie:
+                    </Text>
+                    <TextInput
+                      style={{
+                        height: 40,
+                        borderColor: 'orange',
+                        borderWidth: 1,
+                        borderRadius: 5,
+                        paddingHorizontal: 10,
+                        color: 'white',
+                        backgroundColor: 'black',
+                        textAlign: 'center',
+                      }}
+                      value={advanceAmount}
+                      onChangeText={(value) => {
+                        const numericValue = value.replace(/[^0-9.]/g, "");
+                        setAdvanceAmount(numericValue);
+                        // Clear selected advance if manual input
+                        if (selectedAdvance && numericValue !== selectedAdvance.amount.toString()) {
+                          setSelectedAdvance(null);
+                        }
+                      }}
+                      placeholder="0.00"
+                      placeholderTextColor="#ccc"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                )}
+
                 <Text style={{
                   fontSize: 16,
                   marginBottom: 10,
                   textAlign: "center",
                   color: "white",
-                }}>Płatność gotówką</Text>
+                }}>{isPickup ? 'Dopłata' : 'Płatność gotówką'}</Text>
                 <View
                   style={{
                     width: "100%",
@@ -923,7 +1137,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                   marginTop: 20,
                   textAlign: "center",
                   color: "white",
-                }}>Płatność kartą</Text>
+                }}>{isPickup ? "Dopłata kartą" : "Płatność kartą"}</Text>
                 <View
                   style={{
                     width: "100%",

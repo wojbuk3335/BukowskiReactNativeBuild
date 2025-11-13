@@ -60,6 +60,8 @@ const Home = () => {
   
   // States for salesperson management
   const [salespersonModalVisible, setSalespersonModalVisible] = useState(false); // State for salesperson modal
+  const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
+  const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
   const [employees, setEmployees] = useState([]); // State for employees list
   const [selectedSalespeople, setSelectedSalespeople] = useState([]); // State for selected salespeople (multiple)
   const [assignedSalespeople, setAssignedSalespeople] = useState([]); // State for currently assigned salespeople (multiple)
@@ -235,10 +237,10 @@ const Home = () => {
         
         // Only fetch if goods is empty or not loaded yet
         if (!goods || goods.length === 0) {
-          console.log('Fetching goods...');
+          // console.log('Fetching goods...');
           await fetchGoods(); // This will update goods in context
         } else {
-          console.log('Goods already loaded:', goods.length);
+          // console.log('Goods already loaded:', goods.length);
         }
       } catch (error) {
         console.error('Error fetching goods:', error);
@@ -251,7 +253,7 @@ const Home = () => {
   // Set products from goods when goods are loaded
   useEffect(() => {
     if (goods && Array.isArray(goods) && goods.length > 0) {
-      console.log('Setting products from goods:', goods.length);
+      // console.log('Setting products from goods:', goods.length);
       setProducts(goods);
       setFilteredProducts(goods); // Initialize filtered products
     }
@@ -444,7 +446,7 @@ const Home = () => {
           : employeesArray;
           
         setEmployees(filteredEmployees);
-        console.log(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
+        // console.log(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
       } else {
         console.error('Failed to fetch employees:', response.status);
       }
@@ -460,8 +462,8 @@ const Home = () => {
       const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
       const userData = await AsyncStorage.getItem('user');
       
-      console.log('Fetch assigned - Token:', accessToken ? 'present' : 'missing');
-      console.log('Fetch assigned - UserData:', userData ? 'present' : 'missing');
+      // console.log('Fetch assigned - Token:', accessToken ? 'present' : 'missing');
+      // console.log('Fetch assigned - UserData:', userData ? 'present' : 'missing');
       
       if (!accessToken || !userData) {
         console.log('No token or user data available');
@@ -489,7 +491,7 @@ const Home = () => {
         // Extract employee data from assignments
         const assignedEmployees = assignments.map(assignment => assignment.employeeId);
         setAssignedSalespeople(assignedEmployees);
-        console.log('Loaded assigned salespeople:', assignedEmployees.length);
+        // console.log('Loaded assigned salespeople:', assignedEmployees.length);
       } else {
         console.error('Failed to fetch sales assignments:', response.status);
       }
@@ -542,6 +544,9 @@ const Home = () => {
           const updatedSalespeople = [...assignedSalespeople, employee];
           setAssignedSalespeople(updatedSalespeople);
           
+          // 🔄 Odśwież godziny pracy żeby pracownik był na szaro (bez godzin)
+          await fetchTodaysWorkHours();
+          
           Alert.alert(
             "Sukces", 
             `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu i zapisany w bazie danych.`,
@@ -567,75 +572,92 @@ const Home = () => {
     const employeeToRemove = assignedSalespeople.find(person => person._id === employeeId);
     
     Alert.alert(
-      "Potwierdź",
-      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu? Zostanie to usunięte również z bazy danych.`,
+      "Potwierdź usunięcie",
+      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu?`,
       [
         { text: "Anuluj", style: "cancel" },
         { 
-          text: "Usuń", 
-          onPress: async () => {
-            try {
-              // Pobierz dane użytkownika z localStorage
-              const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
-              const userData = await AsyncStorage.getItem('user');
-              
-              console.log('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
-              console.log('Remove salesperson - UserData:', userData ? 'present' : 'missing');
-              
-              if (!accessToken || !userData) {
-                Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
-                return;
-              }
-
-              const user = JSON.parse(userData);
-              const sellingPoint = user.sellingPoint || user.symbol;
-              
-              console.log('Remove salesperson - Selling point:', sellingPoint);
-              console.log('Remove salesperson - Employee ID:', employeeId);
-
-              if (!sellingPoint) {
-                Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
-                return;
-              }
-
-              const url = `http://192.168.1.11:3000/api/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}`;
-              console.log('Remove salesperson - URL:', url);
-
-              // Wyślij zapytanie do API o usunięcie
-              const response = await fetch(url, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json'
-                }
-              });
-
-              console.log('Remove salesperson - Response status:', response.status);
-              
-              const data = await response.json();
-              console.log('Remove salesperson - Response data:', data);
-
-              if (response.ok) {
-                // Usuń z lokalnego stanu
-                const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
-                setAssignedSalespeople(updatedSalespeople);
-                Alert.alert("Sukces", "Sprzedawca został usunięty z zespołu i z bazy danych.");
-              } else if (response.status === 404) {
-                // Przypisanie nie istnieje w bazie - usuń tylko lokalnie
-                const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
-                setAssignedSalespeople(updatedSalespeople);
-                Alert.alert("Informacja", "Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
-              } else {
-                Alert.alert("Błąd", data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
-              }
-            } catch (error) {
-              console.error('Error removing salesperson:', error);
-              Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
-            }
-          }
+          text: "Usuń z zachowaniem godzin", 
+          onPress: () => performRemoval(employeeId, false)
+        },
+        { 
+          text: "Usuń z godzinami pracy", 
+          style: "destructive",
+          onPress: () => performRemoval(employeeId, true)
         }
       ]
     );
+  };
+
+  const performRemoval = async (employeeId, deleteWorkHours) => {
+    try {
+      // Pobierz dane użytkownika z localStorage
+      const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+      const userData = await AsyncStorage.getItem('user');
+      
+      // console.log('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
+      // console.log('Remove salesperson - UserData:', userData ? 'present' : 'missing');
+      
+      if (!accessToken || !userData) {
+        Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+        return;
+      }
+
+      const user = JSON.parse(userData);
+      const sellingPoint = user.sellingPoint || user.symbol;
+      
+      // console.log('Remove salesperson - Selling point:', sellingPoint);
+      // console.log('Remove salesperson - Employee ID:', employeeId);
+
+      if (!sellingPoint) {
+        Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+        return;
+      }
+
+      const url = `http://192.168.1.11:3000/api/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}&deleteWorkHours=${deleteWorkHours}`;
+      // console.log('Remove salesperson - URL:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // console.log('Remove salesperson - Response status:', response.status);
+      
+      const data = await response.json();
+      // console.log('Remove salesperson - Response data:', data);
+
+      if (response.ok) {
+        // Usuń z lokalnego stanu
+        const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+        setAssignedSalespeople(updatedSalespeople);
+        
+        // 🔄 Odśwież godziny pracy żeby stan był aktualny
+        await fetchTodaysWorkHours();
+        
+        const message = deleteWorkHours 
+          ? "Sprzedawca został usunięty z zespołu wraz z godzinami pracy." 
+          : "Sprzedawca został usunięty z zespołu. Godziny pracy zostały zachowane.";
+        Alert.alert("Sukces", message);
+      } else if (response.status === 404) {
+        // Przypisanie nie istnieje w bazie - usuń tylko lokalnie
+        const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+        setAssignedSalespeople(updatedSalespeople);
+        
+        // 🔄 Odśwież godziny pracy żeby stan był aktualny  
+        await fetchTodaysWorkHours();
+        
+        Alert.alert("Informacja", "Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
+      } else {
+        Alert.alert("Błąd", data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
+      }
+    } catch (error) {
+      console.error('Error removing salesperson:', error);
+      Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
+    }
   };
 
   const toggleSalespersonSelection = (employee) => {
@@ -685,7 +707,7 @@ const Home = () => {
     for (const employee of selectedSalespeople) {
       if (!assignedSalespeople.find(person => person._id === employee._id)) {
         try {
-          console.log(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
+          // console.log(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
           
           const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
             method: 'POST',
@@ -704,7 +726,7 @@ const Home = () => {
 
           if (response.ok) {
             addedCount++;
-            console.log(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
+            // console.log(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
           } else {
             errorCount++;
             console.error(`Failed to assign ${employee.firstName} ${employee.lastName}:`, data.message);
@@ -736,10 +758,50 @@ const Home = () => {
       message += `\nJuż przypisani: ${alreadyAssignedNames.join(', ')}`;
     }
 
-    Alert.alert(
-      addedCount > 0 && errorCount === 0 ? "Sukces" : "Informacja",
-      message || "Nie dodano żadnych nowych sprzedawców."
-    );
+    setSuccessMessage(message || "Nie dodano żadnych nowych sprzedawców.");
+    setSuccessModalVisible(true);
+  };
+
+  // Commission recalculation function
+  const recalculateCommissions = async () => {
+    try {
+      console.log('🔄 Przeliczam prowizje...');
+      
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl('/sales-assignments/recalculate-commissions'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sellingPoint: user?.sellingPoint,
+            date: new Date().toISOString().split('T')[0] // Today's date
+          })
+        }
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        Alert.alert(
+          "Przeliczenie prowizji", 
+          `Prowizje zostały przeliczone:\n\n` +
+          `📅 Data: ${result.date}\n` +
+          `🗑️ Usunięto starych: ${result.deletedCommissions}\n` +
+          `➕ Dodano nowych: ${result.addedCommissions}\n` +
+          `💰 Łączna kwota: ${result.totalAmount} PLN\n` +
+          `📦 Sprzedaży: ${result.salesProcessed}\n` +
+          `👥 Pracowników: ${result.activeEmployees}`,
+          [{ text: "OK" }]
+        );
+      } else {
+        const errorData = await response.json();
+        Alert.alert("Błąd", errorData.message || "Nie udało się przeliczyć prowizji.");
+      }
+    } catch (error) {
+      console.error("Error recalculating commissions:", error);
+      Alert.alert("Błąd", "Wystąpił błąd podczas przeliczania prowizji.");
+    }
   };
 
   // Work hours management functions
@@ -759,11 +821,54 @@ const Home = () => {
     }
   };
 
-  const openWorkHoursModal = (employee) => {
+  const openWorkHoursModal = async (employee) => {
     setSelectedEmployeeForHours(employee);
-    setWorkStartTime("08:00");
-    setWorkEndTime("16:00");
     setWorkNotes("");
+    
+    try {
+      // console.log(`🔍 Sprawdzam istniejące godziny pracy dla ${employee.firstName} ${employee.lastName}`);
+      
+      // Pobierz punkt sprzedaży z danych użytkownika
+      const currentSellingPoint = user?.sellingPoint || user?.symbol;
+      if (!currentSellingPoint) {
+        console.log(`❌ Brak punktu sprzedaży - używam domyślnych godzin`);
+        setWorkStartTime("08:00");
+        setWorkEndTime("16:00");
+        setWorkHoursModalVisible(true);
+        return;
+      }
+      
+      // Sprawdź czy istnieją już godziny pracy dla tego pracownika na dzisiaj
+      const today = new Date().toISOString().split('T')[0]; // "2025-11-12"
+      
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl(`/work-hours?employeeId=${employee._id}&startDate=${today}&endDate=${today}&sellingPoint=${encodeURIComponent(currentSellingPoint)}`)
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.workHours && result.workHours.length > 0) {
+          const workHours = result.workHours[0]; // Pierwszy (i jedyny) wynik
+          // console.log(`✅ Znaleziono godziny pracy: ${workHours.startTime} - ${workHours.endTime}`);
+          setWorkStartTime(workHours.startTime);
+          setWorkEndTime(workHours.endTime);
+          if (workHours.notes) setWorkNotes(workHours.notes);
+        } else {
+          console.log(`📝 Brak godzin pracy - używam domyślnych`);
+          setWorkStartTime("08:00");
+          setWorkEndTime("16:00");
+        }
+      } else {
+        console.log(`📝 Nie można pobrać godzin pracy - używam domyślnych`);
+        setWorkStartTime("08:00");
+        setWorkEndTime("16:00");
+      }
+    } catch (error) {
+      console.error("Błąd podczas pobierania godzin pracy:", error);
+      setWorkStartTime("08:00");
+      setWorkEndTime("16:00");
+    }
+    
     setWorkHoursModalVisible(true);
   };
 
@@ -819,56 +924,52 @@ const Home = () => {
         notes: workNotes.trim()
       };
 
-      // Sprawdź czy już istnieje wpis dla tego pracownika i daty
-      const existingRecord = todaysWorkHours.find(record => 
-        (record.employeeId?._id === selectedEmployeeForHours._id || 
-         record.employeeId === selectedEmployeeForHours._id) &&
-        record.date === workHoursData.date
-      );
+      // console.log('🔍 DEBUG Work Hours Submit:');
+      // console.log('- workHoursData:', workHoursData);
 
-      let response;
-      
-      if (existingRecord) {
-        // Aktualizuj istniejący wpis
-        response = await tokenService.authenticatedFetch(getApiUrl(`/work-hours/${existingRecord._id}`), {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            startTime: workStartTime,
-            endTime: workEndTime,
-            notes: workNotes.trim()
-          })
-        });
-      } else {
-        // Utwórz nowy wpis
-        response = await tokenService.authenticatedFetch(getApiUrl('/work-hours'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(workHoursData)
-        });
-      }
+      // Użyj endpoint upsert - automatycznie update lub create
+      const response = await tokenService.authenticatedFetch(getApiUrl('/work-hours/upsert'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(workHoursData)
+      });
 
       if (response.ok) {
         const result = await response.json();
+        const actionText = result.isUpdate ? 'zaktualizowane' : 'zapisane';
         Alert.alert(
           "Sukces", 
-          `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${existingRecord ? 'zaktualizowane' : 'zapisane'}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`,
+          `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${actionText}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`,
           [{ text: "OK" }]
         );
-        setWorkHoursModalVisible(false);
+        closeWorkHoursModal(); // Użyj funkcji pomocniczej do zamknięcia
         fetchTodaysWorkHours(); // Refresh today's work hours
       } else {
         const errorData = await response.json();
-        Alert.alert("Błąd", errorData.message || "Nie udało się zapisać godzin pracy.");
+        console.error('❌ Error saving work hours:', errorData);
+        Alert.alert("Błąd", 
+          errorData.message || "Nie udało się zapisać godzin pracy." +
+          `\n\nSzczegóły: ${JSON.stringify(errorData, null, 2)}`
+        );
       }
     } catch (error) {
       console.error("Error saving work hours:", error);
-      Alert.alert("Błąd", "Wystąpił błąd podczas zapisywania godzin pracy.");
+      Alert.alert("Błąd", 
+        "Wystąpił błąd podczas zapisywania godzin pracy." +
+        `\n\nSzczegóły: ${error.message}`
+      );
     }
+  };
+
+  const closeWorkHoursModal = () => {
+    setWorkHoursModalVisible(false);
+    // Reset stanu do domyślnego - będzie ponownie wczytany przy następnym otwarciu
+    setSelectedEmployeeForHours(null);
+    setWorkStartTime("08:00");
+    setWorkEndTime("16:00");
+    setWorkNotes("");
   };
 
   const formatTime = (timeString) => {
@@ -973,9 +1074,16 @@ const Home = () => {
       return;
     }
     
-    if (reasonType === 'product' && !selectedProduct) {
-      Alert.alert("Błąd", "Proszę wybrać produkt.");
-      return;
+    if (reasonType === 'product') {
+      if (!productFinalPrice || parseFloat(productFinalPrice) <= 0) {
+        Alert.alert("Błąd", "Proszę podać cenę finalną produktu (zaliczka + dopłata).");
+        return;
+      }
+      
+      if (parseFloat(productFinalPrice) < parseFloat(addAmountAmount)) {
+        Alert.alert("Błąd", "Cena finalna nie może być mniejsza niż zaliczka.");
+        return;
+      }
     }
     
     if (reasonType === 'other' && !addAmountReason.trim()) {
@@ -1012,11 +1120,16 @@ const Home = () => {
       };
 
       // Add product-related data if it's a product transaction
-      if (reasonType === 'product' && selectedProduct) {
-        const selectedProductObj = products.find(p => p._id === selectedProduct);
-        operationData.productId = selectedProduct;
-        operationData.productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+      if (reasonType === 'product') {
+        if (selectedProduct) {
+          const selectedProductObj = products.find(p => p._id === selectedProduct);
+          operationData.productId = selectedProduct;
+          operationData.productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        } else {
+          operationData.productName = 'Produkt do wyboru';
+        }
         
+        // Always include final price for product advances
         if (productFinalPrice) {
           operationData.finalPrice = parseFloat(productFinalPrice);
           operationData.remainingAmount = parseFloat(productFinalPrice) - parseFloat(addAmountAmount);
@@ -2810,11 +2923,11 @@ const Home = () => {
                       </View>
                     )}
                     
-                    {/* Product final price input - only when product is selected */}
-                    {selectedProduct && (
+                    {/* Product final price input - when product advance is selected */}
+                    {reasonType === 'product' && (
                       <View style={{ marginTop: 15 }}>
                         <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>
-                          Uzgodniona cena finalna produktu:
+                          Uzgodniona cena finalna produktu (zaliczka + dopłata):
                         </Text>
                         <TextInput
                           style={{
@@ -2930,7 +3043,7 @@ const Home = () => {
           <View style={styles.salespersonModalOverlay}>
             <View style={styles.salespersonModalContent}>
               <Text style={styles.salespersonModalTitle}>Wybierz sprzedawców</Text>
-              <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+              <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
                 Możesz wybrać wielu sprzedawców dla tego stanowiska
               </Text>
               
@@ -2944,7 +3057,7 @@ const Home = () => {
                       <TouchableOpacity
                         key={employee._id}
                         style={[styles.salespersonOptionButton, {
-                          backgroundColor: isSelected ? '#28a745' : (isAlreadyAssigned ? '#6c757d' : '#007bff'),
+                          backgroundColor: isSelected ? '#10b981' : (isAlreadyAssigned ? '#6b7280' : '#0d6efd'),
                           opacity: isAlreadyAssigned ? 0.6 : 1
                         }]}
                         onPress={() => {
@@ -2976,7 +3089,7 @@ const Home = () => {
                             alignItems: 'center'
                           }}>
                             {isSelected && (
-                              <Text style={{ color: '#28a745', fontSize: 16, fontWeight: 'bold' }}>✓</Text>
+                              <Text style={{ color: '#10b981', fontSize: 16, fontWeight: 'bold' }}>✓</Text>
                             )}
                           </View>
                           
@@ -3003,37 +3116,55 @@ const Home = () => {
                     <Text style={{ color: 'white', textAlign: 'center', fontSize: 16 }}>
                       Brak dostępnych pracowników
                     </Text>
-                    <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 14, marginTop: 5 }}>
+                    <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginTop: 5 }}>
                       Dodaj pracowników w panelu administracyjnym
                     </Text>
                   </View>
                 )}
               </ScrollView>
 
-              <View style={styles.salespersonModalButtonContainer}>
+              <View style={[styles.salespersonModalButtonContainer, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                 <TouchableOpacity
-                  style={[styles.salespersonModalButton, styles.salespersonAssignButton, {
-                    opacity: selectedSalespeople.length > 0 ? 1 : 0.5
-                  }]}
+                  style={{
+                    backgroundColor: '#10b981',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    flex: 1,
+                    marginRight: 8,
+                    alignItems: 'center'
+                  }}
                   onPress={() => {
                     if (selectedSalespeople.length > 0) {
                       assignSelectedSalespeople();
                     }
                   }}
                 >
-                  <Text style={styles.salespersonModalButtonText}>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
                     ✓ Dodaj ({selectedSalespeople.length})
                   </Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={[styles.salespersonModalButton, styles.salespersonCancelButton]}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    flex: 1,
+                    marginLeft: 8,
+                    alignItems: 'center'
+                  }}
                   onPress={() => {
                     setSalespersonModalVisible(false);
                     setSelectedSalespeople([]);
                   }}
                 >
-                  <Text style={styles.salespersonModalButtonText}>✕ Anuluj</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✕ Anuluj</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3046,7 +3177,7 @@ const Home = () => {
           animationType="slide"
           transparent={true}
           visible={workHoursModalVisible}
-          onRequestClose={() => setWorkHoursModalVisible(false)}
+          onRequestClose={() => closeWorkHoursModal()}
         >
           <View style={styles.workHoursModalOverlay}>
             <View style={styles.workHoursModalContent}>
@@ -3161,14 +3292,39 @@ const Home = () => {
                 <TouchableOpacity
                   style={[styles.workHoursModalButton, styles.workHoursCancelButton]}
                   onPress={() => {
-                    setWorkHoursModalVisible(false);
-                    setSelectedEmployeeForHours(null);
-                    setWorkNotes("");
+                    closeWorkHoursModal();
                   }}
                 >
                   <Text style={styles.workHoursModalButtonText}>✕ Anuluj</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Success Modal */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={successModalVisible}
+          onRequestClose={() => setSuccessModalVisible(false)}
+        >
+          <View style={styles.successModalOverlay}>
+            <View style={styles.successModalContent}>
+              <View style={styles.successIconContainer}>
+                <Text style={styles.successIcon}>✓</Text>
+              </View>
+              <Text style={styles.successModalTitle}>Sukces!</Text>
+              <Text style={styles.successModalMessage}>
+                {successMessage}
+              </Text>
+              
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#007bff', marginTop: 20, width: '90%' }]}
+                onPress={() => setSuccessModalVisible(false)}
+              >
+                <Text style={styles.optionText}>OK</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -3413,18 +3569,18 @@ const styles = StyleSheet.create({
   // Salesperson modal styles
   salespersonModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   salespersonModalContent: {
-    backgroundColor: '#1f2937',
+    backgroundColor: '#000000', // Prawdziwy czarny jak główne tło aplikacji
     borderRadius: 15,
     padding: 25,
     width: '90%',
     maxHeight: '80%',
     borderWidth: 2,
-    borderColor: '#007bff',
+    borderColor: '#0d6efd', // Główny kolor aplikacji
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -3442,7 +3598,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   salespersonOptionButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#0d6efd', // Główny kolor aplikacji
     paddingVertical: 15,
     paddingHorizontal: 20,
     borderRadius: 10,
@@ -3457,10 +3613,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   salespersonModalButtonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'row', // Z powrotem poziomo
     justifyContent: 'space-between',
-    gap: 15,
+    alignItems: 'center',
     marginTop: 20,
+    width: '100%',
   },
   salespersonModalButton: {
     flex: 1,
@@ -3471,10 +3628,10 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
   },
   salespersonAssignButton: {
-    backgroundColor: '#28a745',
+    backgroundColor: '#10b981', // Zielony jak w reszcie aplikacji
   },
   salespersonCancelButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#ef4444', // Czerwony dopasowany do aplikacji
   },
   salespersonModalButtonText: {
     color: '#ffffff',
@@ -3625,6 +3782,58 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Success Modal Styles
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#007bff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  successIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  successModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  successModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 10,
   },
 });
 export default Home; // Export the Home component
