@@ -35,6 +35,7 @@ const Home = () => {
   const [advancesData, setAdvancesData] = useState([]); // State for advances/zaliczki
   const [deductionsData, setDeductionsData] = useState([]); // State for deductions/odpisane kwoty
   const [deductionModalVisible, setDeductionModalVisible] = useState(false); // State for deduction modal
+  const [deductionEmployeeModalVisible, setDeductionEmployeeModalVisible] = useState(false); // State for deduction employee selection modal
   const [deductionAmount, setDeductionAmount] = useState(""); // State for deduction amount
   const [deductionCurrency, setDeductionCurrency] = useState("PLN"); // State for deduction currency
   const [deductionReason, setDeductionReason] = useState(""); // State for deduction reason
@@ -1794,7 +1795,7 @@ const Home = () => {
                                 </Text>
                                 {todaysRecord && (
                                   <Text style={{ color: '#ffffff', fontSize: 11, marginTop: 2 }}>
-                                    ⏰ {todaysRecord.startTime} - {todaysRecord.endTime} ({todaysRecord.totalHours}h)
+                                    ⏰ {todaysRecord.startTime} - {todaysRecord.endTime} ({(todaysRecord.totalHours || 0).toFixed(1)}h)
                                   </Text>
                                 )}
                               </View>
@@ -2949,30 +2950,24 @@ const Home = () => {
               {deductionType === "employee_advance" && (
                 <View style={{ width: '100%', marginBottom: 15 }}>
                   <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Wybierz pracownika:</Text>
-                  <View style={{ maxHeight: 150 }}>
-                    <FlatList
-                      data={employees}
-                      keyExtractor={(item) => item._id}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={{
-                            backgroundColor: selectedEmployeeForAdvance?._id === item._id ? '#0d6efd' : 'black',
-                            borderWidth: 1,
-                            borderColor: selectedEmployeeForAdvance?._id === item._id ? '#0d6efd' : 'white',
-                            borderRadius: 8,
-                            padding: 12,
-                            marginBottom: 8,
-                          }}
-                          onPress={() => setSelectedEmployeeForAdvance(item)}
-                        >
-                          <Text style={{ color: '#fff', fontSize: 14 }}>
-                            {item.firstName} {item.lastName}
-                            {item.employeeId && <Text style={{ color: '#ccc' }}> (ID: {item.employeeId})</Text>}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: selectedEmployeeForAdvance ? '#10b981' : '#0d6efd',
+                      borderWidth: 1,
+                      borderColor: 'white',
+                      borderRadius: 8,
+                      padding: 12,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setDeductionEmployeeModalVisible(true)}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>
+                      {selectedEmployeeForAdvance 
+                        ? `${selectedEmployeeForAdvance.firstName} ${selectedEmployeeForAdvance.lastName}${selectedEmployeeForAdvance.employeeId ? ` (ID: ${selectedEmployeeForAdvance.employeeId})` : ''}`
+                        : 'Wybierz pracownika'
+                      }
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
               
@@ -4341,6 +4336,86 @@ const Home = () => {
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* Employee Selection Modal for Deduction */}
+        <Modal
+          key="deduction-employee-modal"
+          animationType="slide"
+          transparent={true}
+          visible={deductionEmployeeModalVisible}
+          onRequestClose={() => setDeductionEmployeeModalVisible(false)}
+        >
+          <View style={styles.salespersonModalOverlay}>
+            <View style={styles.salespersonModalContent}>
+              <Text style={styles.salespersonModalTitle}>Wybierz pracownika</Text>
+              <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                Wybierz pracownika dla zaliczki
+              </Text>
+              
+              <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
+                {employees.length > 0 ? (
+                  employees.map((employee) => {
+                    const isSelected = selectedEmployeeForAdvance?._id === employee._id;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={employee._id}
+                        style={[styles.salespersonOptionButton, {
+                          backgroundColor: isSelected ? '#10b981' : '#0d6efd'
+                        }]}
+                        onPress={() => {
+                          setSelectedEmployeeForAdvance(employee);
+                          setDeductionEmployeeModalVisible(false);
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.salespersonOptionText}>
+                              {employee.firstName} {employee.lastName}
+                            </Text>
+                            {employee.employeeId && (
+                              <Text style={[styles.salespersonOptionText, { fontSize: 12, opacity: 0.8 }]}>
+                                ID: {employee.employeeId}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          <View style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                          }}>
+                            {isSelected && (
+                              <Text style={{ color: '#10b981', fontSize: 14, fontWeight: 'bold' }}>✓</Text>
+                            )}
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <Text style={{ color: '#ffffff', textAlign: 'center', fontSize: 16, marginVertical: 20 }}>
+                    Brak dostępnych pracowników
+                  </Text>
+                )}
+              </ScrollView>
+              
+              <View style={styles.salespersonModalButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.salespersonModalCancelButton}
+                  onPress={() => setDeductionEmployeeModalVisible(false)}
+                >
+                  <Text style={styles.salespersonModalButtonText}>Anuluj</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </Modal>
       </SafeAreaView>
     </>
