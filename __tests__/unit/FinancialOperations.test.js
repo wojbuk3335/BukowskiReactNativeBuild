@@ -245,7 +245,7 @@ describe('Financial Operations Mobile Tests', () => {
       await waitFor(() => {
         // Check if modal opened by looking for submit button with testID
         expect(getByTestId('submit-addition-button')).toBeTruthy();
-        expect(getByText('Kwota:')).toBeTruthy();
+        expect(getByText('Kwota jaką klient wpłaca:')).toBeTruthy();
         expect(getByText('Waluta:')).toBeTruthy();
         expect(getByText('Powód dopisania:')).toBeTruthy();
       });
