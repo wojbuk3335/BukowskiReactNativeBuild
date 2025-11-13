@@ -266,7 +266,9 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić prawidłową kwotę.');
+      await waitFor(() => {
+        expect(getByText('Proszę wprowadzić prawidłową kwotę.')).toBeTruthy();
+      });
       console.log('✅ Walidacja kwoty przy odpisywaniu działa');
     });
 
@@ -284,7 +286,9 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.press(getByTestId('submit-deduction-button')); // Submit button
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić powód odpisania.');
+      await waitFor(() => {
+        expect(getByText('Proszę wprowadzić powód odpisania.')).toBeTruthy();
+      });
       console.log('✅ Walidacja powodu przy odpisywaniu działa');
     });
 
@@ -299,7 +303,9 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.press(getByTestId('submit-addition-button')); // Submit button
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wprowadzić prawidłową kwotę.');
+      await waitFor(() => {
+        expect(getByText('Proszę wprowadzić prawidłową kwotę.')).toBeTruthy();
+      });
       console.log('✅ Walidacja kwoty przy dopisywaniu działa');
     });
 
@@ -317,7 +323,9 @@ describe('Financial Operations Mobile Tests', () => {
         fireEvent.press(getByTestId('submit-addition-button')); // Submit button
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Proszę wybrać powód dopisania.');
+      await waitFor(() => {
+        expect(getByText('Proszę wybrać powód dopisania.')).toBeTruthy();
+      });
       console.log('✅ Walidacja powodu przy dopisywaniu działa');
     });
   });
@@ -375,7 +383,9 @@ describe('Financial Operations Mobile Tests', () => {
         );
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Sukces', 'Kwota została odpisana.');
+      await waitFor(() => {
+        expect(getByText('Kwota została odpisana.')).toBeTruthy();
+      });
       console.log('✅ API call dla odpisania kwoty działa poprawnie');
     });
 
@@ -436,7 +446,9 @@ describe('Financial Operations Mobile Tests', () => {
         );
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Sukces', 'Kwota została dopisana.');
+      await waitFor(() => {
+        expect(getByText('Kwota została dopisana.')).toBeTruthy();
+      });
       console.log('✅ API call dla dopisania kwoty działa poprawnie');
     });
 
@@ -464,7 +476,7 @@ describe('Financial Operations Mobile Tests', () => {
       });
 
       await waitFor(() => {
-        expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Nie udało się odpisać kwoty. Spróbuj ponownie.');
+        expect(getByText('Nie udało się odpisać kwoty. Spróbuj ponownie.')).toBeTruthy();
       });
 
       console.log('✅ Obsługa błędów API działa poprawnie');

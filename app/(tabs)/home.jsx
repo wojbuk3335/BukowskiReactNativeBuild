@@ -69,6 +69,10 @@ const Home = () => {
   // States for work hours management
   const [workHoursModalVisible, setWorkHoursModalVisible] = useState(false); // State for work hours modal
   const [selectedEmployeeForHours, setSelectedEmployeeForHours] = useState(null); // Selected employee for setting hours
+  
+  // States for employee removal modal
+  const [removeEmployeeModalVisible, setRemoveEmployeeModalVisible] = useState(false); // State for employee removal modal
+  const [employeeToRemove, setEmployeeToRemove] = useState(null); // Employee selected for removal
   const [workStartTime, setWorkStartTime] = useState("08:00"); // Start time for work
   const [workEndTime, setWorkEndTime] = useState("16:00"); // End time for work
   const [workNotes, setWorkNotes] = useState(""); // Notes for work hours
@@ -357,7 +361,10 @@ const Home = () => {
       
       setDeductionsData(operationsFiltered); // Keep same state variable for now to avoid breaking changes
     } catch (error) {
-      console.error("Error fetching financial operations:", error);
+      // Silent error handling for testing - log only in production
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error fetching financial operations:", error);
+      }
       // Fallback to old deductions endpoint if new one doesn't exist yet
       try {
         const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
@@ -448,10 +455,14 @@ const Home = () => {
         setEmployees(filteredEmployees);
         // console.log(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
       } else {
-        console.error('Failed to fetch employees:', response.status);
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Failed to fetch employees:', response.status);
+        }
       }
     } catch (error) {
-      console.error("Error fetching employees:", error);
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error fetching employees:", error);
+      }
       setEmployees([]);
     }
   };
@@ -466,7 +477,9 @@ const Home = () => {
       // console.log('Fetch assigned - UserData:', userData ? 'present' : 'missing');
       
       if (!accessToken || !userData) {
-        console.log('No token or user data available');
+        if (process.env.NODE_ENV !== 'test') {
+          console.log('No token or user data available');
+        }
         return;
       }
 
@@ -569,24 +582,21 @@ const Home = () => {
   };
 
   const removeSalesperson = async (employeeId) => {
-    const employeeToRemove = assignedSalespeople.find(person => person._id === employeeId);
-    
-    Alert.alert(
-      "Potwierdź usunięcie",
-      `Czy na pewno chcesz usunąć sprzedawcę ${employeeToRemove?.firstName} ${employeeToRemove?.lastName} z zespołu?`,
-      [
-        { text: "Anuluj", style: "cancel" },
-        { 
-          text: "Usuń z zachowaniem godzin", 
-          onPress: () => performRemoval(employeeId, false)
-        },
-        { 
-          text: "Usuń z godzinami pracy", 
-          style: "destructive",
-          onPress: () => performRemoval(employeeId, true)
-        }
-      ]
-    );
+    const employee = assignedSalespeople.find(person => person._id === employeeId);
+    setEmployeeToRemove(employee);
+    setRemoveEmployeeModalVisible(true);
+  };
+
+  const handleRemoveEmployee = (deleteWorkHours) => {
+    if (employeeToRemove) {
+      setRemoveEmployeeModalVisible(false);
+      performRemoval(employeeToRemove._id, deleteWorkHours);
+    }
+  };
+
+  const cancelRemoveEmployee = () => {
+    setEmployeeToRemove(null);
+    setRemoveEmployeeModalVisible(false);
   };
 
   const performRemoval = async (employeeId, deleteWorkHours) => {
@@ -599,7 +609,8 @@ const Home = () => {
       // console.log('Remove salesperson - UserData:', userData ? 'present' : 'missing');
       
       if (!accessToken || !userData) {
-        Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+        setSuccessMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
+        setSuccessModalVisible(true);
         return;
       }
 
@@ -610,7 +621,8 @@ const Home = () => {
       // console.log('Remove salesperson - Employee ID:', employeeId);
 
       if (!sellingPoint) {
-        Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+        setSuccessMessage("Nie można określić punktu sprzedaży.");
+        setSuccessModalVisible(true);
         return;
       }
 
@@ -641,7 +653,8 @@ const Home = () => {
         const message = deleteWorkHours 
           ? "Sprzedawca został usunięty z zespołu wraz z godzinami pracy." 
           : "Sprzedawca został usunięty z zespołu. Godziny pracy zostały zachowane.";
-        Alert.alert("Sukces", message);
+        setSuccessMessage(message);
+        setSuccessModalVisible(true);
       } else if (response.status === 404) {
         // Przypisanie nie istnieje w bazie - usuń tylko lokalnie
         const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
@@ -650,13 +663,16 @@ const Home = () => {
         // 🔄 Odśwież godziny pracy żeby stan był aktualny  
         await fetchTodaysWorkHours();
         
-        Alert.alert("Informacja", "Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
+        setSuccessMessage("Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
+        setSuccessModalVisible(true);
       } else {
-        Alert.alert("Błąd", data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
+        setSuccessMessage(data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
+        setSuccessModalVisible(true);
       }
     } catch (error) {
       console.error('Error removing salesperson:', error);
-      Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
+      setSuccessMessage("Błąd połączenia z serwerem. Spróbuj ponownie.");
+      setSuccessModalVisible(true);
     }
   };
 
@@ -817,7 +833,9 @@ const Home = () => {
         setTodaysWorkHours(data.workHours || []);
       }
     } catch (error) {
-      console.error("Error fetching today's work hours:", error);
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error fetching today's work hours:", error);
+      }
     }
   };
 
@@ -874,19 +892,22 @@ const Home = () => {
 
   const saveWorkHours = async () => {
     if (!selectedEmployeeForHours) {
-      Alert.alert("Błąd", "Nie wybrano pracownika.");
+      setSuccessMessage("Nie wybrano pracownika.");
+      setSuccessModalVisible(true);
       return;
     }
 
     // Validate time format
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(workStartTime)) {
-      Alert.alert("Błąd", "Nieprawidłowy format godziny rozpoczęcia. Użyj HH:MM (np. 08:00)");
+      setSuccessMessage("Nieprawidłowy format godziny rozpoczęcia. Użyj HH:MM (np. 08:00)");
+      setSuccessModalVisible(true);
       return;
     }
     
     if (!timeRegex.test(workEndTime)) {
-      Alert.alert("Błąd", "Nieprawidłowy format godziny zakończenia. Użyj HH:MM (np. 16:00)");
+      setSuccessMessage("Nieprawidłowy format godziny zakończenia. Użyj HH:MM (np. 16:00)");
+      setSuccessModalVisible(true);
       return;
     }
 
@@ -897,16 +918,16 @@ const Home = () => {
     const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
 
     if (startMinutes >= endMinutes) {
-      Alert.alert("Błąd", "Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia.");
+      setSuccessMessage("Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia.");
+      setSuccessModalVisible(true);
       return;
     }
 
     const totalHours = (endMinutes - startMinutes) / 60;
     if (totalHours > 16) {
-      Alert.alert("Uwaga", "Czas pracy przekracza 16 godzin. Czy na pewno chcesz kontynuować?", [
-        { text: "Anuluj", style: "cancel" },
-        { text: "Tak", onPress: () => submitWorkHours() }
-      ]);
+      setSuccessMessage("Czas pracy przekracza 16 godzin. Godziny zostały zapisane, ale sprawdź czy to jest prawidłowe.");
+      setSuccessModalVisible(true);
+      submitWorkHours(); // Zapisz mimo ostrzeżenia
     } else {
       submitWorkHours();
     }
@@ -939,27 +960,26 @@ const Home = () => {
       if (response.ok) {
         const result = await response.json();
         const actionText = result.isUpdate ? 'zaktualizowane' : 'zapisane';
-        Alert.alert(
-          "Sukces", 
-          `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${actionText}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`,
-          [{ text: "OK" }]
+        setSuccessMessage(
+          `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${actionText}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`
         );
+        setSuccessModalVisible(true);
         closeWorkHoursModal(); // Użyj funkcji pomocniczej do zamknięcia
         fetchTodaysWorkHours(); // Refresh today's work hours
       } else {
         const errorData = await response.json();
         console.error('❌ Error saving work hours:', errorData);
-        Alert.alert("Błąd", 
-          errorData.message || "Nie udało się zapisać godzin pracy." +
-          `\n\nSzczegóły: ${JSON.stringify(errorData, null, 2)}`
+        setSuccessMessage(
+          errorData.message || "Nie udało się zapisać godzin pracy."
         );
+        setSuccessModalVisible(true);
       }
     } catch (error) {
       console.error("Error saving work hours:", error);
-      Alert.alert("Błąd", 
-        "Wystąpił błąd podczas zapisywania godzin pracy." +
-        `\n\nSzczegóły: ${error.message}`
+      setSuccessMessage(
+        `Wystąpił błąd podczas zapisywania godzin pracy.\n\nSzczegóły: ${error.message}`
       );
+      setSuccessModalVisible(true);
     }
   };
 
@@ -989,18 +1009,21 @@ const Home = () => {
 
   const submitDeduction = async () => {
     if (!deductionAmount || parseFloat(deductionAmount) <= 0) {
-      Alert.alert("Błąd", "Proszę wprowadzić prawidłową kwotę.");
+      setSuccessMessage("Proszę wprowadzić prawidłową kwotę.");
+      setSuccessModalVisible(true);
       return;
     }
     
     if (deductionType === "employee_advance") {
       if (!selectedEmployeeForAdvance) {
-        Alert.alert("Błąd", "Proszę wybrać pracownika dla zaliczki.");
+        setSuccessMessage("Proszę wybrać pracownika dla zaliczki.");
+        setSuccessModalVisible(true);
         return;
       }
     } else {
       if (!deductionReason.trim()) {
-        Alert.alert("Błąd", "Proszę wprowadzić powód odpisania.");
+        setSuccessMessage("Proszę wprowadzić powód odpisania.");
+        setSuccessModalVisible(true);
         return;
       }
     }
@@ -1010,11 +1033,10 @@ const Home = () => {
     const currentAvailable = availableFunds[deductionCurrency] || 0;
     
     if (requestedAmount > currentAvailable) {
-      Alert.alert(
-        "Niewystarczające środki", 
-        `Nie można odpisać ${requestedAmount} ${deductionCurrency}.\n\nDostępne środki w ${deductionCurrency}: ${currentAvailable.toFixed(2)}\n\nSprawdź "Zamknięcie dnia" na dole ekranu, aby zobaczyć wszystkie dostępne środki.`,
-        [{ text: "OK", style: "default" }]
+      setSuccessMessage(
+        `Niewystarczające środki\n\nNie można odpisać ${requestedAmount} ${deductionCurrency}.\n\nDostępne środki w ${deductionCurrency}: ${currentAvailable.toFixed(2)}\n\nSprawdź "Zamknięcie dnia" na dole ekranu, aby zobaczyć wszystkie dostępne środki.`
       );
+      setSuccessModalVisible(true);
       return;
     }
     
@@ -1055,39 +1077,48 @@ const Home = () => {
       setDeductionModalVisible(false);
       await fetchFinancialOperations();
       
-      Alert.alert("Sukces", "Kwota została odpisana.");
+      setSuccessMessage("Kwota została odpisana.");
+      setSuccessModalVisible(true);
     } catch (error) {
-      console.error("Error submitting deduction:", error);
-      Alert.alert("Błąd", "Nie udało się odpisać kwoty. Spróbuj ponownie.");
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error submitting deduction:", error);
+      }
+      setSuccessMessage("Nie udało się odpisać kwoty. Spróbuj ponownie.");
+      setSuccessModalVisible(true);
     }
   };
 
   const submitAddAmount = async () => {
     if (!addAmountAmount || parseFloat(addAmountAmount) <= 0) {
-      Alert.alert("Błąd", "Proszę wprowadzić prawidłową kwotę.");
+      setSuccessMessage("Proszę wprowadzić prawidłową kwotę.");
+      setSuccessModalVisible(true);
       return;
     }
     
     // Validate reason selection
     if (!reasonType) {
-      Alert.alert("Błąd", "Proszę wybrać powód dopisania.");
+      setSuccessMessage("Proszę wybrać powód dopisania.");
+      setSuccessModalVisible(true);
       return;
     }
     
     if (reasonType === 'product') {
       if (!productFinalPrice || parseFloat(productFinalPrice) <= 0) {
-        Alert.alert("Błąd", "Proszę podać cenę finalną produktu (zaliczka + dopłata).");
+        setSuccessMessage("Proszę podać cenę finalną produktu (zaliczka + dopłata).");
+        setSuccessModalVisible(true);
         return;
       }
       
       if (parseFloat(productFinalPrice) < parseFloat(addAmountAmount)) {
-        Alert.alert("Błąd", "Cena finalna nie może być mniejsza niż zaliczka.");
+        setSuccessMessage("Cena finalna nie może być mniejsza niż zaliczka.");
+        setSuccessModalVisible(true);
         return;
       }
     }
     
     if (reasonType === 'other' && !addAmountReason.trim()) {
-      Alert.alert("Błąd", "Proszę wprowadzić powód dopisania.");
+      setSuccessMessage("Proszę wprowadzić powód dopisania.");
+      setSuccessModalVisible(true);
       return;
     }
     
@@ -1172,16 +1203,21 @@ const Home = () => {
         await fetchFinancialOperations();
       }
       
-      Alert.alert("Sukces", "Kwota została dopisana.");
+      setSuccessMessage("Kwota została dopisana.");
+      setSuccessModalVisible(true);
     } catch (error) {
-      console.error("Error submitting addition:", error);
-      Alert.alert("Błąd", "Nie udało się dopisać kwoty. Spróbuj ponownie.");
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error submitting addition:", error);
+      }
+      setSuccessMessage("Nie udało się dopisać kwoty. Spróbuj ponownie.");
+      setSuccessModalVisible(true);
     }
   };
 
   const cancelDeduction = async () => {
     if (!selectedDeductionItem) {
-      Alert.alert("Błąd", "Nie wybrano pozycji do anulowania.");
+      setSuccessMessage("Nie wybrano pozycji do anulowania.");
+      setSuccessModalVisible(true);
       return;
     }
     
@@ -1199,10 +1235,14 @@ const Home = () => {
       setSelectedDeductionItem(null);
       await fetchFinancialOperations();
       
-      Alert.alert("Sukces", "Operacja została anulowana.");
+      setSuccessMessage("Operacja została anulowana.");
+      setSuccessModalVisible(true);
     } catch (error) {
-      console.error("Error canceling deduction:", error);
-      Alert.alert("Błąd", "Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
+      if (process.env.NODE_ENV !== 'test') {
+        console.error("Error canceling deduction:", error);
+      }
+      setSuccessMessage("Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
+      setSuccessModalVisible(true);
     }
   };
 
@@ -1395,10 +1435,10 @@ const Home = () => {
                                 alignItems: "center", 
                                 marginBottom: 4,
                                 padding: 6,
-                                backgroundColor: todaysRecord ? '#1f5f3f' : '#374151',
+                                backgroundColor: todaysRecord ? '#007bff' : '#374151',
                                 borderRadius: 4,
                                 borderLeftWidth: todaysRecord ? 3 : 0,
-                                borderLeftColor: '#10b981',
+                                borderLeftColor: '#007bff',
                                 width: '100%'
                               }}
                             >
@@ -1410,7 +1450,7 @@ const Home = () => {
                                   )}
                                 </Text>
                                 {todaysRecord && (
-                                  <Text style={{ color: '#10b981', fontSize: 11, marginTop: 2 }}>
+                                  <Text style={{ color: '#ffffff', fontSize: 11, marginTop: 2 }}>
                                     ⏰ {todaysRecord.startTime} - {todaysRecord.endTime} ({todaysRecord.totalHours}h)
                                   </Text>
                                 )}
@@ -1711,7 +1751,7 @@ const Home = () => {
                           style={[
                             styles.deductionItem,
                             (item.type === 'addition' || item.amount > 0) 
-                              ? { backgroundColor: '#059669' } // Green background for additions
+                              ? { backgroundColor: '#0d6efd' } // Blue background for additions
                               : { backgroundColor: '#dc2626' } // Red background for deductions
                           ]}
                         >
@@ -2620,27 +2660,47 @@ const Home = () => {
               </View>
               
               {/* Action buttons */}
-              <TouchableOpacity
-                style={[styles.optionButton, { backgroundColor: '#28a745', marginBottom: 10 }]}
-                onPress={submitDeduction}
-                testID="submit-deduction-button"
-              >
-                <Text style={styles.optionText}>Odpisz kwotę</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.optionButton, styles.closeButton]}
-                onPress={() => {
-                  setDeductionModalVisible(false);
-                  setDeductionAmount("");
-                  setDeductionCurrency("PLN");
-                  setDeductionReason("");
-                  setDeductionType("other");
-                  setSelectedEmployeeForAdvance(null);
-                }}
-              >
-                <Text style={styles.closeText}>Anuluj</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#28a745',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={submitDeduction}
+                  testID="submit-deduction-button"
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Odpisz kwotę
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#dc3545',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={() => {
+                    setDeductionModalVisible(false);
+                    setDeductionAmount("");
+                    setDeductionCurrency("PLN");
+                    setDeductionReason("");
+                    setDeductionType("other");
+                    setSelectedEmployeeForAdvance(null);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Anuluj
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -2736,7 +2796,7 @@ const Home = () => {
                     fontSize: 16,
                     color: 'white',
                     borderWidth: 1,
-                    borderColor: '#10b981', // Green border for addition
+                    borderColor: '#0d6efd', // Blue border for addition
                     textAlign: 'center',
                   }}
                   placeholder="0.00"
@@ -2752,7 +2812,7 @@ const Home = () => {
                 <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta:</Text>
                 <TouchableOpacity
                   style={{
-                    backgroundColor: '#10b981', // Green for addition
+                    backgroundColor: '#0d6efd', // Blue for addition
                     paddingHorizontal: 20,
                     paddingVertical: 12,
                     borderRadius: 8,
@@ -2792,8 +2852,8 @@ const Home = () => {
                       height: 20,
                       borderRadius: 10,
                       borderWidth: 2,
-                      borderColor: '#10b981',
-                      backgroundColor: reasonType === 'product' ? '#10b981' : 'transparent',
+                      borderColor: '#0d6efd',
+                      backgroundColor: reasonType === 'product' ? '#0d6efd' : 'transparent',
                       marginRight: 10,
                     }} />
                     <Text style={{ color: '#fff', fontSize: 14 }}>Zaliczka na produkt</Text>
@@ -2815,8 +2875,8 @@ const Home = () => {
                       height: 20,
                       borderRadius: 10,
                       borderWidth: 2,
-                      borderColor: '#10b981',
-                      backgroundColor: reasonType === 'other' ? '#10b981' : 'transparent',
+                      borderColor: '#0d6efd',
+                      backgroundColor: reasonType === 'other' ? '#0d6efd' : 'transparent',
                       marginRight: 10,
                     }} />
                     <Text style={{ color: '#fff', fontSize: 14 }}>Inny powód dopisania</Text>
@@ -2837,7 +2897,7 @@ const Home = () => {
                         fontSize: 14,
                         color: 'white',
                         borderWidth: 1,
-                        borderColor: '#10b981',
+                        borderColor: '#0d6efd',
                         marginBottom: 10,
                       }}
                       placeholder="Wpisz nazwę lub kod produktu..."
@@ -2861,7 +2921,7 @@ const Home = () => {
                         backgroundColor: 'black',
                         borderRadius: 8,
                         borderWidth: 1,
-                        borderColor: '#10b981',
+                        borderColor: '#0d6efd',
                         position: 'relative',
                       }}>
                         {/* Close button */}
@@ -2894,7 +2954,7 @@ const Home = () => {
                                 padding: 12,
                                 borderBottomWidth: 1,
                                 borderBottomColor: '#333',
-                                backgroundColor: selectedProduct === product._id ? '#10b981' : 'transparent',
+                                backgroundColor: selectedProduct === product._id ? '#0d6efd' : 'transparent',
                               }}
                               onPress={() => {
                                 setSelectedProduct(product._id);
@@ -2937,7 +2997,7 @@ const Home = () => {
                             fontSize: 14,
                             color: 'white',
                             borderWidth: 1,
-                            borderColor: '#10b981',
+                            borderColor: '#0d6efd',
                             textAlign: 'center',
                           }}
                           placeholder="0.00"
@@ -2955,7 +3015,7 @@ const Home = () => {
                             backgroundColor: '#333',
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: '#10b981',
+                            borderColor: '#0d6efd',
                           }}>
                             <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center' }}>
                               <Text style={{ fontWeight: 'bold' }}>Zaliczka:</Text> {parseFloat(addAmountAmount || 0).toFixed(2)} {addAmountCurrency}
@@ -2964,7 +3024,7 @@ const Home = () => {
                               <Text style={{ fontWeight: 'bold' }}>Cena finalna:</Text> {parseFloat(productFinalPrice || 0).toFixed(2)} {addAmountCurrency}
                             </Text>
                             <Text style={{ 
-                              color: parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0) > 0 ? '#ff6b6b' : '#10b981', 
+                              color: parseFloat(productFinalPrice || 0) - parseFloat(addAmountAmount || 0) > 0 ? '#ff6b6b' : '#0d6efd', 
                               fontSize: 14, 
                               textAlign: 'center', 
                               marginTop: 5,
@@ -3004,30 +3064,50 @@ const Home = () => {
               </View>
               
               {/* Action buttons */}
-              <TouchableOpacity
-                style={[styles.optionButton, { backgroundColor: '#10b981', marginBottom: 10 }]} // Green button
-                onPress={submitAddAmount}
-                testID="submit-addition-button"
-              >
-                <Text style={styles.optionText}>Dopisz kwotę</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.optionButton, styles.closeButton]}
-                onPress={() => {
-                  setAddAmountModalVisible(false);
-                  setAddAmountAmount("");
-                  setAddAmountCurrency("PLN");
-                  setAddAmountReason("");
-                  setReasonType("");
-                  setSelectedProduct("");
-                  setProductSearchQuery("");
-                  setShowProductDropdown(false);
-                  setProductFinalPrice("");
-                }}
-              >
-                <Text style={styles.closeText}>Anuluj</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#0d6efd',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={submitAddAmount}
+                  testID="submit-addition-button"
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Dopisz kwotę
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#dc3545',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={() => {
+                    setAddAmountModalVisible(false);
+                    setAddAmountAmount("");
+                    setAddAmountCurrency("PLN");
+                    setAddAmountReason("");
+                    setReasonType("");
+                    setSelectedProduct("");
+                    setProductSearchQuery("");
+                    setShowProductDropdown(false);
+                    setProductFinalPrice("");
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Anuluj
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -3283,19 +3363,37 @@ const Home = () => {
 
               <View style={styles.workHoursModalButtonContainer}>
                 <TouchableOpacity
-                  style={[styles.workHoursModalButton, styles.workHoursSaveButton]}
+                  style={{
+                    backgroundColor: '#007bff',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
                   onPress={saveWorkHours}
                 >
-                  <Text style={styles.workHoursModalButtonText}>💾 Zapisz godziny</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Zapisz
+                  </Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={[styles.workHoursModalButton, styles.workHoursCancelButton]}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
                   onPress={() => {
                     closeWorkHoursModal();
                   }}
                 >
-                  <Text style={styles.workHoursModalButtonText}>✕ Anuluj</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    ✕ Anuluj
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3325,6 +3423,62 @@ const Home = () => {
               >
                 <Text style={styles.optionText}>OK</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Remove Employee Modal */}
+        <Modal
+          transparent={true}
+          visible={removeEmployeeModalVisible}
+          animationType="fade"
+          onRequestClose={cancelRemoveEmployee}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%' }]}>
+              <Text style={styles.modalTitle}>Potwierdź usunięcie</Text>
+              
+              <Text style={[styles.modalSubtitle, { marginBottom: 25, textAlign: 'center', lineHeight: 22 }]}>
+                Czy na pewno chcesz usunąć sprzedawcę{'\n'}
+                <Text style={{ fontWeight: 'bold', color: '#007bff' }}>
+                  {employeeToRemove?.firstName} {employeeToRemove?.lastName}
+                </Text>
+                {'\n'}z zespołu?
+              </Text>
+
+              <View style={{ width: '100%', alignItems: 'center', gap: 12, flexDirection: 'row', justifyContent: 'center' }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#dc3545',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={() => handleRemoveEmployee(true)}
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Usuń
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#6c757d',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                  }}
+                  onPress={cancelRemoveEmployee}
+                >
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    Anuluj
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -3453,6 +3607,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     color: '#fff',
     textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    marginBottom: 12,
   },
   optionButton: {
     backgroundColor: '#0d6efd',
@@ -3641,18 +3801,18 @@ const styles = StyleSheet.create({
   // Work Hours Modal Styles
   workHoursModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   workHoursModalContent: {
-    backgroundColor: '#1f2937',
-    borderRadius: 15,
-    padding: 25,
-    width: '95%',
+    backgroundColor: 'black',
+    borderRadius: 10,
+    padding: 16,
+    width: '90%',
     maxHeight: '85%',
-    borderWidth: 2,
-    borderColor: '#0ea5e9',
+    borderWidth: 1,
+    borderColor: 'white',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -3663,124 +3823,125 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   workHoursModalTitle: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#fff',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
   },
   workHoursEmployeeName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#10b981',
+    color: '#007bff',
     textAlign: 'center',
     marginBottom: 5,
   },
   workHoursDateText: {
-    fontSize: 16,
-    color: '#9ca3af',
+    fontSize: 14,
+    color: '#e5e7eb',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   workHoursTimeContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   workHoursTimeSection: {
-    marginBottom: 15,
+    marginBottom: 12,
   },
   workHoursTimeLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 8,
+    color: '#fff',
+    marginBottom: 6,
   },
   workHoursTimePickerContainer: {
-    backgroundColor: '#374151',
-    borderRadius: 10,
+    backgroundColor: 'black',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#0ea5e9',
+    borderColor: 'white',
   },
   workHoursTimeInput: {
-    padding: 15,
-    fontSize: 20,
+    padding: 12,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#0ea5e9',
+    color: '#fff',
     textAlign: 'center',
   },
   workHoursTimePicker: {
-    backgroundColor: '#374151',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: 'black',
+    padding: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#0ea5e9',
+    borderColor: 'white',
     alignItems: 'center',
   },
   workHoursTimeText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#0ea5e9',
-  },
-  workHoursPreview: {
-    backgroundColor: '#065f46',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#10b981',
-  },
-  workHoursPreviewText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 5,
+    color: '#fff',
+  },
+  workHoursPreview: {
+    backgroundColor: 'black',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#007bff',
+  },
+  workHoursPreviewText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
   },
   workHoursPreviewTextSmall: {
-    fontSize: 14,
-    color: '#9ca3af',
+    fontSize: 12,
+    color: '#e5e7eb',
     fontStyle: 'italic',
   },
   workHoursNotesContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   workHoursNotesLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 8,
+    color: '#fff',
+    marginBottom: 6,
   },
   workHoursNotesInput: {
-    backgroundColor: '#374151',
-    borderRadius: 10,
+    backgroundColor: 'black',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#6b7280',
+    borderColor: 'white',
     padding: 12,
-    color: '#ffffff',
-    fontSize: 16,
-    minHeight: 80,
+    color: '#fff',
+    fontSize: 14,
+    minHeight: 60,
     textAlignVertical: 'top',
   },
   workHoursModalButtonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 15,
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 8,
   },
   workHoursModalButton: {
-    flex: 1,
-    paddingVertical: 15,
-    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ffffff',
+    borderColor: 'white',
   },
   workHoursSaveButton: {
-    backgroundColor: '#059669',
+    backgroundColor: '#007bff',
   },
   workHoursCancelButton: {
-    backgroundColor: '#dc2626',
+    backgroundColor: '#dc3545',
   },
   workHoursModalButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   // Success Modal Styles

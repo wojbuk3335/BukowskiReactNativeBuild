@@ -162,7 +162,9 @@ describe('Financial Operations Integration Tests', () => {
       });
 
       // Step 4: Verify success message
-      expect(Alert.alert).toHaveBeenCalledWith('Sukces', 'Kwota została dopisana.');
+      await waitFor(() => {
+        expect(getByText('Kwota została dopisana.')).toBeTruthy();
+      });
 
       // Step 5: Check that operations are displayed
       await waitFor(() => {
@@ -263,13 +265,10 @@ describe('Financial Operations Integration Tests', () => {
         fireEvent.press(getByTestId('submit-deduction-button')); // Use testID instead
       });
 
-      // Should show insufficient funds alert
+      // Should show insufficient funds message
       await waitFor(() => {
-        expect(Alert.alert).toHaveBeenCalledWith(
-          'Niewystarczające środki',
-          expect.stringContaining('Nie można odpisać 500 PLN'),
-          expect.any(Array)
-        );
+        expect(getByText(/Niewystarczające środki/)).toBeTruthy();
+        expect(getByText(/Nie można odpisać 500 PLN/)).toBeTruthy();
       });
 
       console.log('✅ Sprawdzanie niewystarczających środków działa poprawnie');
@@ -349,10 +348,24 @@ describe('Financial Operations Integration Tests', () => {
       });
 
       // Accept either success or error message (as the operation might fail in test environment)
-      expect(Alert.alert).toHaveBeenCalledWith(
-        expect.any(String), 
-        expect.stringMatching(/(Operacja została anulowana|Nie udało się anulować odpisanej kwoty)/)
-      );
+      await waitFor(() => {
+        const successModalTexts = [
+          'Operacja została anulowana.',
+          'Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.'
+        ];
+        
+        // Check if any of the success/error messages are present
+        const hasMessage = successModalTexts.some(text => {
+          try {
+            getByText(text);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        
+        expect(hasMessage).toBeTruthy();
+      });
 
       console.log('✅ Anulowanie operacji działa poprawnie');
     });
@@ -464,7 +477,7 @@ describe('Financial Operations Integration Tests', () => {
       });
 
       await waitFor(() => {
-        expect(Alert.alert).toHaveBeenCalledWith('Błąd', 'Nie udało się dopisać kwoty. Spróbuj ponownie.');
+        expect(getByText('Nie udało się dopisać kwoty. Spróbuj ponownie.')).toBeTruthy();
       });
 
       console.log('✅ Obsługa błędów sieci działa poprawnie');

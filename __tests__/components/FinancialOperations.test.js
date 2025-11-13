@@ -86,7 +86,7 @@ describe('Financial Operations Component Tests', () => {
 
   describe('Form Validation Tests', () => {
     it('Powinien pokazać błąd przy pustej kwocie', async () => {
-      const { getAllByText, getByTestId } = renderWithContext(<Home />);
+      const { getAllByText, getByTestId, getByText } = renderWithContext(<Home />);
 
       // Kliknij przycisk "Odpisz kwotę" aby otworzyć modal (pierwszy element)
       await act(async () => {
@@ -105,14 +105,14 @@ describe('Financial Operations Component Tests', () => {
         fireEvent.press(submitButton);
       });
 
-      // Sprawdź czy Alert został wywołany
+      // Sprawdź czy success modal został wyświetlony
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalled();
+        expect(getByText('Proszę wprowadzić prawidłową kwotę.')).toBeTruthy();
       }, { timeout: 2000 });
     });
 
     it('Powinien pokazać błąd przy niepoprawnej kwocie', async () => {
-      const { getAllByText, getByPlaceholderText, getByTestId } = renderWithContext(<Home />);
+      const { getAllByText, getByPlaceholderText, getByTestId, getByText } = renderWithContext(<Home />);
 
       // Otwórz modal
       await act(async () => {
@@ -138,7 +138,7 @@ describe('Financial Operations Component Tests', () => {
       });
 
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalled();
+        expect(getByText('Proszę wprowadzić prawidłową kwotę.')).toBeTruthy();
       }, { timeout: 2000 });
     });
 
@@ -159,21 +159,25 @@ describe('Financial Operations Component Tests', () => {
       await act(async () => {
         const amountInput = getByPlaceholderText('0.00');
         fireEvent.changeText(amountInput, '100');
-        
+      });
+      
+      // Poczekaj na update stanu
+      await waitFor(() => {
+        expect(getByPlaceholderText('0.00')).toHaveProperty('props.value', '100');
+      });
+
+      await act(async () => {
         // Nie wypełniaj pola reason
         const submitButton = getByTestId('submit-deduction-button');
         fireEvent.press(submitButton);
       });
 
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalled();
+        expect(getByText('Proszę wprowadzić powód odpisania.')).toBeTruthy();
       }, { timeout: 2000 });
     });
 
     it('Powinien pokazać błąd przy niewystarczających środkach', async () => {
-      const mockAlert = jest.fn();
-      Alert.alert = mockAlert;
-      
       const contextValue = {
         selectedSymbol: 'PLN', 
         user: { symbol: 'PLN' } 
@@ -198,11 +202,7 @@ describe('Financial Operations Component Tests', () => {
       });
 
       await waitFor(() => {
-        expect(mockAlert).toHaveBeenCalledWith(
-          'Niewystarczające środki', 
-          expect.stringContaining('Nie można odpisać 100 PLN'),
-          expect.any(Array)
-        );
+        expect(getByText(/Niewystarczające środki/i)).toBeTruthy();
       }, { timeout: 2000 });
     });
   });
@@ -539,10 +539,6 @@ describe('Financial Operations Component Tests', () => {
 
   describe('Error Handling Tests', () => {
     it('Powinien obsłużyć błąd API przy dodawaniu operacji', async () => {
-      // Mock Alert dla tego testu
-      const localMockAlert = jest.fn();
-      Alert.alert = localMockAlert;
-      
       // Mock API responses - success dla useEffect, error dla user actions
       tokenService.authenticatedFetch.mockImplementation((url, options) => {
         if (url.includes('/sales/get-all-sales')) {
@@ -606,15 +602,11 @@ describe('Financial Operations Component Tests', () => {
 
       await waitFor(() => {
         expect(tokenService.authenticatedFetch).toHaveBeenCalled();
-        expect(localMockAlert).toHaveBeenCalledWith("Błąd", "Nie udało się odpisać kwoty. Spróbuj ponownie.");
+        expect(getByText('Nie udało się odpisać kwoty. Spróbuj ponownie.')).toBeTruthy();
       }, { timeout: 2000 });
     });
 
     it('Powinien obsłużyć błąd sieci', async () => {
-      // Mock Alert dla tego testu
-      const localMockAlert = jest.fn();
-      Alert.alert = localMockAlert;
-      
       // Mock API responses - success dla useEffect, network error dla user actions
       tokenService.authenticatedFetch.mockImplementation((url, options) => {
         if (url.includes('/sales/get-all-sales')) {
@@ -678,7 +670,7 @@ describe('Financial Operations Component Tests', () => {
 
       await waitFor(() => {
         expect(tokenService.authenticatedFetch).toHaveBeenCalled();
-        expect(localMockAlert).toHaveBeenCalledWith("Błąd", "Nie udało się odpisać kwoty. Spróbuj ponownie.");
+        expect(getByText('Nie udało się odpisać kwoty. Spróbuj ponownie.')).toBeTruthy();
       }, { timeout: 2000 });
     });
   });

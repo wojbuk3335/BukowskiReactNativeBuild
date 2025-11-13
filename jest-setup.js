@@ -30,7 +30,12 @@ jest.mock('./services/tokenService', () => {
       'Authorization': 'Bearer mock-token',
       'Content-Type': 'application/json'
     })),
-    authenticatedFetch: jest.fn(() => Promise.resolve(new Response('{}', { status: 200 }))),
+    authenticatedFetch: jest.fn(() => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve('{}')
+    })),
     isAuthenticated: jest.fn(() => Promise.resolve(false)),
     logout: jest.fn(() => Promise.resolve()),
     setAutoLogoutCallback: jest.fn(),
