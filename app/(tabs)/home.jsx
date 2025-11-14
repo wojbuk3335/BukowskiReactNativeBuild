@@ -38,6 +38,9 @@ const Home = () => {
   const [deductionEmployeeModalVisible, setDeductionEmployeeModalVisible] = useState(false); // State for deduction employee selection modal
   const [deductionAmount, setDeductionAmount] = useState(""); // State for deduction amount
   const [deductionCurrency, setDeductionCurrency] = useState("PLN"); // State for deduction currency
+  const [deductionCurrencyModalVisible, setDeductionCurrencyModalVisible] = useState(false); // State for deduction currency selection modal
+  const [deductionCurrencyRate, setDeductionCurrencyRate] = useState(""); // Rate input for deduction currency
+  const [showDeductionRateInput, setShowDeductionRateInput] = useState(false); // Show rate input for deduction currency
   const [deductionReason, setDeductionReason] = useState(""); // State for deduction reason
   const [deductionType, setDeductionType] = useState("other"); // "other" lub "employee_advance"
   const [selectedEmployeeForAdvance, setSelectedEmployeeForAdvance] = useState(null); // Wybrany pracownik dla zaliczki
@@ -127,6 +130,11 @@ const Home = () => {
   const fetchSalesData = async () => {
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl('/sales/get-all-sales'));
+      
+      if (!response || !response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
       const data = await response.json();
       
       // Ensure data is an array
@@ -320,6 +328,11 @@ const Home = () => {
   const fetchTransferredItems = async () => {
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
+      
+      if (!response || !response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
       const data = await response.json();
       
       // Ensure data is an array
@@ -336,6 +349,11 @@ const Home = () => {
   const fetchReceivedItems = async () => {
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
+      
+      if (!response || !response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
       const data = await response.json();
       
       // Ensure data is an array
@@ -350,6 +368,11 @@ const Home = () => {
   const fetchAdvances = async () => {
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/transfer"));
+      
+      if (!response || !response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
       const data = await response.json();
       
       // Ensure data is an array
@@ -372,6 +395,11 @@ const Home = () => {
   const fetchFinancialOperations = async () => {
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"));
+      
+      if (!response || !response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      
       const data = await response.json();
       
       // Ensure data is an array
@@ -391,6 +419,11 @@ const Home = () => {
       // Fallback to old deductions endpoint if new one doesn't exist yet
       try {
         const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
+        
+        if (!response || !response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        
         const data = await response.json();
         const deductionsArray = Array.isArray(data) ? data : (data?.deductions || data?.data || []);
         const deductionsFiltered = deductionsArray.filter((item) => 
@@ -1037,6 +1070,15 @@ const Home = () => {
       return;
     }
     
+    // Validate currency rate for non-PLN currencies
+    if (deductionCurrency !== 'PLN' && showDeductionRateInput) {
+      if (!deductionCurrencyRate || parseFloat(deductionCurrencyRate) <= 0) {
+        setSuccessMessage(`Proszę wprowadzić prawidłowy kurs dla ${deductionCurrency} (większy od 0).`);
+        setSuccessModalVisible(true);
+        return;
+      }
+    }
+    
     if (deductionType === "employee_advance") {
       if (!selectedEmployeeForAdvance) {
         setSuccessMessage("Proszę wybrać pracownika dla zaliczki.");
@@ -1075,6 +1117,13 @@ const Home = () => {
         date: new Date().toISOString(),
       };
 
+      // Add currency rate if it's not PLN and user provided a rate
+      if (deductionCurrency !== 'PLN' && deductionCurrencyRate && parseFloat(deductionCurrencyRate) > 0) {
+        operationData.currencyRate = parseFloat(deductionCurrencyRate);
+        // Update currency rate in storage
+        await CurrencyService.updateCurrencyRate(deductionCurrency, parseFloat(deductionCurrencyRate));
+      }
+
       // Dodaj dane pracownika dla zaliczek
       if (deductionType === "employee_advance") {
         operationData.employeeId = selectedEmployeeForAdvance._id;
@@ -1094,6 +1143,8 @@ const Home = () => {
       // Reset form and refresh data
       setDeductionAmount("");
       setDeductionCurrency("PLN");
+      setDeductionCurrencyRate("");
+      setShowDeductionRateInput(false);
       setDeductionReason("");
       setDeductionType("other");
       setSelectedEmployeeForAdvance(null);
@@ -1484,6 +1535,28 @@ const Home = () => {
       } catch (error) {
         console.error('Error loading currency rate:', error);
         setAddAmountCurrencyRate("1.0");
+      }
+    }
+  };
+
+  // Function to handle deduction currency selection
+  const selectCurrencyForDeduction = async (currency) => {
+    setDeductionCurrency(currency);
+    setDeductionCurrencyModalVisible(false);
+    
+    if (currency === 'PLN') {
+      setShowDeductionRateInput(false);
+      setDeductionCurrencyRate("");
+    } else {
+      // Show rate input for non-PLN currencies
+      setShowDeductionRateInput(true);
+      // Load current rate from storage as default
+      try {
+        const currentRate = await CurrencyService.getCurrencyRate(currency);
+        setDeductionCurrencyRate(currentRate.toString());
+      } catch (error) {
+        console.error('Error loading currency rate:', error);
+        setDeductionCurrencyRate("1.0");
       }
     }
   };
@@ -2863,7 +2936,7 @@ const Home = () => {
                 <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta:</Text>
                 <TouchableOpacity
                   style={{
-                    backgroundColor: '#0d6efd',
+                    backgroundColor: '#dc3545', // Red for deduction
                     paddingHorizontal: 20,
                     paddingVertical: 12,
                     borderRadius: 8,
@@ -2871,13 +2944,55 @@ const Home = () => {
                     borderWidth: 1,
                     borderColor: 'white',
                   }}
-                  onPress={() => {/* Currency selection logic can be added here */}}
+                  onPress={() => setDeductionCurrencyModalVisible(true)}
                 >
                   <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
                     {deductionCurrency}
                   </Text>
                 </TouchableOpacity>
               </View>
+              
+              {/* Currency rate input - show only for non-PLN currencies */}
+              {showDeductionRateInput && deductionCurrency !== 'PLN' && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
+                    Kurs {deductionCurrency} (1 {deductionCurrency} = ? PLN):
+                  </Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: '#1a1a1a',
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 16,
+                      color: 'white',
+                      borderWidth: 2,
+                      borderColor: '#f39c12',
+                      textAlign: 'center',
+                    }}
+                    placeholder="0.00"
+                    placeholderTextColor="#666"
+                    value={deductionCurrencyRate}
+                    onChangeText={(value) => {
+                      setDeductionCurrencyRate(value);
+                      // Save rate to storage when user types
+                      if (value && parseFloat(value) > 0) {
+                        CurrencyService.updateCurrencyRate(deductionCurrency, parseFloat(value)).catch(console.error);
+                      }
+                    }}
+                    keyboardType="decimal-pad"
+                  />
+                  {deductionCurrencyRate && parseFloat(deductionCurrencyRate) > 0 && (
+                    <Text style={{
+                      color: '#4ecdc4',
+                      fontSize: 12,
+                      textAlign: 'center',
+                      marginTop: 5
+                    }}>
+                      1 {deductionCurrency} = {parseFloat(deductionCurrencyRate).toFixed(2)} PLN
+                    </Text>
+                  )}
+                </View>
+              )}
               
               {/* Typ odpisania */}
               <View style={{ width: '100%', marginBottom: 15 }}>
@@ -3029,6 +3144,8 @@ const Home = () => {
                     setDeductionModalVisible(false);
                     setDeductionAmount("");
                     setDeductionCurrency("PLN");
+                    setDeductionCurrencyRate("");
+                    setShowDeductionRateInput(false);
                     setDeductionReason("");
                     setDeductionType("other");
                     setSelectedEmployeeForAdvance(null);
@@ -4127,6 +4244,55 @@ const Home = () => {
               <TouchableOpacity
                 style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
                 onPress={() => setAddAmountCurrencyModalVisible(false)}
+              >
+                <Text style={styles.optionText}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Deduction Currency Selection Modal */}
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={deductionCurrencyModalVisible}
+          onRequestClose={() => setDeductionCurrencyModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
+              <Text style={styles.modalTitle}>Wybierz walutę</Text>
+              
+              <FlatList
+                data={availableCurrencies}
+                keyExtractor={(item) => item}
+                style={{ width: '100%', marginVertical: 20 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: deductionCurrency === item ? '#dc3545' : 'transparent',
+                      padding: 15,
+                      borderRadius: 8,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: deductionCurrency === item ? 'white' : '#444',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => selectCurrencyForDeduction(item)}
+                  >
+                    <Text style={{ 
+                      color: deductionCurrency === item ? 'white' : '#ccc', 
+                      fontSize: 16, 
+                      fontWeight: deductionCurrency === item ? 'bold' : 'normal' 
+                    }}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+              
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
+                onPress={() => setDeductionCurrencyModalVisible(false)}
               >
                 <Text style={styles.optionText}>Zamknij</Text>
               </TouchableOpacity>

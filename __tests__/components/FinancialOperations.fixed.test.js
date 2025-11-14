@@ -160,8 +160,14 @@ describe('Financial Operations Component Tests', () => {
       const { getByText } = renderWithContext(<Home />);
 
       await waitFor(() => {
-        // Szukaj tekstu zawierającego aktualną datę
-        expect(getByText(/13\.11\.2025/)).toBeTruthy();
+        // Szukaj tekstu zawierającego aktualną datę (dynamicznie)
+        const currentDate = new Date().toLocaleDateString('pl-PL', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric' 
+        });
+        const dateRegex = new RegExp(currentDate.replace(/\./g, '\\.'));
+        expect(getByText(dateRegex)).toBeTruthy();
       });
 
       console.log('✅ Data wyświetlana poprawnie');
