@@ -68,6 +68,8 @@ const Home = () => {
   const [salespersonModalVisible, setSalespersonModalVisible] = useState(false); // State for salesperson modal
   const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
   const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
+  const [errorModalVisible, setErrorModalVisible] = useState(false); // State for error modal
+  const [errorMessage, setErrorMessage] = useState(""); // Message for error modal
   const [employees, setEmployees] = useState([]); // State for employees list
   const [selectedSalespeople, setSelectedSalespeople] = useState([]); // State for selected salespeople (multiple)
   const [assignedSalespeople, setAssignedSalespeople] = useState([]); // State for currently assigned salespeople (multiple)
@@ -948,22 +950,22 @@ const Home = () => {
 
   const saveWorkHours = async () => {
     if (!selectedEmployeeForHours) {
-      setSuccessMessage("Nie wybrano pracownika.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nie wybrano pracownika.");
+      setErrorModalVisible(true);
       return;
     }
 
     // Validate time format
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(workStartTime)) {
-      setSuccessMessage("Nieprawidłowy format godziny rozpoczęcia. Użyj HH:MM (np. 08:00)");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nieprawidłowy format godziny rozpoczęcia. Użyj HH:MM (np. 08:00)");
+      setErrorModalVisible(true);
       return;
     }
     
     if (!timeRegex.test(workEndTime)) {
-      setSuccessMessage("Nieprawidłowy format godziny zakończenia. Użyj HH:MM (np. 16:00)");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nieprawidłowy format godziny zakończenia. Użyj HH:MM (np. 16:00)");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -974,8 +976,8 @@ const Home = () => {
     const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
 
     if (startMinutes >= endMinutes) {
-      setSuccessMessage("Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia.");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -1065,30 +1067,30 @@ const Home = () => {
 
   const submitDeduction = async () => {
     if (!deductionAmount || parseFloat(deductionAmount) <= 0) {
-      setSuccessMessage("Proszę wprowadzić prawidłową kwotę.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Proszę wprowadzić prawidłową kwotę.");
+      setErrorModalVisible(true);
       return;
     }
     
     // Validate currency rate for non-PLN currencies
     if (deductionCurrency !== 'PLN' && showDeductionRateInput) {
       if (!deductionCurrencyRate || parseFloat(deductionCurrencyRate) <= 0) {
-        setSuccessMessage(`Proszę wprowadzić prawidłowy kurs dla ${deductionCurrency} (większy od 0).`);
-        setSuccessModalVisible(true);
+        setErrorMessage(`Proszę wprowadzić prawidłowy kurs dla ${deductionCurrency} (większy od 0).`);
+        setErrorModalVisible(true);
         return;
       }
     }
     
     if (deductionType === "employee_advance") {
       if (!selectedEmployeeForAdvance) {
-        setSuccessMessage("Proszę wybrać pracownika dla zaliczki.");
-        setSuccessModalVisible(true);
+        setErrorMessage("Proszę wybrać pracownika dla zaliczki.");
+        setErrorModalVisible(true);
         return;
       }
     } else {
       if (!deductionReason.trim()) {
-        setSuccessMessage("Proszę wprowadzić powód odpisania.");
-        setSuccessModalVisible(true);
+        setErrorMessage("Proszę wprowadzić powód odpisania.");
+        setErrorModalVisible(true);
         return;
       }
     }
@@ -1098,10 +1100,10 @@ const Home = () => {
     const currentAvailable = availableFunds[deductionCurrency] || 0;
     
     if (requestedAmount > currentAvailable) {
-      setSuccessMessage(
+      setErrorMessage(
         `Niewystarczające środki\n\nNie można odpisać ${requestedAmount} ${deductionCurrency}.\n\nDostępne środki w ${deductionCurrency}: ${currentAvailable.toFixed(2)}\n\nSprawdź "Zamknięcie dnia" na dole ekranu, aby zobaczyć wszystkie dostępne środki.`
       );
-      setSuccessModalVisible(true);
+      setErrorModalVisible(true);
       return;
     }
     
@@ -1157,50 +1159,50 @@ const Home = () => {
       if (process.env.NODE_ENV !== 'test') {
         console.error("Error submitting deduction:", error);
       }
-      setSuccessMessage("Nie udało się odpisać kwoty. Spróbuj ponownie.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nie udało się odpisać kwoty. Spróbuj ponownie.");
+      setErrorModalVisible(true);
     }
   };
 
   const submitAddAmount = async () => {
     if (!addAmountAmount || parseFloat(addAmountAmount) <= 0) {
-      setSuccessMessage("Proszę wprowadzić prawidłową kwotę.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Proszę wprowadzić prawidłową kwotę.");
+      setErrorModalVisible(true);
       return;
     }
     
     // Validate reason selection
     if (!reasonType) {
-      setSuccessMessage("Proszę wybrać powód dopisania.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Proszę wybrać powód dopisania.");
+      setErrorModalVisible(true);
       return;
     }
     
     if (reasonType === 'product') {
       if (!productFinalPrice || parseFloat(productFinalPrice) <= 0) {
-        setSuccessMessage("Proszę podać cenę finalną produktu (zaliczka + dopłata).");
-        setSuccessModalVisible(true);
+        setErrorMessage("Proszę podać cenę finalną produktu (zaliczka + dopłata).");
+        setErrorModalVisible(true);
         return;
       }
       
       if (parseFloat(productFinalPrice) < parseFloat(addAmountAmount)) {
-        setSuccessMessage("Cena finalna nie może być mniejsza niż zaliczka.");
-        setSuccessModalVisible(true);
+        setErrorMessage("Cena finalna nie może być mniejsza niż zaliczka.");
+        setErrorModalVisible(true);
         return;
       }
     }
     
     if (reasonType === 'other' && !addAmountReason.trim()) {
-      setSuccessMessage("Proszę wprowadzić powód dopisania.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Proszę wprowadzić powód dopisania.");
+      setErrorModalVisible(true);
       return;
     }
     
     // Validate currency rate for non-PLN currencies
     if (addAmountCurrency !== 'PLN' && showAddAmountRateInput) {
       if (!addAmountCurrencyRate || parseFloat(addAmountCurrencyRate) <= 0) {
-        setSuccessMessage(`Proszę wprowadzić prawidłowy kurs dla ${addAmountCurrency} (większy od 0).`);
-        setSuccessModalVisible(true);
+        setErrorMessage(`Proszę wprowadzić prawidłowy kurs dla ${addAmountCurrency} (większy od 0).`);
+        setErrorModalVisible(true);
         return;
       }
     }
@@ -1362,15 +1364,15 @@ const Home = () => {
       if (process.env.NODE_ENV !== 'test') {
         console.error("Error submitting addition:", error);
       }
-      setSuccessMessage("Nie udało się dopisać kwoty. Spróbuj ponownie.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nie udało się dopisać kwoty. Spróbuj ponownie.");
+      setErrorModalVisible(true);
     }
   };
 
   const cancelDeduction = async () => {
     if (!selectedDeductionItem) {
-      setSuccessMessage("Nie wybrano pozycji do anulowania.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nie wybrano pozycji do anulowania.");
+      setErrorModalVisible(true);
       return;
     }
     
@@ -1394,8 +1396,8 @@ const Home = () => {
       if (process.env.NODE_ENV !== 'test') {
         console.error("Error canceling deduction:", error);
       }
-      setSuccessMessage("Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
+      setErrorModalVisible(true);
     }
   };
 
@@ -1681,13 +1683,13 @@ const Home = () => {
         setSuccessMessage(`Kurs ${editingCurrencyRate} został zaktualizowany do ${newRate} PLN`);
         setSuccessModalVisible(true);
       } else {
-        setSuccessMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
-        setSuccessModalVisible(true);
+        setErrorMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
+        setErrorModalVisible(true);
       }
     } catch (error) {
       console.error('Error saving currency rate:', error);
-      setSuccessMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
-      setSuccessModalVisible(true);
+      setErrorMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
+      setErrorModalVisible(true);
     }
     
     setCurrencyRateModalVisible(false);
@@ -4146,6 +4148,33 @@ const Home = () => {
           </View>
         </Modal>
 
+        {/* Error Modal */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={errorModalVisible}
+          onRequestClose={() => setErrorModalVisible(false)}
+        >
+          <View style={styles.errorModalOverlay}>
+            <View style={styles.errorModalContent}>
+              <View style={styles.errorIconContainer}>
+                <Text style={styles.errorIcon}>⚠</Text>
+              </View>
+              <Text style={styles.errorModalTitle}>Błąd!</Text>
+              <Text style={styles.errorModalMessage}>
+                {errorMessage}
+              </Text>
+              
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#dc3545', marginTop: 20, width: '90%' }]}
+                onPress={() => setErrorModalVisible(false)}
+              >
+                <Text style={styles.optionText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         {/* Remove Employee Modal */}
         <Modal
           transparent={true}
@@ -5091,6 +5120,58 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   successModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 10,
+  },
+  // Error Modal Styles
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  errorIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorIcon: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  errorModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  errorModalMessage: {
     fontSize: 16,
     color: '#e5e7eb',
     textAlign: 'center',
