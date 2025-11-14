@@ -4620,7 +4620,7 @@ const Home = () => {
 const styles = StyleSheet.create({
   item: {
     marginBottom: 12,
-    padding: 12,
+    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#0d6efd", // Blue color for items
     borderRadius: 8,
     flexDirection: "row", // Align content in a single row
@@ -4635,7 +4635,7 @@ const styles = StyleSheet.create({
   },
   transferredItem: {
     marginBottom: 12,
-    padding: 12,
+    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#0d6efd", // Blue background for transferred items
     borderRadius: 8,
     flexDirection: "row",
@@ -4644,7 +4644,7 @@ const styles = StyleSheet.create({
   },
   receivedItem: {
     marginBottom: 12,
-    padding: 12,
+    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "yellow", // Yellow background for received items
     borderRadius: 8,
     flexDirection: "row",
@@ -4768,7 +4768,7 @@ const styles = StyleSheet.create({
   },
   advanceItem: {
     marginBottom: 12,
-    padding: 12,
+    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#10b981", // Green background for advances
     borderRadius: 8,
     flexDirection: "row",
@@ -4790,7 +4790,7 @@ const styles = StyleSheet.create({
   },
   deductionItem: {
     marginBottom: 12,
-    padding: 12,
+    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#374151", // Neutral gray background (will be overridden by inline styles)
     borderRadius: 8,
     flexDirection: "row",
