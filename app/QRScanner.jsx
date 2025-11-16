@@ -33,6 +33,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   const [currentCurrencyPairIndex, setCurrentCurrencyPairIndex] = useState(null); // Track the index of the pair being edited
   const [cameraActive, setCameraActive] = useState(true); // Zarządzanie aktywnością kamery - rozpoczynamy z aktywną kamerą
   const [cameraVisible, setCameraVisible] = useState(true); // Widoczność kamery
+  const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
+  const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
 
   const openSellingPointMenu = () => {
     setSellingPointMenuVisible(true);
@@ -716,7 +718,9 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
       
-      Alert.alert("Success", "Dane zostały zapisane pomyślnie!");
+      // Show success modal instead of alert
+      setSuccessMessage("Dane zostały zapisane pomyślnie!");
+      setSuccessModalVisible(true);
 
       // Reset modal state
       setCashPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
@@ -860,12 +864,15 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                     <View style={styles.currencyModalContainer}>
                       <View style={styles.currencyModalContent}>
                         <Text style={styles.currencyModalTitle}>Wybierz punkt sprzedaży</Text>
-                        {getMatchingSymbols().length > 0 ? (
-                          <FlatList
-                            data={getMatchingSymbols()}
-                            keyExtractor={(item) => item._id}
-                            renderItem={({ item }) => (
+                        <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                          Wybierz punkt sprzedaży dla tego produktu
+                        </Text>
+                        
+                        <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
+                          {getMatchingSymbols().length > 0 ? (
+                            getMatchingSymbols().map((item) => (
                               <TouchableOpacity
+                                key={item._id}
                                 style={styles.currencyModalItem}
                                 onPress={() => selectSellingPointFromModal(item.symbol)}
                               >
@@ -873,22 +880,25 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                                   {item.symbol}
                                 </Text>
                               </TouchableOpacity>
-                            )}
-                          />
-                        ) : (
-                          <Text style={styles.currencyModalItemText}>
-                            {barcode ? 
-                              `Brak tego produktu w punktach sprzedaży w lokalizacji "${user?.location || 'nieznana'}"` :
-                              'Zeskanuj kod kreskowy aby zobaczyć dostępne punkty sprzedaży'
-                            }
-                          </Text>
-                        )}
-                        <Pressable
+                            ))
+                          ) : (
+                            <View style={{ padding: 20 }}>
+                              <Text style={{ color: 'white', textAlign: 'center', fontSize: 16 }}>
+                                {barcode ? 
+                                  `Brak tego produktu w punktach sprzedaży w lokalizacji "${user?.location || 'nieznana'}"` :
+                                  'Zeskanuj kod kreskowy aby zobaczyć dostępne punkty sprzedaży'
+                                }
+                              </Text>
+                            </View>
+                          )}
+                        </ScrollView>
+                        
+                        <TouchableOpacity
                           style={styles.currencyModalCloseButton}
                           onPress={() => setSellingPointMenuVisible(false)}
                         >
                           <Text style={styles.currencyModalCloseButtonText}>Zamknij</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </Modal>
@@ -1109,24 +1119,28 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                     <View style={styles.currencyModalContainer}>
                       <View style={styles.currencyModalContent}>
                         <Text style={styles.currencyModalTitle}>Wybierz walutę</Text>
-                        <FlatList
-                          data={availableCurrencies}
-                          keyExtractor={(item) => item}
-                          renderItem={({ item }) => (
+                        <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                          Wybierz walutę dla płatności
+                        </Text>
+                        
+                        <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
+                          {availableCurrencies.map((item) => (
                             <TouchableOpacity
+                              key={item}
                               style={styles.currencyModalItem}
                               onPress={() => selectCurrencyFromModal(item)}
                             >
                               <Text style={styles.currencyModalItemText}>{item}</Text>
                             </TouchableOpacity>
-                          )}
-                        />
-                        <Pressable
+                          ))}
+                        </ScrollView>
+                        
+                        <TouchableOpacity
                           style={styles.currencyModalCloseButton}
                           onPress={() => setCurrencyModalVisible(false)}
                         >
                           <Text style={styles.currencyModalCloseButtonText}>Zamknij</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </Modal>
@@ -1215,6 +1229,33 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           </TouchableWithoutFeedback>
         </View>
       )}
+      
+      {/* Success Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={successModalVisible}
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.currencyModalContainer}>
+          <View style={styles.successModalContent}>
+            <View style={styles.successIconContainer}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+            <Text style={styles.successModalTitle}>Sukces!</Text>
+            <Text style={styles.successModalMessage}>
+              {successMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.currencyModalItem, { backgroundColor: '#007bff', marginTop: 20, width: '90%' }]}
+              onPress={() => setSuccessModalVisible(false)}
+            >
+              <Text style={styles.currencyModalItemText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1404,48 +1445,114 @@ const styles = StyleSheet.create({
   },
   currencyModalContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   currencyModalContent: {
-    width: "80%",
-    backgroundColor: "black",
-    borderRadius: 10,
-    padding: 20,
-    alignItems: "center",
+    backgroundColor: '#000000', // Prawdziwy czarny jak główne tło aplikacji
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 2,
+    borderColor: '#0d6efd', // Główny kolor aplikacji
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    alignItems: 'center',
   },
   currencyModalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 15,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   currencyModalItem: {
-    paddingVertical: 5, // Reduce vertical padding for shorter height
-    paddingHorizontal: 30, // Increase horizontal padding for wider items
-    marginVertical: 5, // Add vertical margin between items
-    borderBottomWidth: 1,
-    borderBottomColor: "gray",
-    width: 100, // Set the width to 100px
-    alignItems: "center",
-    backgroundColor: "rgb(13, 110, 253)", // Set background color to blue
+    backgroundColor: '#0d6efd', // Główny kolor aplikacji
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    width: '100%', // Changed from 90% to 100%
+    alignSelf: 'center', // Center the button horizontally
   },
   currencyModalItemText: {
-    color: "white",
+    color: '#ffffff',
     fontSize: 16,
+    fontWeight: 'bold',
   },
   currencyModalCloseButton: {
-    marginTop: 15,
-    paddingVertical: 10,
+    backgroundColor: '#ef4444',
+    paddingVertical: 15,
     paddingHorizontal: 20,
-    backgroundColor: "red",
-    borderRadius: 5,
-    alignItems: "center",
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    width: '100%', // Changed from 90% to 100%
+    marginTop: 20,
+    alignSelf: 'center', // Center the button horizontally
   },
   currencyModalCloseButtonText: {
     color: "white",
     fontSize: 16,
+  },
+  // Success Modal Styles
+  successModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#007bff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  successIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  successModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  successModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 10,
   },
 });
 
