@@ -70,6 +70,8 @@ const Home = () => {
   const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
   const [errorModalVisible, setErrorModalVisible] = useState(false); // State for error modal
   const [errorMessage, setErrorMessage] = useState(""); // Message for error modal
+  const [confirmDeleteModalVisible, setConfirmDeleteModalVisible] = useState(false); // State for delete confirmation modal
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(""); // Message for delete confirmation modal
   const [employees, setEmployees] = useState([]); // State for employees list
   const [selectedSalespeople, setSelectedSalespeople] = useState([]); // State for selected salespeople (multiple)
   const [assignedSalespeople, setAssignedSalespeople] = useState([]); // State for currently assigned salespeople (multiple)
@@ -582,7 +584,8 @@ const Home = () => {
         console.log('Assign salesperson - UserData:', userData ? 'present' : 'missing');
         
         if (!accessToken || !userData) {
-          Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+          setErrorMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
+          setErrorModalVisible(true);
           return;
         }
 
@@ -590,7 +593,8 @@ const Home = () => {
         const sellingPoint = user.sellingPoint || user.symbol;
 
         if (!sellingPoint) {
-          Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+          setErrorMessage("Nie można określić punktu sprzedaży.");
+          setErrorModalVisible(true);
           return;
         }
 
@@ -618,24 +622,24 @@ const Home = () => {
           // 🔄 Odśwież godziny pracy żeby pracownik był na szaro (bez godzin)
           await fetchTodaysWorkHours();
           
-          Alert.alert(
-            "Sukces", 
-            `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu i zapisany w bazie danych.`,
-            [{ text: "OK" }]
+          setSuccessMessage(
+            `Sprzedawca ${employee.firstName} ${employee.lastName} został dodany do zespołu i zapisany w bazie danych.`
           );
+          setSuccessModalVisible(true);
         } else {
-          Alert.alert("Błąd", data.message || "Nie udało się dodać sprzedawcy do bazy danych");
+          setErrorMessage(data.message || "Nie udało się dodać sprzedawcy do bazy danych");
+          setErrorModalVisible(true);
         }
       } catch (error) {
         console.error('Error assigning salesperson:', error);
-        Alert.alert("Błąd", "Błąd połączenia z serwerem. Spróbuj ponownie.");
+        setErrorMessage("Błąd połączenia z serwerem. Spróbuj ponownie.");
+        setErrorModalVisible(true);
       }
     } else {
-      Alert.alert(
-        "Informacja", 
-        `Sprzedawca ${employee.firstName} ${employee.lastName} jest już przypisany.`,
-        [{ text: "OK" }]
+      setSuccessMessage(
+        `Sprzedawca ${employee.firstName} ${employee.lastName} jest już przypisany.`
       );
+      setSuccessModalVisible(true);
     }
   };
 
@@ -752,7 +756,8 @@ const Home = () => {
 
   const assignSelectedSalespeople = async () => {
     if (selectedSalespeople.length === 0) {
-      Alert.alert("Błąd", "Proszę wybrać co najmniej jednego sprzedawcę.");
+      setErrorMessage("Proszę wybrać co najmniej jednego sprzedawcę.");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -765,7 +770,8 @@ const Home = () => {
     const userData = await AsyncStorage.getItem('user');
     
     if (!accessToken || !userData) {
-      Alert.alert("Błąd", "Brak danych autoryzacji. Zaloguj się ponownie.");
+      setErrorMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -773,7 +779,8 @@ const Home = () => {
     const sellingPoint = user.sellingPoint || user.symbol;
 
     if (!sellingPoint) {
-      Alert.alert("Błąd", "Nie można określić punktu sprzedaży.");
+      setErrorMessage("Nie można określić punktu sprzedaży.");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -857,24 +864,49 @@ const Home = () => {
       
       if (response.ok) {
         const result = await response.json();
-        Alert.alert(
-          "Przeliczenie prowizji", 
+        setSuccessMessage(
           `Prowizje zostały przeliczone:\n\n` +
           `📅 Data: ${result.date}\n` +
           `🗑️ Usunięto starych: ${result.deletedCommissions}\n` +
           `➕ Dodano nowych: ${result.addedCommissions}\n` +
           `💰 Łączna kwota: ${result.totalAmount} PLN\n` +
           `📦 Sprzedaży: ${result.salesProcessed}\n` +
-          `👥 Pracowników: ${result.activeEmployees}`,
-          [{ text: "OK" }]
+          `👥 Pracowników: ${result.activeEmployees}`
         );
+        setSuccessModalVisible(true);
       } else {
         const errorData = await response.json();
-        Alert.alert("Błąd", errorData.message || "Nie udało się przeliczyć prowizji.");
+        setErrorMessage(errorData.message || "Nie udało się przeliczyć prowizji.");
+        setErrorModalVisible(true);
       }
     } catch (error) {
       console.error("Error recalculating commissions:", error);
-      Alert.alert("Błąd", "Wystąpił błąd podczas przeliczania prowizji.");
+      setErrorMessage("Wystąpił błąd podczas przeliczania prowizji.");
+      setErrorModalVisible(true);
+    }
+  };
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = async () => {
+    setConfirmDeleteModalVisible(false);
+    try {
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl(`/sales/delete-sale/${selectedItem._id}`),
+        { method: "DELETE" }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to delete the sale.");
+      }
+      setFilteredData((prev) =>
+        prev.filter((item) => item._id !== selectedItem._id)
+      ); // Remove the item from the list
+      setModalVisible(false); // Close the options modal
+      setSuccessMessage("Sprzedaż została pomyślnie usunięta!");
+      setSuccessModalVisible(true);
+    } catch (error) {
+      console.error("Error deleting item:", error.message);
+      setErrorMessage("Nie udało się usunąć sprzedaży. Spróbuj ponownie.");
+      setErrorModalVisible(true);
     }
   };
 
@@ -2050,11 +2082,21 @@ const Home = () => {
                   <View style={{ marginTop: 24 }}>
                     <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Sprzedano na innych kontach:</Text>
                     {otherAccountsData.map((item, index) => (
-                      <View key={item._id || index} style={{ marginBottom: 16, paddingHorizontal: 16, paddingVertical: 8, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#0d6efd" }}>
-                        <Text style={{ fontSize: 13, color: "#d1d5db", flex: 1, fontWeight: "bold" }}>{index + 1}. {item.fullName} {item.size}</Text>
-                        <Text style={{ fontSize: 13, color: "#fff" }}>
-                          {item.sellingPoint || "Brak informacji o miejscu sprzedaży"}
+                      <View key={item._id || index} style={styles.item}>
+                        <Text
+                          style={[
+                            styles.itemTextLeft,
+                            {
+                              fontSize: (item.fullName?.length || 0) + (item.size?.length || 0) > 20 ? 10 : 12,
+                              fontWeight: "bold",
+                            },
+                          ]}
+                        >
+                          {index + 1}. {item.fullName || 'Unknown'} {item.size || ''} - {item.sellingPoint || "Brak informacji o miejscu sprzedaży"}
                         </Text>
+                        <TouchableOpacity style={styles.dotsButton}>
+                          <Text style={styles.dotsText}>⋮</Text>
+                        </TouchableOpacity>
                       </View>
                     ))}
                   </View>
@@ -2066,19 +2108,27 @@ const Home = () => {
                     {transferredToday.map((item, index) => (
                       <View
                         key={item.productId || index}
-                        style={styles.transferredItem}
+                        style={styles.item}
                       >
-                        <Text style={styles.transferredItemTextLeft}>
-                          {index + 1}. {item.fullName} {item.size}
-                        </Text>
-                        <Text style={styles.transferredItemTextRight}>
-                          Przepisano do: {item.transfer_to}
+                        <Text
+                          style={[
+                            styles.itemTextLeft,
+                            {
+                              fontSize: (item.fullName?.length || 0) + (item.size?.length || 0) > 20 ? 10 : 12,
+                              fontWeight: "bold",
+                            },
+                          ]}
+                        >
+                          {index + 1}. {item.fullName} {item.size} - Przepisano do: {item.transfer_to}
                           {item.reason && (item.transfer_to?.toLowerCase() === 'dom' || item.transfer_to?.toLowerCase() === 'd') && (
                             <Text style={{ fontSize: 11, color: "#fbbf24" }}>
                               {' '}({item.reason.length > 15 ? item.reason.substring(0, 15) + '...' : item.reason})
                             </Text>
                           )}
                         </Text>
+                        <TouchableOpacity style={styles.dotsButton}>
+                          <Text style={styles.dotsText}>⋮</Text>
+                        </TouchableOpacity>
                       </View>
                     ))}
                   </View>
@@ -2092,12 +2142,20 @@ const Home = () => {
                         key={item.productId || index}
                         style={styles.receivedItem}
                       >
-                        <Text style={styles.receivedItemTextLeft}>
-                          {index + 1}. {item.fullName} {item.size}
+                        <Text
+                          style={[
+                            styles.receivedItemTextLeft,
+                            {
+                              fontSize: (item.fullName?.length || 0) + (item.size?.length || 0) > 20 ? 10 : 12,
+                              fontWeight: "bold",
+                            },
+                          ]}
+                        >
+                          {index + 1}. {item.fullName} {item.size} - Przesłano z: {item.transfer_from}
                         </Text>
-                        <Text style={styles.receivedItemTextRight}>
-                          Przesłano z: {item.transfer_from}
-                        </Text>
+                        <TouchableOpacity style={styles.dotsButton}>
+                          <Text style={[styles.dotsText, { color: "black" }]}>⋮</Text>
+                        </TouchableOpacity>
                       </View>
                     ))}
                   </View>
@@ -2480,7 +2538,8 @@ const Home = () => {
                         if (matchingSymbols.length > 0) {
                           setSymbolSelectionVisible(true);
                         } else {
-                          Alert.alert("Brak symboli", "Nie znaleziono punktów sprzedaży w Twojej lokalizacji.");
+                          setErrorMessage("Nie znaleziono punktów sprzedaży w Twojej lokalizacji.");
+                          setErrorModalVisible(true);
                         }
                       }}
                     >
@@ -2785,37 +2844,8 @@ const Home = () => {
               <TouchableOpacity
                 onPress={() => {
                   if (selectedItem?._id) {
-                    Alert.alert(
-                      "Potwierdzenie usunięcia",
-                      "Czy na pewno chcesz usunąć kurtkę? Kurtka wróci automatycznie do stanu, z którego została sprzedana.",
-                      [
-                        {
-                          text: "Anuluj",
-                          style: "cancel",
-                        },
-                        {
-                          text: "Usuń",
-                          style: "destructive",
-                          onPress: async () => {
-                            try {
-                              const response = await tokenService.authenticatedFetch(
-                                getApiUrl(`/sales/delete-sale/${selectedItem._id}`),
-                                { method: "DELETE" }
-                              );
-                              if (!response.ok) {
-                                throw new Error("Failed to delete the sale.");
-                              }
-                              setFilteredData((prev) =>
-                                prev.filter((item) => item._id !== selectedItem._id)
-                              ); // Remove the item from the list
-                              setModalVisible(false); // Close the modal
-                            } catch (error) {
-                              console.error("Error deleting item:", error.message);
-                            }
-                          },
-                        },
-                      ]
-                    );
+                    setDeleteConfirmMessage("Czy na pewno chcesz usunąć tę sprzedaż?");
+                    setConfirmDeleteModalVisible(true);
                   } else {
                     console.error("No valid ID found for the selected item.");
                   }
@@ -4175,6 +4205,42 @@ const Home = () => {
           </View>
         </Modal>
 
+        {/* Delete Confirmation Modal */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={confirmDeleteModalVisible}
+          onRequestClose={() => setConfirmDeleteModalVisible(false)}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <View style={styles.confirmModalContent}>
+              <View style={styles.warningIconContainer}>
+                <Text style={styles.warningIcon}>⚠</Text>
+              </View>
+              <Text style={styles.confirmModalTitle}>Potwierdzenie usunięcia</Text>
+              <Text style={styles.confirmModalMessage}>
+                {deleteConfirmMessage}
+              </Text>
+              
+              <View style={styles.confirmButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.optionButton, { backgroundColor: '#6c757d', width: '45%' }]}
+                  onPress={() => setConfirmDeleteModalVisible(false)}
+                >
+                  <Text style={styles.optionText}>Anuluj</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.optionButton, { backgroundColor: '#dc3545', width: '45%' }]}
+                  onPress={handleDeleteConfirm}
+                >
+                  <Text style={styles.optionText}>Usuń</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Remove Employee Modal */}
         <Modal
           transparent={true}
@@ -4619,11 +4685,13 @@ const Home = () => {
 
 const styles = StyleSheet.create({
   item: {
-    marginBottom: 12,
-    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#0d6efd", // Blue color for items
-    borderRadius: 8,
+    padding: 3, // Reduced padding to match writeoff.jsx
+    borderRadius: 5,
+    width: "100%",
+    marginVertical: 3, // Reduced margin to match writeoff.jsx
     flexDirection: "row", // Align content in a single row
+    justifyContent: "space-between",
     alignItems: "center", // Center content vertically
   },
   itemText: {
@@ -4634,26 +4702,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   transferredItem: {
-    marginBottom: 12,
-    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "#0d6efd", // Blue background for transferred items
-    borderRadius: 8,
+    padding: 3, // Reduced to match writeoff.jsx
+    borderRadius: 5,
+    width: "100%",
+    marginVertical: 3, // Reduced to match writeoff.jsx
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   receivedItem: {
-    marginBottom: 12,
-    padding: 8, // Reduced padding to make items more compact
     backgroundColor: "yellow", // Yellow background for received items
-    borderRadius: 8,
+    padding: 3, // Reduced to match writeoff.jsx
+    borderRadius: 5,
+    width: "100%",
+    marginVertical: 3, // Reduced to match writeoff.jsx
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   itemTextLeft: {
     color: "white",
-    fontSize: 14, // Standardized font size
+    fontSize: 12, // Reduced to match writeoff.jsx
     fontWeight: "bold", // Standardized font weight
     textAlign: "left",
     flex: 1,
@@ -4666,16 +4736,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dotsButton: {
-    position: "absolute",
-    right: 2,
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
+    padding: 5, // Match writeoff.jsx
   },
   dotsText: {
     color: "white",
-    fontSize: 25,
+    fontSize: 20, // Reduced to match writeoff.jsx
     textAlign: "center",
   },
   receivedItemText: {
@@ -4714,29 +4779,39 @@ const styles = StyleSheet.create({
     fontWeight: "bold", // Bold text for emphasis
     textAlign: "right", // Align text to the right
   },
-  // Unified modal styles from search.jsx
+  // Unified modal styles to match writeoff.jsx
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: 'black',
-    borderRadius: 10,
-    padding: 16,
+    backgroundColor: '#000000', // True black like main app background
+    borderRadius: 15,
+    padding: 25,
     alignItems: 'center',
-    width: '70%',
+    width: '90%',
+    maxHeight: '80%',
     color: '#fff',
-    borderWidth: 1,
-    borderColor: 'white',
+    borderWidth: 2,
+    borderColor: '#0d6efd', // Main app color
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#fff',
+    marginBottom: 20,
+    color: '#ffffff',
     textAlign: 'center',
+    width: '100%',
   },
   modalSubtitle: {
     fontSize: 14,
@@ -4746,25 +4821,39 @@ const styles = StyleSheet.create({
   },
   optionButton: {
     backgroundColor: '#0d6efd',
-    padding: 8,
-    borderRadius: 8,
-    marginVertical: 6,
-    width: '90%',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
     alignItems: 'center',
+    width: '100%',
   },
   optionText: {
-    fontSize: 14,
-    color: '#fff',
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: 'bold',
   },
   deleteButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#dc3545', // Red color for delete action
   },
   closeButton: {
-    backgroundColor: 'red',
+    backgroundColor: '#dc3545', // Red color for cancel/close
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 20,
   },
   closeText: {
-    color: 'white',
-    fontSize: 14,
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   advanceItem: {
     marginBottom: 12,
@@ -5177,6 +5266,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 10,
+  },
+  // Confirmation Modal Styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ffc107',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  warningIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#ffc107',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  warningIcon: {
+    color: '#000000',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  confirmModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  confirmModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 25,
+  },
+  confirmButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 15,
   },
 });
 export default Home; // Export the Home component

@@ -37,6 +37,8 @@ const WriteOff = () => {
     const [advanceAmount, setAdvanceAmount] = useState(""); // Stan dla kwoty zaliczki
     const [selectedCurrency, setSelectedCurrency] = useState("PLN"); // Stan dla waluty zaliczki
     const [showCurrencyModal, setShowCurrencyModal] = useState(false); // Modal wyboru waluty
+    const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
+    const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
     
     // Animacje dla kropek ładowania
     const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -446,7 +448,8 @@ const fetchSales = async () => {
             }
 
             // Show success message
-            Alert.alert("Sukces", "Transfer został pomyślnie utworzony!");
+            setSuccessMessage("Transfer został pomyślnie utworzony!");
+            setSuccessModalVisible(true);
 
             fetchAllRequiredData(false);
             setTransferModalVisible(false);
@@ -634,10 +637,10 @@ const fetchSales = async () => {
         return { isBlocked: false, type: 'none' };
     };
 
-    // Backward compatibility - keep the old function
+    // Function to check if item should be grayed out (only for transfers, NOT sales)
     const isTransferred = (item) => {
         const status = getItemBlockStatus(item);
-        return status.isBlocked;
+        return status.isBlocked && status.type === 'transfer'; // Only gray out transfers, not sales
     };
 
     // Check if THIS SPECIFIC item has a transfer (for showing cancel button)
@@ -784,20 +787,29 @@ const fetchSales = async () => {
                         renderItem={({ item, index }) => (
                             <View
                                 style={[
-                                    styles.itemContainer,
+                                    styles.item,
                                     isTransferred(item) && { backgroundColor: "#6c757d" }, // Highlight transferred items
                                     { marginHorizontal: 0 }, // Remove side margins
                                 ]}
                             >
-                                <Text style={styles.itemText} numberOfLines={1}>
+                                <Text 
+                                    style={[
+                                        styles.itemTextLeft,
+                                        {
+                                            fontSize: (item.fullName?.length || 0) + (item.size?.length || 0) > 20 ? 10 : 12,
+                                            fontWeight: "bold",
+                                        },
+                                    ]} 
+                                    numberOfLines={1}
+                                >
                                     {index + 1}. {item.fullName}   {item.size}
                                 </Text>
                                 <TouchableOpacity
                                     onPress={() => openModal(item)}
-                                    style={styles.menuButton}
+                                    style={styles.dotsButton}
                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                 >
-                                    <Text style={styles.menuText}>⋮</Text>
+                                    <Text style={styles.dotsText}>⋮</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -1227,6 +1239,33 @@ const fetchSales = async () => {
                     </View>
                 </View>
             </Modal>
+            
+            {/* Success Modal */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={successModalVisible}
+                onRequestClose={() => setSuccessModalVisible(false)}
+            >
+                <View style={styles.successModalOverlay}>
+                    <View style={styles.successModalContent}>
+                        <View style={styles.successIconContainer}>
+                            <Text style={styles.successIcon}>✓</Text>
+                        </View>
+                        <Text style={styles.successModalTitle}>Sukces!</Text>
+                        <Text style={styles.successModalMessage}>
+                            {successMessage}
+                        </Text>
+                        
+                        <TouchableOpacity
+                            style={[styles.optionButton, { backgroundColor: '#007bff', marginTop: 20, width: '90%' }]}
+                            onPress={() => setSuccessModalVisible(false)}
+                        >
+                            <Text style={styles.optionText}>OK</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </>
     );
 };
@@ -1276,29 +1315,36 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgb(13, 110, 253)',
         marginHorizontal: 6,
     },
-    // Unified modal styles from search.jsx
+    // Updated modal styles to match salesperson modal from home.jsx
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     modalContent: {
-        backgroundColor: 'black',
-        borderRadius: 10,
-        padding: 16,
-        alignItems: 'center',
-        width: '70%',
-        color: '#fff',
-        borderWidth: 1,
-        borderColor: 'white',
+        backgroundColor: '#000000', // True black like main app background
+        borderRadius: 15,
+        padding: 25,
+        width: '90%',
+        maxHeight: '80%',
+        borderWidth: 2,
+        borderColor: '#0d6efd', // Main app color
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
     },
     modalTitle: {
-        fontSize: 16,
+        fontSize: 20,
         fontWeight: 'bold',
-        marginBottom: 16,
-        color: '#fff',
+        color: '#ffffff',
         textAlign: 'center',
+        marginBottom: 20,
     },
     modalMessage: {
         fontSize: 14,
@@ -1308,19 +1354,23 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
     },
     optionButton: {
-        backgroundColor: '#0d6efd',
-        padding: 8,
-        borderRadius: 8,
-        marginVertical: 6,
-        width: '90%',
+        backgroundColor: '#0d6efd', // Main app color
+        paddingVertical: 15,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        marginVertical: 8,
+        borderWidth: 1,
+        borderColor: '#ffffff',
         alignItems: 'center',
+        width: '100%',
     },
     optionText: {
-        fontSize: 14,
-        color: '#fff',
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
     deleteButton: {
-        backgroundColor: '#dc3545',
+        backgroundColor: '#007bff', // Blue color to distinguish from close button
     },
     magazynButton: {
         backgroundColor: '#ffc107', // Yellow background for MAGAZYN
@@ -1328,11 +1378,21 @@ const styles = StyleSheet.create({
         borderColor: '#fff',
     },
     closeButton: {
-        backgroundColor: 'red',
+        backgroundColor: '#dc3545', // Red color for cancel/close
+        paddingVertical: 15,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        marginVertical: 8,
+        borderWidth: 1,
+        borderColor: '#ffffff',
+        alignItems: 'center',
+        width: '100%',
+        marginTop: 20,
     },
     closeText: {
-        color: 'white',
-        fontSize: 14,
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
     container: {
         flex: 1,
@@ -1354,7 +1414,7 @@ const styles = StyleSheet.create({
         textAlign: "center",
         marginTop: 20,
     },
-    itemContainer: {
+    item: {
         backgroundColor: "#0d6efd",
         padding: 3, // Zmniejszono z 5 na 3
         borderRadius: 5,
@@ -1364,17 +1424,17 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
     },
-    itemText: {
+    itemTextLeft: {
         color: "white",
         fontSize: 12, // Delikatnie zwiększono z 11 na 12
         fontWeight: "bold", // Standardized font weight
         textAlign: "left",
         flex: 1,
     },
-    menuButton: {
+    dotsButton: {
         padding: 5,
     },
-    menuText: {
+    dotsText: {
         color: "white",
         fontSize: 20, // Increased font size for the three dots
     },
@@ -1488,6 +1548,58 @@ const styles = StyleSheet.create({
     actionButtons: {
         width: '100%',
         marginTop: 10,
+    },
+    // Success Modal Styles
+    successModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    successModalContent: {
+        backgroundColor: '#000000',
+        borderRadius: 15,
+        padding: 30,
+        width: '85%',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#007bff',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    successIconContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: '#007bff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    successIcon: {
+        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    successModalTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        textAlign: 'center',
+        marginBottom: 15,
+    },
+    successModalMessage: {
+        fontSize: 16,
+        color: '#e5e7eb',
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 10,
     },
 });
 
