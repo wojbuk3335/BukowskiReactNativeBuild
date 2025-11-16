@@ -33,10 +33,56 @@ const QRScannerSearch = () => {
   }
 
   const handleScan = ({ data, type }) => {
-    // Match only first five digits of barcode
-    const prefix = data.slice(0, 5);
-    const matches = stateData.filter(item => (item.barcode || "").slice(0, 5) === prefix);
-    setMatchedItems(matches);
+    // Find the exact product by barcode
+    const exactMatch = stateData.find(item => (item.barcode || "") === data);
+    
+    if (!exactMatch) {
+      // If no exact match, fallback to first 5 digits
+      const prefix = data.slice(0, 5);
+      const matches = stateData.filter(item => (item.barcode || "").slice(0, 5) === prefix);
+      setMatchedItems(matches);
+      setModalVisible(true);
+      return;
+    }
+
+    // Extract base name (remove size from fullName)
+    const getBaseName = (fullName) => {
+      if (!fullName) return '';
+      
+      // Common size patterns to remove
+      const sizePatterns = [
+        /\b(XS|S|M|L|XL|XXL|XXXL)\b$/i,
+        /\b(36|38|40|42|44|46|48|50|52|54|56|58|60)\b$/,
+        /\b(\d+\/\d+)\b$/,  // e.g., 36/38
+        /\b(ONESIZE|ONE SIZE)\b$/i
+      ];
+      
+      let baseName = fullName.trim();
+      
+      // Try to remove size patterns from the end
+      for (const pattern of sizePatterns) {
+        baseName = baseName.replace(pattern, '').trim();
+      }
+      
+      return baseName;
+    };
+
+    // Get base name of the scanned product
+    const baseName = getBaseName(exactMatch.fullName);
+    
+    // Find all products with the same base name (same product, different sizes)
+    const relatedProducts = stateData.filter(item => {
+      const itemBaseName = getBaseName(item.fullName);
+      return itemBaseName && baseName && 
+             itemBaseName.toLowerCase() === baseName.toLowerCase();
+    });
+
+    // Remove duplicates and sort by size
+    const uniqueProducts = relatedProducts.filter((item, index, self) => 
+      index === self.findIndex(p => p.id === item.id)
+    );
+
+    setMatchedItems(uniqueProducts);
     setModalVisible(true);
   };
 
@@ -56,16 +102,17 @@ const QRScannerSearch = () => {
       </CameraView>
       <Modal
         visible={modalVisible}
-        transparent={false}
+        transparent={true} // Changed to transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.fullScreenModalOverlay}>
-          <View style={styles.fullScreenModalContent}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Znalezione produkty</Text>
             <FlatList
               data={matchedItems}
               keyExtractor={item => item.id}
+              style={{ width: '100%' }}
               renderItem={({ item, index }) => (
                 <View
                   style={[
@@ -74,10 +121,11 @@ const QRScannerSearch = () => {
                   ]}
                 >
                   <Text style={styles.itemText} numberOfLines={1}>
-                    {index + 1}. {item.fullName}   {item.size}
+                    {index + 1}. {item.fullName}   {item.size}   {item.barcode}
                   </Text>
-                  <Text style={styles.barcode}>{item.barcode}</Text>
-                  <Text style={styles.menuText}>{item.symbol}</Text>
+                  <View style={styles.dotsButton}>
+                    <Text style={styles.dotsText}>{item.symbol}</Text>
+                  </View>
                 </View>
               )}
               ListEmptyComponent={
@@ -113,56 +161,62 @@ const styles = StyleSheet.create({
     borderColor: "white",
     borderRadius: 10,
   },
-  fullScreenModalOverlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'black',
-    justifyContent: 'flex-start',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 40,
   },
-  fullScreenModalContent: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: 'black',
+  modalContent: {
+    backgroundColor: '#000000', // Prawdziwy czarny jak główne tło aplikacji
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 2,
+    borderColor: '#0d6efd', // Główny kolor aplikacji
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 0,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
     marginBottom: 20,
-    color: '#fff',
   },
   itemContainer: {
     backgroundColor: "#0d6efd",
-    padding: 5,
+    paddingVertical: 9, // Same as search.jsx
+    paddingHorizontal: 3, // Same as search.jsx
     borderRadius: 5,
     width: "100%",
-    marginVertical: 5,
+    marginVertical: 3, // Same as search.jsx
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   itemText: {
     color: "white",
-    fontSize: 13,
+    fontSize: 12, // Same as search.jsx
     fontWeight: "bold",
     textAlign: "left",
     flex: 1,
   },
-  menuText: {
-    color: "white",
-    fontSize: 20,
-    marginLeft: 8,
-    fontWeight: "bold",
+  dotsButton: {
+    padding: 5, // Same as search.jsx
   },
-  barcode: {
-    position: 'absolute',
-    right : 38,
-    fontSize: 13,
-    color: 'white',
-    marginLeft: 8,
+  dotsText: {
+    color: "white",
+    fontSize: 12, // Same as search.jsx
+    fontWeight: "bold",
   },
   emptyText: {
     color: '#888',
@@ -171,16 +225,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   closeButton: {
-    backgroundColor: 'red',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-    width: '100%', // Make the button take 100% width
+    backgroundColor: '#ef4444', // Same red as other modals
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
     alignItems: 'center',
-    alignSelf: 'stretch', // Ensure it stretches to parent width
+    width: '90%',
+    marginTop: 20,
   },
   closeButtonText: {
-    color: 'white',
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });

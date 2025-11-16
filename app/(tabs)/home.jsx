@@ -2902,8 +2902,15 @@ const Home = () => {
           onRequestClose={() => setDeductionModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { width: '85%' }]}>
+            <View style={[styles.modalContent, { width: '85%', maxHeight: '90%' }]}>
               <Text style={styles.modalTitle}>Odpisz kwotę</Text>
+              
+              <ScrollView 
+                style={{ width: '100%' }}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              >
               
               {/* Available funds display */}
               {(() => {
@@ -3188,6 +3195,7 @@ const Home = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -4212,29 +4220,46 @@ const Home = () => {
           visible={confirmDeleteModalVisible}
           onRequestClose={() => setConfirmDeleteModalVisible(false)}
         >
-          <View style={styles.confirmModalOverlay}>
-            <View style={styles.confirmModalContent}>
-              <View style={styles.warningIconContainer}>
-                <Text style={styles.warningIcon}>⚠</Text>
-              </View>
-              <Text style={styles.confirmModalTitle}>Potwierdzenie usunięcia</Text>
-              <Text style={styles.confirmModalMessage}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%' }]}>
+              <Text style={styles.modalTitle}>Potwierdzenie usunięcia</Text>
+              <Text style={[styles.modalSubtitle, { marginBottom: 25, textAlign: 'center', lineHeight: 22 }]}>
                 {deleteConfirmMessage}
               </Text>
               
-              <View style={styles.confirmButtonsContainer}>
+              <View style={{ width: '100%', alignItems: 'center', gap: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
                 <TouchableOpacity
-                  style={[styles.optionButton, { backgroundColor: '#6c757d', width: '45%' }]}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    flex: 1,
+                    marginRight: 8,
+                    alignItems: 'center'
+                  }}
                   onPress={() => setConfirmDeleteModalVisible(false)}
                 >
-                  <Text style={styles.optionText}>Anuluj</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✕ Anuluj</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={[styles.optionButton, { backgroundColor: '#dc3545', width: '45%' }]}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    flex: 1,
+                    marginLeft: 8,
+                    alignItems: 'center'
+                  }}
                   onPress={handleDeleteConfirm}
                 >
-                  <Text style={styles.optionText}>Usuń</Text>
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓ Usuń</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -4260,7 +4285,7 @@ const Home = () => {
                 {'\n'}z zespołu?
               </Text>
 
-              <View style={{ width: '100%', alignItems: 'center', gap: 12, flexDirection: 'row', justifyContent: 'center' }}>
+              <View style={{ width: '100%', alignItems: 'center', gap: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
                 <TouchableOpacity
                   style={{
                     backgroundColor: '#dc3545',
@@ -4269,27 +4294,33 @@ const Home = () => {
                     borderRadius: 6,
                     borderWidth: 1,
                     borderColor: 'white',
+                    flex: 1,
+                    marginRight: 8,
+                    alignItems: 'center'
                   }}
                   onPress={() => handleRemoveEmployee(true)}
                 >
                   <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                    Usuń
+                    ✓ Usuń
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={{
-                    backgroundColor: '#6c757d',
+                    backgroundColor: '#ef4444',
                     paddingVertical: 8,
                     paddingHorizontal: 16,
                     borderRadius: 6,
                     borderWidth: 1,
                     borderColor: 'white',
+                    flex: 1,
+                    marginLeft: 8,
+                    alignItems: 'center'
                   }}
                   onPress={cancelRemoveEmployee}
                 >
                   <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                    Anuluj
+                    ✕ Anuluj
                   </Text>
                 </TouchableOpacity>
               </View>

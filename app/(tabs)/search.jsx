@@ -110,40 +110,50 @@ const SearchScreen = () => {
             autoFocus
           />
         </View>
-        <TouchableOpacity
-          style={[styles.optionButton, { marginBottom: 16, width: '100%', alignSelf: 'stretch' }]}
-          onPress={() => {
-            setShowSearchBar(false);
-            setModalVisible(true);
-          }}
-        >
-          <Text style={styles.optionText}>Powrót</Text>
-        </TouchableOpacity>
+        <View style={{ paddingHorizontal: 16 }}>
+          <TouchableOpacity
+            style={[styles.optionButton, { 
+              marginBottom: 16, 
+              width: '100%'
+            }]}
+            onPress={() => {
+              setShowSearchBar(false);
+              setModalVisible(true);
+            }}
+          >
+            <Text style={styles.optionText}>Powrót</Text>
+          </TouchableOpacity>
+        </View>
         <FlatList
           testID="search-flatlist"
+          contentContainerStyle={{ paddingHorizontal: 0 }}
           data={filteredData}
           keyExtractor={item => item.id}
           onRefresh={handleRefresh} // Dodano funkcję odświeżania
           refreshing={isRefreshing} // Dodano stan odświeżania
-          renderItem={({ item }) => (
-            <View style={styles.writeoffItem}>
-              <View style={styles.writeoffRow}>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.writeoffName} numberOfLines={1} ellipsizeMode="tail">
-                    {item.fullName}
-                  </Text>
-                  <Text style={styles.writeoffSize} numberOfLines={1}>
-                    {item.size}
-                  </Text>
-                </View>
-                <Text style={styles.writeoffSymbol}>{item.symbol}</Text>
-                <Text style={styles.barcode}>{item.barcode}</Text>
-              </View>
-              <View style={styles.writeoffRow}>
-                {/* Ilość tylko jeśli istnieje */}
-                {item.qty !== undefined && item.qty !== null && item.qty !== '' && (
-                  <Text style={styles.writeoffQty}>Ilość: {item.qty}</Text>
-                )}
+          renderItem={({ item, index }) => (
+            <View
+              style={[
+                styles.item,
+                { marginHorizontal: 0 }, // Remove side margins - same as writeoff.jsx
+              ]}
+            >
+              <Text 
+                style={[
+                  styles.itemTextLeft,
+                  {
+                    fontSize: (item.fullName?.length || 0) + (item.size?.length || 0) > 20 ? 10 : 12,
+                    fontWeight: "bold",
+                  },
+                ]} 
+                numberOfLines={1}
+              >
+                {index + 1}. {item.fullName}   {item.size}   {item.barcode}
+              </Text>
+              <View
+                style={styles.dotsButton}
+              >
+                <Text style={styles.dotsText}>{item.symbol}</Text>
               </View>
             </View>
           )}
@@ -175,7 +185,7 @@ const SearchScreen = () => {
                 setShowQR(true);
               }}
             >
-              <Text style={styles.optionText}>Wyszukaj po kodzie </Text>
+              <Text style={styles.optionText}>📱 Wyszukaj po kodzie</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.optionButton}
@@ -184,13 +194,13 @@ const SearchScreen = () => {
                 setShowSearchBar(true);
               }}
             >
-              <Text style={styles.optionText}>Wyszukaj w wyszukiwarce</Text>
+              <Text style={styles.optionText}>🔍 Wyszukaj w wyszukiwarce</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.optionButton, styles.closeButton]}
               onPress={() => setModalVisible(false)}
             >
-              <Text style={styles.closeText}>Zamknij</Text>
+              <Text style={styles.closeText}>✕ Zamknij</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -206,54 +216,72 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: 'black',
-    borderRadius: 10,
-    padding: 16, // było 24
+    backgroundColor: '#000000', // Prawdziwy czarny jak główne tło aplikacji
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 2,
+    borderColor: '#0d6efd', // Główny kolor aplikacji
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
     alignItems: 'center',
-    width: '70%', // było 80%
-    color: '#fff',
   },
   modalTitle: {
-    fontSize: 16, // było 18
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16, // było 20
-    color: '#fff',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   optionButton: {
-    backgroundColor: '#0d6efd',
-    padding: 8, // było 12
-    borderRadius: 8,
-    marginVertical: 6, // było 8
-    width: '90%', // było 100%
+    backgroundColor: '#0d6efd', // Główny kolor aplikacji
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
     alignItems: 'center',
+    width: '90%',
   },
   optionText: {
-    fontSize: 14, // było 16
-    color: '#fff',
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   closeButton: {
-    backgroundColor: 'red',
+    backgroundColor: '#ef4444',
+    marginTop: 10,
   },
   closeText: {
     color: 'white',
-    marginTop: 0, // remove marginTop so button looks consistent
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   searchBarContainer: {
     flex: 1,
     backgroundColor: 'black',
     justifyContent: 'flex-start',
     paddingTop: 40,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0, // Changed from 16 to 0 to match writeoff.jsx
   },
   searchBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
+    paddingHorizontal: 16, // Add padding only to search row
   },
   searchBar: {
     flex: 1,
@@ -280,59 +308,33 @@ const styles = StyleSheet.create({
     marginTop: 24,
     fontSize: 13,
   },
-  // --- Writeoff-like item styles ---
-  writeoffItem: {
-        backgroundColor: "#0d6efd",
-        borderRadius: 5,
-        margin: 5,
-        alignItems: "center",
-        justifyContent: "center", // center content vertically
-        paddingTop:10,
-        paddingLeft: 10,
-        paddingRight: 10,
-
+  // --- Items styles same as writeoff.jsx ---
+  item: {
+    backgroundColor: "#0d6efd",
+    paddingVertical: 9, // Increased from 7 for even more vertical space
+    paddingHorizontal: 3, // Keep horizontal padding minimal
+    borderRadius: 5,
+    width: "100%",
+    marginVertical: 3, // Zmniejszono z 5 na 3
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  writeoffRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-    position: 'relative', // ensure children can be absolutely positioned if needed
-  },
-  nameContainer: {
+  itemTextLeft: {
+    color: "white",
+    fontSize: 12, // Delikatnie zwiększono z 11 na 12
+    fontWeight: "bold", // Standardized font weight
+    textAlign: "left",
     flex: 1,
-    marginRight: 100, // Zwiększono z 80 na 100px dla większego odstępu
-    maxWidth: '70%', // Dodano maksymalną szerokość 70% ekranu
   },
-  writeoffName: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 13, // było 16
+  dotsButton: {
+    padding: 5,
   },
-  writeoffSymbol: {
-    position: 'absolute',
-    right: 4,
-    top: 2,
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 13, // było 16
-    marginLeft: 12,
+  dotsText: {
+    color: "white",
+    fontSize: 12, // Smaller font for symbol
+    fontWeight: "bold",
   },
-  writeoffSize: {
-    color: 'white',
-    fontSize: 13, // było 16
-  },
-  writeoffQty: {
-    color: '#fff',
-    fontSize: 13, // było 14
-    fontWeight: 'bold',
-  },
-  barcode: {
-    position: 'absolute',
-    right: 45,
-    fontSize: 13,
-    color: 'white',
-  }
   
 });
 
