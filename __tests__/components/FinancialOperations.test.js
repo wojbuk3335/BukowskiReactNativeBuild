@@ -5,6 +5,18 @@ import Home from '../../app/(tabs)/home';
 import { renderWithContext } from '../utils/TestUtils';
 import tokenService from '../../services/tokenService';
 
+// Mock expo-camera
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  return {
+    CameraView: jest.fn(({children, ...props}) => React.createElement('CameraView', props, children)),
+    useCameraPermissions: jest.fn(() => [
+      { granted: true, status: 'granted' },
+      jest.fn(() => Promise.resolve({ granted: true, status: 'granted' }))
+    ]),
+  };
+});
+
 // Mock Alert - never blocks execution
 const mockAlert = jest.fn(() => {
   // Do nothing - don't block test execution

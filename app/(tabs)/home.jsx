@@ -8,10 +8,11 @@ import { GlobalStateContext } from "../../context/GlobalState"; // Import global
 import tokenService from '../../services/tokenService';
 import CurrencyService from '../../services/currencyService'; // Import currency service
 import LogoutButton from '../../components/LogoutButton';
+import { CameraView, useCameraPermissions } from "expo-camera"; // Import camera for QR scanning
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
-  const { stateData, users, fetchUsers, goods, fetchGoods, filteredData: contextFilteredData, transferredItems: contextTransferredItems, deductionsData: contextDeductionsData } = useContext(GlobalStateContext); // Access state data, users, goods, fetchGoods and fetchUsers from global context
+  const { stateData, users, fetchUsers, goods, fetchGoods, fetchState, sizes, colors, stocks, fetchSizes, fetchColors, fetchStock, filteredData: contextFilteredData, transferredItems: contextTransferredItems, deductionsData: contextDeductionsData } = useContext(GlobalStateContext); // Access state data, users, goods, sizes, colors, stocks and their fetch functions from global context
   const [salesData, setSalesData] = useState([]); // State to store API data
   const [filteredData, setFilteredData] = useState([]); // State to store filtered data
   const [totals, setTotals] = useState({ cash: {}, card: {} }); // State to store aggregated totals
@@ -56,6 +57,29 @@ const Home = () => {
   
   // New states for reason selection
   const [reasonType, setReasonType] = useState(""); // "product" or "other"
+  const [productType, setProductType] = useState("custom"); // "standard" or "custom" - default to custom (non-standard products)
+  const [customProductName, setCustomProductName] = useState(""); // Custom product name for non-standard products
+  
+  // Custom product selection states (for non-standard products)
+  const [selectedStock, setSelectedStock] = useState(""); // Selected stock/assortment
+  const [selectedColor, setSelectedColor] = useState(""); // Selected color
+  const [selectedSize, setSelectedSize] = useState(""); // Selected size
+  
+  // Search queries for custom product dropdowns
+  const [stockSearchQuery, setStockSearchQuery] = useState(""); // Search query for stock
+  const [colorSearchQuery, setColorSearchQuery] = useState(""); // Search query for color
+  const [sizeSearchQuery, setSizeSearchQuery] = useState(""); // Search query for size
+  
+  // Filtered lists for custom product dropdowns
+  const [filteredStocks, setFilteredStocks] = useState([]); // Filtered stocks based on search
+  const [filteredColors, setFilteredColors] = useState([]); // Filtered colors based on search
+  const [filteredSizes, setFilteredSizes] = useState([]); // Filtered sizes based on search
+  
+  // Dropdown visibility for custom product selections
+  const [showStockDropdown, setShowStockDropdown] = useState(false);
+  const [showColorDropdown, setShowColorDropdown] = useState(false);
+  const [showSizeDropdown, setShowSizeDropdown] = useState(false);
+  
   const [selectedProduct, setSelectedProduct] = useState(""); // Selected product ID
   const [products, setProducts] = useState([]); // Available products from state
   const [productSearchQuery, setProductSearchQuery] = useState(""); // Search query for products
@@ -63,6 +87,11 @@ const Home = () => {
   const [showProductDropdown, setShowProductDropdown] = useState(false); // Control dropdown visibility
   const [productFinalPrice, setProductFinalPrice] = useState(""); // Final agreed price for product
   const [availableFunds, setAvailableFunds] = useState({}); // State for available funds to ensure re-rendering
+  
+  // QR Scanner states for product selection
+  const [qrScannerVisible, setQrScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
   
   // States for salesperson management
   const [salespersonModalVisible, setSalespersonModalVisible] = useState(false); // State for salesperson modal
@@ -99,6 +128,8 @@ const Home = () => {
   const [editingCurrencyRate, setEditingCurrencyRate] = useState(null); // Which currency rate is being edited
   const [tempCurrencyRate, setTempCurrencyRate] = useState(""); // Temporary rate input value
   const [currencyRateModalVisible, setCurrencyRateModalVisible] = useState(false); // Modal for editing currency rate
+  const [panKazekModalVisible, setPanKazekModalVisible] = useState(false); // Modal for Pan Kazek confirmation
+  const [panKazekItems, setPanKazekItems] = useState([]); // Items added to Pan Kazek list
   
   // States for add amount currency rate input
   const [addAmountCurrencyRate, setAddAmountCurrencyRate] = useState(""); // Rate input for add amount currency
@@ -265,38 +296,14 @@ const Home = () => {
     }
   }, [contextFilteredData, contextTransferredItems, contextDeductionsData]);
 
-  // Fetch and set products from goods when component mounts
+  // Set products from stateData when stateData are loaded (use stateData for product selection with barcodes)
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        // Skip API fetching in test environment
-        if (process.env.NODE_ENV === 'test') {
-          return;
-        }
-        
-        // Only fetch if goods is empty or not loaded yet
-        if (!goods || goods.length === 0) {
-          // console.log('Fetching goods...');
-          await fetchGoods(); // This will update goods in context
-        } else {
-          // console.log('Goods already loaded:', goods.length);
-        }
-      } catch (error) {
-        console.error('Error fetching goods:', error);
-      }
-    };
-    
-    loadProducts();
-  }, []); // Empty dependency array - run only once on mount
-
-  // Set products from goods when goods are loaded
-  useEffect(() => {
-    if (goods && Array.isArray(goods) && goods.length > 0) {
-      // console.log('Setting products from goods:', goods.length);
-      setProducts(goods);
-      setFilteredProducts(goods); // Initialize filtered products
+    if (stateData && Array.isArray(stateData) && stateData.length > 0) {
+      // console.log('Setting products from stateData:', stateData.length);
+      setProducts(stateData);
+      setFilteredProducts(stateData); // Initialize filtered products
     }
-  }, [goods]);
+  }, [stateData]);
 
   // Update available funds when relevant data changes
   useEffect(() => {
@@ -323,6 +330,51 @@ const Home = () => {
       setFilteredProducts(filtered);
     }
   }, [productSearchQuery, products]);
+
+  // Filter stocks based on search query
+  useEffect(() => {
+    if (!stockSearchQuery) {
+      setFilteredStocks(stocks || []);
+    } else {
+      const filtered = (stocks || []).filter(stock => 
+        (stock.Tow_Opis && stock.Tow_Opis.toLowerCase().includes(stockSearchQuery.toLowerCase())) ||
+        (stock.Tow_Kod && stock.Tow_Kod.toLowerCase().includes(stockSearchQuery.toLowerCase()))
+      );
+      setFilteredStocks(filtered);
+    }
+  }, [stockSearchQuery, stocks]);
+
+  // Filter colors based on search query
+  useEffect(() => {
+    if (!colorSearchQuery) {
+      setFilteredColors(colors || []);
+    } else {
+      const filtered = (colors || []).filter(color => 
+        (color.Kol_Opis && color.Kol_Opis.toLowerCase().includes(colorSearchQuery.toLowerCase())) ||
+        (color.Kol_Kod && color.Kol_Kod.toLowerCase().includes(colorSearchQuery.toLowerCase()))
+      );
+      setFilteredColors(filtered);
+    }
+  }, [colorSearchQuery, colors]);
+
+  // Filter sizes based on search query
+  useEffect(() => {
+    if (!sizeSearchQuery) {
+      setFilteredSizes(sizes || []);
+    } else {
+      const query = sizeSearchQuery.toLowerCase().trim();
+      const filtered = (sizes || []).filter(size => {
+        const opis = (size.Roz_Opis || '').toLowerCase();
+        const kod = (size.Roz_Kod || '').toLowerCase();
+        
+        // Exact match or starts with query
+        return opis === query || kod === query || 
+               opis.startsWith(query + ' ') || kod.startsWith(query + ' ') ||
+               opis.startsWith(query) || kod.startsWith(query);
+      });
+      setFilteredSizes(filtered);
+    }
+  }, [sizeSearchQuery, sizes]);
 
   // Load assigned salespeople on component mount
   useEffect(() => {
@@ -910,6 +962,117 @@ const Home = () => {
     }
   };
 
+  // Handle Pan Kazek transfer
+  const handlePanKazekTransfer = () => {
+    setPanKazekModalVisible(true);
+  };
+
+  const confirmPanKazekTransfer = async () => {
+    if (!selectedItem) {
+      Alert.alert("Error", "No item selected for transfer.");
+      return;
+    }
+
+    if (!user || !user.symbol) {
+      Alert.alert("Błąd", "Brak danych zalogowanego użytkownika");
+      return;
+    }
+
+    // Debug: sprawdźmy strukturę selectedItem
+    console.log('Selected item for Pan Kazek:', selectedItem);
+
+    // Get today's date
+    const today = new Date().toISOString().split('T')[0];
+
+    // Poprawne pobieranie ceny - używamy tej samej logiki co w wyświetlaniu listy
+    let itemPrice = "0";
+    
+    const payments = [...(selectedItem.cash || []), ...(selectedItem.card || [])]
+      .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0);
+    
+    if (payments.length > 0) {
+      itemPrice = payments.map(({ price, currency }) => `${price} ${currency}`).join(' + ');
+    } else if (selectedItem.totalPrice) {
+      itemPrice = selectedItem.totalPrice.toString();
+    } else if (selectedItem.price) {
+      itemPrice = selectedItem.price.toString();
+    }
+
+    // Use sales item ID as productId (this is what Pan Kazek tracks)
+    const panKazekData = {
+      productId: selectedItem._id, // Use sales ID directly
+      fullName: selectedItem.fullName || selectedItem.name || "Nieznana nazwa",
+      size: selectedItem.size || "Nieznany rozmiar",
+      price: itemPrice,
+      barcode: selectedItem.barcode || "",
+      date: new Date().toISOString(),
+      dateString: today,
+      addedBy: user.symbol,
+      symbol: user.symbol
+    };
+
+    console.log('Pan Kazek data to send:', panKazekData);
+
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/pan-kazek'), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(panKazekData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        Alert.alert("Błąd", errorData.message || "Nie udało się dodać produktu do Pana Kazka");
+        return;
+      }
+
+      // Show success message
+      setSuccessMessage("Produkt został dodany do listy Pana Kazka!");
+      setSuccessModalVisible(true);
+
+      // Add item to local Pan Kazek list for immediate UI update
+      setPanKazekItems(prevItems => [...prevItems, { productId: selectedItem._id, ...panKazekData }]);
+
+      // No need to refresh state data anymore since we're tracking sales directly
+
+      setModalVisible(false);
+      setPanKazekModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "Wystąpił nieoczekiwany błąd podczas dodawania produktu do Pana Kazka.");
+    }
+  };
+
+  // Handle removing item from Pan Kazek list
+  const handleRemoveFromPanKazek = async () => {
+    if (!selectedItem) {
+      Alert.alert("Error", "No item selected.");
+      return;
+    }
+
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl(`/pan-kazek/${selectedItem._id}`), {
+        method: "DELETE"
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        Alert.alert("Błąd", errorData.message || "Nie udało się usunąć produktu z listy Pana Kazka");
+        return;
+      }
+
+      // Remove item from local Pan Kazek list for immediate UI update
+      setPanKazekItems(prevItems => prevItems.filter(item => item.productId !== selectedItem._id));
+
+      // Show success message
+      setSuccessMessage("Produkt został usunięty z listy Pana Kazka!");
+      setSuccessModalVisible(true);
+
+      setModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "Wystąpił nieoczekiwany błąd podczas usuwania produktu z listy Pana Kazka.");
+    }
+  };
+
   // Work hours management functions
   const fetchTodaysWorkHours = async () => {
     try {
@@ -1211,6 +1374,68 @@ const Home = () => {
     }
     
     if (reasonType === 'product') {
+      // Validate product type selection
+      if (!productType) {
+        setErrorMessage("Proszę wybrać typ produktu.");
+        setErrorModalVisible(true);
+        return;
+      }
+      
+      // Validate product selection based on type
+      if (productType === 'standard' && !selectedProduct) {
+        setErrorMessage("Proszę wybrać produkt z listy.");
+        setErrorModalVisible(true);
+        return;
+      }
+      
+      if (productType === 'custom') {
+        // Auto-select if there's exactly one match
+        if (!selectedStock && stockSearchQuery.trim()) {
+          if (filteredStocks.length === 1) {
+            setSelectedStock(filteredStocks[0]._id || filteredStocks[0].id);
+          } else {
+            setErrorMessage("Proszę wybrać asortyment z listy (kliknij na wybrany element).");
+            setErrorModalVisible(true);
+            return;
+          }
+        }
+        if (!selectedColor && colorSearchQuery.trim()) {
+          if (filteredColors.length === 1) {
+            setSelectedColor(filteredColors[0]._id || filteredColors[0].id);
+          } else {
+            setErrorMessage("Proszę wybrać kolor z listy (kliknij na wybrany element).");
+            setErrorModalVisible(true);
+            return;
+          }
+        }
+        if (!selectedSize && sizeSearchQuery.trim()) {
+          if (filteredSizes.length === 1) {
+            setSelectedSize(filteredSizes[0]._id || filteredSizes[0].id);
+          } else {
+            setErrorMessage("Proszę wybrać rozmiar z listy (kliknij na wybrany element).");
+            setErrorModalVisible(true);
+            return;
+          }
+        }
+        
+        // Final validation - make sure all are selected
+        if (!selectedStock || !stockSearchQuery.trim()) {
+          setErrorMessage("Proszę wybrać asortyment z listy.");
+          setErrorModalVisible(true);
+          return;
+        }
+        if (!selectedColor || !colorSearchQuery.trim()) {
+          setErrorMessage("Proszę wybrać kolor z listy.");
+          setErrorModalVisible(true);
+          return;
+        }
+        if (!selectedSize || !sizeSearchQuery.trim()) {
+          setErrorMessage("Proszę wybrać rozmiar z listy.");
+          setErrorModalVisible(true);
+          return;
+        }
+      }
+      
       if (!productFinalPrice || parseFloat(productFinalPrice) <= 0) {
         setErrorMessage("Proszę podać cenę finalną produktu (zaliczka + dopłata).");
         setErrorModalVisible(true);
@@ -1243,10 +1468,26 @@ const Home = () => {
       // Prepare reason based on selection with currency conversion
       let finalReason = '';
       let conversionInfo = null;
+      let productName = ''; // Define productName at function scope
       
       if (reasonType === 'product') {
-        const selectedProductObj = products.find(p => p._id === selectedProduct);
-        const productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        // Determine product name based on product type
+        if (productType === 'custom') {
+          // Build product name from selected stock, color, and size
+          const stockObj = stocks?.find(s => (s._id || s.id) === selectedStock);
+          const colorObj = colors?.find(c => (c._id || c.id) === selectedColor);
+          const sizeObj = sizes?.find(s => (s._id || s.id) === selectedSize);
+          
+          const stockName = stockObj?.Tow_Opis || stockObj?.name || 'Nieznany asortyment';
+          const colorName = colorObj?.Kol_Opis || colorObj?.name || 'Nieznany kolor';
+          const sizeName = sizeObj?.Roz_Opis || sizeObj?.name || 'Nieznany rozmiar';
+          
+          productName = `${stockName} ${colorName} ${sizeName}`;
+        } else {
+          // Search by 'id' field (stateData uses 'id', not '_id')
+          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct);
+          productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        }
         
         if (productFinalPrice) {
           const finalPricePLN = parseFloat(productFinalPrice); // Always store original PLN price
@@ -1328,10 +1569,14 @@ const Home = () => {
 
       // Add product-related data if it's a product transaction
       if (reasonType === 'product') {
-        if (selectedProduct) {
-          const selectedProductObj = products.find(p => p._id === selectedProduct);
+        if (productType === 'standard' && selectedProduct) {
+          // Standard product from state/inventory
+          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct);
           operationData.productId = selectedProduct;
           operationData.productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+        } else if (productType === 'custom') {
+          // Custom product - use the built productName
+          operationData.productName = productName; // This was built earlier from stock + color + size
         } else {
           operationData.productName = 'Produkt do wyboru';
         }
@@ -1366,6 +1611,17 @@ const Home = () => {
       setAddAmountCurrency("PLN");
       setAddAmountReason("");
       setReasonType("");
+      setProductType("custom"); // Reset to custom (default)
+      setCustomProductName(""); // Clear custom product name
+      setSelectedStock(""); // Clear selected stock
+      setSelectedColor(""); // Clear selected color
+      setSelectedSize(""); // Clear selected size
+      setStockSearchQuery(""); // Clear stock search
+      setColorSearchQuery(""); // Clear color search
+      setSizeSearchQuery(""); // Clear size search
+      setShowStockDropdown(false); // Hide stock dropdown
+      setShowColorDropdown(false); // Hide color dropdown
+      setShowSizeDropdown(false); // Hide size dropdown
       setSelectedProduct("");
       setProductSearchQuery("");
       setShowProductDropdown(false);
@@ -1438,6 +1694,54 @@ const Home = () => {
     setCancelDeductionModalVisible(true);
   };
 
+  // Handle barcode scan for product selection in Add Amount
+  const handleBarcodeScanned = ({ data }) => {
+    if (scanned) return;
+    
+    setScanned(true);
+    
+    // Find product by barcode in state data (same logic as QRScanner)
+    const product = stateData?.find(item => item.barcode === data);
+    
+    if (product) {
+      // Use 'id' field from stateData (not '_id')
+      setSelectedProduct(product.id || product._id);
+      // Show full product name with size (same format as QRScanner)
+      const displayName = `${product.fullName} ${product.size}`;
+      setProductSearchQuery(displayName);
+      setShowProductDropdown(false);
+      setQrScannerVisible(false);
+      setScanned(false);
+    } else {
+      setErrorMessage(`Nie znaleziono produktu z tym kodem kreskowym: ${data}`);
+      setErrorModalVisible(true);
+      setQrScannerVisible(false);
+      setScanned(false);
+    }
+  };
+
+  // Check if sales item is in Pan Kazek list
+  const isItemInPanKazek = (salesItem) => {
+    if (!salesItem) return false;
+    // Handle both object and ID string
+    const itemId = typeof salesItem === 'string' ? salesItem : salesItem._id;
+    // Check if this specific sales item (_id) is in Pan Kazek
+    return panKazekItems.some(panKazekItem => panKazekItem.productId === itemId);
+  };
+
+  // Fetch Pan Kazek items
+  const fetchPanKazekItems = async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/pan-kazek'));
+      if (response.ok) {
+        const data = await response.json();
+        setPanKazekItems(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching Pan Kazek items:', error);
+    }
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       // Skip API fetching in test environment unless explicitly testing API calls
@@ -1447,6 +1751,11 @@ const Home = () => {
       
       fetchSalesData(); // Fetch sales data when the tab is focused
       fetchUsers(); // Fetch users data for symbol selection
+      fetchState(); // Fetch state data for product selection with barcodes
+      fetchSizes(); // Fetch sizes for custom products
+      fetchColors(); // Fetch colors for custom products
+      fetchStock(); // Fetch stock/assortment for custom products
+      fetchPanKazekItems(); // Fetch Pan Kazek items
       if (user?.symbol) { // Ensure user exists before fetching items
         fetchTransferredItems(); // Fetch transferred items when the tab is focused
         fetchReceivedItems(); // Fetch received items when the tab is focused
@@ -1467,6 +1776,7 @@ const Home = () => {
     
     await fetchSalesData(); // Fetch data on pull-to-refresh
     await fetchUsers(); // Fetch users data for symbol selection
+    await fetchState(); // Fetch state data for product selection with barcodes
     if (user?.symbol) {
       await fetchTransferredItems();
       await fetchReceivedItems();
@@ -1851,6 +2161,9 @@ const Home = () => {
                       {idx < arr.length - 1 ? "  " : ""}
                     </Text>
                   ))}
+                {isItemInPanKazek(item) && (
+                  <Text style={{ color: '#28a745', fontSize: 16, marginLeft: 5 }}>●</Text>
+                )}
               </Text>
               <TouchableOpacity onPress={() => { setSelectedItem(item); setModalVisible(true); }} style={styles.dotsButton}>
                 <Text style={styles.dotsText}>⋮</Text>
@@ -2841,6 +3154,29 @@ const Home = () => {
               >
                 <Text style={styles.optionText}>Edytuj</Text>
               </TouchableOpacity>
+              {(user?.symbol === 'most' || user?.email === 'most@wp.pl') && (
+                <>
+                  {isItemInPanKazek(selectedItem) ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        handleRemoveFromPanKazek();
+                      }}
+                      style={[styles.optionButton, { backgroundColor: '#dc3545' }]}
+                    >
+                      <Text style={styles.optionText}>Usuń z listy Pan Kazek</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => {
+                        handlePanKazekTransfer();
+                      }}
+                      style={[styles.optionButton, { backgroundColor: '#28a745' }]}
+                    >
+                      <Text style={styles.optionText}>Od Pana Kazka</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
               <TouchableOpacity
                 onPress={() => {
                   if (selectedItem?._id) {
@@ -3269,6 +3605,11 @@ const Home = () => {
           onRequestClose={() => {
             setAddAmountModalVisible(false);
             setReasonType("");
+            setProductType("custom");
+            setCustomProductName("");
+            setSelectedStock("");
+            setSelectedColor("");
+            setSelectedSize("");
             setSelectedProduct("");
             setAddAmountReason("");
             setProductSearchQuery("");
@@ -3430,36 +3771,347 @@ const Home = () => {
                 {/* Conditional product search */}
                 {reasonType === 'product' && (
                   <View style={{ marginBottom: 15 }}>
-                    <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz produkt:</Text>
+                    {/* Product Type Selection */}
+                    <Text style={{ color: '#fff', fontSize: 12, marginBottom: 8 }}>Typ produktu:</Text>
+                    <View style={{ marginBottom: 15 }}>
+                      {/* Custom Product Radio - FIRST */}
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}
+                        onPress={() => {
+                          setProductType('custom');
+                          setSelectedProduct('');
+                          setProductSearchQuery('');
+                          setShowProductDropdown(false);
+                        }}
+                      >
+                        <View style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          borderWidth: 2,
+                          borderColor: '#0d6efd',
+                          backgroundColor: productType === 'custom' ? '#0d6efd' : 'transparent',
+                          marginRight: 10,
+                        }} />
+                        <Text style={{ color: '#fff', fontSize: 14 }}>Produkt niestandardowy</Text>
+                      </TouchableOpacity>
+
+                      {/* Standard Product Radio - SECOND */}
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                        onPress={() => {
+                          setProductType('standard');
+                          setCustomProductName('');
+                          setSelectedStock(''); // Clear custom product selections
+                          setSelectedColor('');
+                          setSelectedSize('');
+                          setStockSearchQuery(''); // Clear custom product search fields
+                          setColorSearchQuery('');
+                          setSizeSearchQuery('');
+                          setShowStockDropdown(false);
+                          setShowColorDropdown(false);
+                          setShowSizeDropdown(false);
+                          // Automatycznie otwórz skaner po wyborze produktu standardowego
+                          setQrScannerVisible(true);
+                          setScanned(false);
+                        }}
+                      >
+                        <View style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          borderWidth: 2,
+                          borderColor: '#0d6efd',
+                          backgroundColor: productType === 'standard' ? '#0d6efd' : 'transparent',
+                          marginRight: 10,
+                        }} />
+                        <Text style={{ color: '#fff', fontSize: 14 }}>Produkt standardowy</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Standard Product Search */}
+                    {productType === 'standard' && (
+                      <View>
+                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz produkt:</Text>
+                        
+                        {/* Search input */}
+                        <TextInput
+                          style={{
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            padding: 12,
+                            fontSize: 14,
+                            color: 'white',
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}
+                          placeholder="Wpisz nazwę lub kod produktu..."
+                          placeholderTextColor="#ccc"
+                          value={productSearchQuery}
+                          onChangeText={(text) => {
+                            setProductSearchQuery(text);
+                            setShowProductDropdown(true); // Show dropdown when typing
+                          }}
+                          onFocus={() => {
+                            if (productSearchQuery && !selectedProduct) {
+                              setShowProductDropdown(true);
+                            }
+                          }}
+                        />
+                      </View>
+                    )}
+
+                    {/* Custom Product Selection (Stock, Color, Size) */}
+                    {productType === 'custom' && (
+                      <View>
+                        {/* Stock/Assortment Selection */}
+                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz asortyment:</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            padding: 12,
+                            fontSize: 14,
+                            color: 'white',
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}
+                          placeholder="Wpisz nazwę asortymentu..."
+                          placeholderTextColor="#ccc"
+                          value={stockSearchQuery}
+                          onChangeText={(text) => {
+                            setStockSearchQuery(text);
+                            setShowStockDropdown(true);
+                          }}
+                          onFocus={() => setShowStockDropdown(true)}
+                        />
+                        
+                        {/* Stock Dropdown */}
+                        {showStockDropdown && stockSearchQuery && (
+                          <View style={{
+                            maxHeight: 150,
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}>
+                            <TouchableOpacity
+                              style={{
+                                position: 'absolute',
+                                top: 5,
+                                right: 10,
+                                zIndex: 1,
+                                backgroundColor: '#333',
+                                borderRadius: 10,
+                                width: 20,
+                                height: 20,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                              }}
+                              onPress={() => setShowStockDropdown(false)}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                            </TouchableOpacity>
+                            <ScrollView>
+                              {filteredStocks.length > 0 ? (
+                                filteredStocks.slice(0, 10).map((stock) => (
+                                  <TouchableOpacity
+                                    key={stock._id || stock.id}
+                                    style={{
+                                      padding: 12,
+                                      borderBottomWidth: 1,
+                                      borderBottomColor: '#333',
+                                      backgroundColor: selectedStock === (stock._id || stock.id) ? '#0d6efd' : 'transparent',
+                                    }}
+                                    onPress={() => {
+                                      setSelectedStock(stock._id || stock.id);
+                                      setStockSearchQuery(stock.Tow_Opis || stock.name || '');
+                                      setShowStockDropdown(false);
+                                    }}
+                                  >
+                                    <Text style={{ color: '#fff', fontSize: 13 }}>
+                                      {stock.Tow_Opis || stock.name || 'Nieznany asortyment'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))
+                              ) : (
+                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                                  Brak wyników
+                                </Text>
+                              )}
+                            </ScrollView>
+                          </View>
+                        )}
+
+                        {/* Color Selection */}
+                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz kolor:</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            padding: 12,
+                            fontSize: 14,
+                            color: 'white',
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}
+                          placeholder="Wpisz nazwę koloru..."
+                          placeholderTextColor="#ccc"
+                          value={colorSearchQuery}
+                          onChangeText={(text) => {
+                            setColorSearchQuery(text);
+                            setShowColorDropdown(true);
+                          }}
+                          onFocus={() => setShowColorDropdown(true)}
+                        />
+                        
+                        {/* Color Dropdown */}
+                        {showColorDropdown && colorSearchQuery && (
+                          <View style={{
+                            maxHeight: 150,
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}>
+                            <TouchableOpacity
+                              style={{
+                                position: 'absolute',
+                                top: 5,
+                                right: 10,
+                                zIndex: 1,
+                                backgroundColor: '#333',
+                                borderRadius: 10,
+                                width: 20,
+                                height: 20,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                              }}
+                              onPress={() => setShowColorDropdown(false)}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                            </TouchableOpacity>
+                            <ScrollView>
+                              {filteredColors.length > 0 ? (
+                                filteredColors.slice(0, 10).map((color) => (
+                                  <TouchableOpacity
+                                    key={color._id || color.id}
+                                    style={{
+                                      padding: 12,
+                                      borderBottomWidth: 1,
+                                      borderBottomColor: '#333',
+                                      backgroundColor: selectedColor === (color._id || color.id) ? '#0d6efd' : 'transparent',
+                                    }}
+                                    onPress={() => {
+                                      setSelectedColor(color._id || color.id);
+                                      setColorSearchQuery(color.Kol_Opis || color.name || '');
+                                      setShowColorDropdown(false);
+                                    }}
+                                  >
+                                    <Text style={{ color: '#fff', fontSize: 13 }}>
+                                      {color.Kol_Opis || color.name || 'Nieznany kolor'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))
+                              ) : (
+                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                                  Brak wyników
+                                </Text>
+                              )}
+                            </ScrollView>
+                          </View>
+                        )}
+
+                        {/* Size Selection */}
+                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz rozmiar:</Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            padding: 12,
+                            fontSize: 14,
+                            color: 'white',
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}
+                          placeholder="Wpisz rozmiar..."
+                          placeholderTextColor="#ccc"
+                          value={sizeSearchQuery}
+                          onChangeText={(text) => {
+                            setSizeSearchQuery(text);
+                            setShowSizeDropdown(true);
+                          }}
+                          onFocus={() => setShowSizeDropdown(true)}
+                        />
+                        
+                        {/* Size Dropdown */}
+                        {showSizeDropdown && sizeSearchQuery && (
+                          <View style={{
+                            maxHeight: 150,
+                            backgroundColor: 'black',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#0d6efd',
+                            marginBottom: 10,
+                          }}>
+                            <TouchableOpacity
+                              style={{
+                                position: 'absolute',
+                                top: 5,
+                                right: 10,
+                                zIndex: 1,
+                                backgroundColor: '#333',
+                                borderRadius: 10,
+                                width: 20,
+                                height: 20,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                              }}
+                              onPress={() => setShowSizeDropdown(false)}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                            </TouchableOpacity>
+                            <ScrollView>
+                              {filteredSizes.length > 0 ? (
+                                filteredSizes.slice(0, 10).map((size) => (
+                                  <TouchableOpacity
+                                    key={size._id || size.id}
+                                    style={{
+                                      padding: 12,
+                                      borderBottomWidth: 1,
+                                      borderBottomColor: '#333',
+                                      backgroundColor: selectedSize === (size._id || size.id) ? '#0d6efd' : 'transparent',
+                                    }}
+                                    onPress={() => {
+                                      setSelectedSize(size._id || size.id);
+                                      setSizeSearchQuery(size.Roz_Opis || size.name || '');
+                                      setShowSizeDropdown(false);
+                                    }}
+                                  >
+                                    <Text style={{ color: '#fff', fontSize: 13 }}>
+                                      {size.Roz_Opis || size.name || 'Nieznany rozmiar'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))
+                              ) : (
+                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                                  Brak wyników
+                                </Text>
+                              )}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+                    )}
                     
-                    {/* Search input */}
-                    <TextInput
-                      style={{
-                        backgroundColor: 'black',
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 14,
-                        color: 'white',
-                        borderWidth: 1,
-                        borderColor: '#0d6efd',
-                        marginBottom: 10,
-                      }}
-                      placeholder="Wpisz nazwę lub kod produktu..."
-                      placeholderTextColor="#ccc"
-                      value={productSearchQuery}
-                      onChangeText={(text) => {
-                        setProductSearchQuery(text);
-                        setShowProductDropdown(true); // Show dropdown when typing
-                      }}
-                      onFocus={() => {
-                        if (productSearchQuery && !selectedProduct) {
-                          setShowProductDropdown(true);
-                        }
-                      }}
-                    />
-                    
-                    {/* Products list */}
-                    {productSearchQuery && showProductDropdown && (
+                    {/* Products list - only for standard products */}
+                    {productType === 'standard' && productSearchQuery && showProductDropdown && (
                       <View style={{
                         maxHeight: 150,
                         backgroundColor: 'black',
@@ -3493,15 +4145,15 @@ const Home = () => {
                         {filteredProducts.length > 0 ? (
                           filteredProducts.slice(0, 10).map(product => (
                             <TouchableOpacity
-                              key={product._id}
+                              key={product.id || product._id}
                               style={{
                                 padding: 12,
                                 borderBottomWidth: 1,
                                 borderBottomColor: '#333',
-                                backgroundColor: selectedProduct === product._id ? '#0d6efd' : 'transparent',
+                                backgroundColor: selectedProduct === (product.id || product._id) ? '#0d6efd' : 'transparent',
                               }}
                               onPress={() => {
-                                setSelectedProduct(product._id);
+                                setSelectedProduct(product.id || product._id);
                                 setProductSearchQuery(product.fullName || product.code || product.name || 'Produkt');
                                 setShowProductDropdown(false); // Hide dropdown after selection
                               }}
@@ -3855,6 +4507,11 @@ const Home = () => {
                     setAddAmountCurrency("PLN");
                     setAddAmountReason("");
                     setReasonType("");
+                    setProductType("custom");
+                    setCustomProductName("");
+                    setSelectedStock("");
+                    setSelectedColor("");
+                    setSelectedSize("");
                     setSelectedProduct("");
                     setProductSearchQuery("");
                     setShowProductDropdown(false);
@@ -4709,6 +5366,143 @@ const Home = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Pan Kazek Confirmation Modal */}
+        <Modal
+          visible={panKazekModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setPanKazekModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Potwierdzenie</Text>
+              <Text style={styles.modalText}>
+                Czy chcesz dodać ten produkt do listy "Od Pana Kazka"?
+              </Text>
+              {selectedItem && (
+                <View style={{ marginVertical: 15 }}>
+                  <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>
+                    {selectedItem.fullName || selectedItem.name || "Nieznana nazwa"}
+                  </Text>
+                  <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginTop: 5 }}>
+                    Rozmiar: {selectedItem.size || "Nieznany"}
+                  </Text>
+                  <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginTop: 5 }}>
+                    Cena: {(() => {
+                      // Use the same logic as in the sales list
+                      const payments = [...(selectedItem.cash || []), ...(selectedItem.card || [])]
+                        .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0);
+                      
+                      if (payments.length > 0) {
+                        return payments.map(({ price, currency }) => `${price} ${currency}`).join(' + ');
+                      }
+                      
+                      // Fallback logic
+                      if (selectedItem.totalPrice) return selectedItem.totalPrice;
+                      if (selectedItem.price) return selectedItem.price;
+                      return "0";
+                    })()} PLN
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#28a745' }]}
+                onPress={confirmPanKazekTransfer}
+              >
+                <Text style={styles.optionText}>Tak, dodaj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.optionButton, styles.closeButton]}
+                onPress={() => setPanKazekModalVisible(false)}
+              >
+                <Text style={styles.closeText}>Anuluj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* QR Scanner Modal for Product Selection */}
+        <Modal
+          transparent={true}
+          visible={qrScannerVisible}
+          animationType="slide"
+          onRequestClose={() => {
+            setQrScannerVisible(false);
+            setScanned(false);
+          }}
+        >
+          <View style={{ flex: 1, backgroundColor: 'black' }}>
+            {permission?.granted ? (
+              <>
+                <CameraView
+                  style={{ flex: 1 }}
+                  facing="back"
+                  onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+                  barcodeScannerSettings={{
+                    barcodeTypes: ["qr", "ean13", "ean8", "code128", "code39"],
+                  }}
+                />
+                <View style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: 20,
+                  backgroundColor: 'rgba(0,0,0,0.7)',
+                }}>
+                  <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', marginBottom: 15 }}>
+                    Zeskanuj kod kreskowy produktu
+                  </Text>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#dc3545',
+                      padding: 15,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      setQrScannerVisible(false);
+                      setScanned(false);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Anuluj</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                <Text style={{ color: 'white', fontSize: 18, textAlign: 'center', marginBottom: 20 }}>
+                  Brak uprawnień do kamery
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#0d6efd',
+                    padding: 15,
+                    borderRadius: 8,
+                    marginBottom: 10,
+                  }}
+                  onPress={requestPermission}
+                >
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Udziel uprawnień</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#dc3545',
+                    padding: 15,
+                    borderRadius: 8,
+                  }}
+                  onPress={() => {
+                    setQrScannerVisible(false);
+                    setScanned(false);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Zamknij</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -4849,6 +5643,13 @@ const styles = StyleSheet.create({
     color: '#e5e7eb',
     textAlign: 'center',
     marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 16,
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 10,
   },
   optionButton: {
     backgroundColor: '#0d6efd',

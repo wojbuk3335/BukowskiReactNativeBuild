@@ -52,6 +52,9 @@ export const GlobalStateProvider = ({ children, value }) => {
     // State data
     stateData: [],
     users: [{ id: 1, name: 'Test User' }],
+    sizes: [],
+    colors: [],
+    stock: [],
     
     // Products and goods
     products: [],
@@ -100,6 +103,10 @@ export const GlobalStateProvider = ({ children, value }) => {
     fetchReceivedItems: jest.fn().mockResolvedValue([]),
     fetchAdvances: jest.fn().mockResolvedValue([]),
     fetchFinancialOperations: jest.fn().mockResolvedValue([]),
+    fetchState: jest.fn().mockResolvedValue([]),
+    fetchSizes: jest.fn().mockResolvedValue([]),
+    fetchColors: jest.fn().mockResolvedValue([]),
+    fetchStock: jest.fn().mockResolvedValue([]),
     
     // Mock goods data with proper structure
     goods: [

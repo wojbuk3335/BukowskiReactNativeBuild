@@ -39,6 +39,7 @@ const WriteOff = () => {
     const [showCurrencyModal, setShowCurrencyModal] = useState(false); // Modal wyboru waluty
     const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
     const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
+    const [panKazekModalVisible, setPanKazekModalVisible] = useState(false); // Modal for Pan Kazek confirmation
     
     // Animacje dla kropek ładowania
     const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -270,6 +271,10 @@ const fetchSales = async () => {
     const openModal = (item) => {
         setSelectedItem(item);
         setModalVisible(true);
+        // Debug: sprawdź dane użytkownika
+        console.log('User data:', user);
+        console.log('User symbol:', user?.symbol);
+        console.log('User email:', user?.email);
     };
 
     const closeModal = () => {
@@ -533,6 +538,64 @@ const fetchSales = async () => {
 
         // Przepisz do MAGAZYN
         initiateTransfer('MAGAZYN', finalReason, null);
+    };
+
+    const handlePanKazekTransfer = () => {
+        setPanKazekModalVisible(true);
+    };
+
+    const confirmPanKazekTransfer = async () => {
+        if (!selectedItem) {
+            Alert.alert("Error", "No item selected for transfer.");
+            return;
+        }
+
+        if (!user || !user.symbol) {
+            Alert.alert("Błąd", "Brak danych zalogowanego użytkownika");
+            return;
+        }
+
+        // Sprawdź czy kurtka nie ma już aktywnego transferu DZISIAJ
+        if (hasActiveTransfer(selectedItem)) {
+            Alert.alert("Kurtka już przeniesiona", "Ta kurtka została już przeniesiona dzisiaj.");
+            return;
+        }
+
+        const panKazekData = {
+            productId: selectedItem.id,
+            fullName: selectedItem.fullName,
+            size: selectedItem.size,
+            price: selectedItem.price,
+            barcode: selectedItem.barcode,
+            date: today + 'T' + new Date().toISOString().split('T')[1],
+            dateString: today,
+            addedBy: user.symbol,
+            symbol: user.symbol
+        };
+
+        try {
+            const response = await tokenService.authenticatedFetch(getApiUrl('/pan-kazek'), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(panKazekData),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                Alert.alert("Błąd", errorData.message || "Nie udało się dodać produktu do Pana Kazka");
+                return;
+            }
+
+            // Show success message
+            setSuccessMessage("Produkt został dodany do listy Pana Kazka!");
+            setSuccessModalVisible(true);
+
+            fetchAllRequiredData(false);
+            setModalVisible(false);
+            setPanKazekModalVisible(false);
+        } catch (error) {
+            Alert.alert("Error", "Wystąpił nieoczekiwany błąd podczas dodawania produktu do Pana Kazka.");
+        }
     };
 
     const cancelTransfer = async () => {
@@ -832,15 +895,25 @@ const fetchSales = async () => {
                                 if (!blockStatus.isBlocked) {
                                     // Item is not blocked - show transfer option
                                     return (
-                                        <TouchableOpacity
-                                            style={styles.optionButton}
-                                            onPress={() => {
-                                                setModalVisible(false);
-                                                setTransferModalVisible(true);
-                                            }}
-                                        >
-                                            <Text style={styles.optionText}>Przepisz do</Text>
-                                        </TouchableOpacity>
+                                        <>
+                                            <TouchableOpacity
+                                                style={styles.optionButton}
+                                                onPress={() => {
+                                                    setModalVisible(false);
+                                                    setTransferModalVisible(true);
+                                                }}
+                                            >
+                                                <Text style={styles.optionText}>Przepisz do</Text>
+                                            </TouchableOpacity>
+                                            {(user?.symbol === 'most' || user?.email === 'most@wp.pl') && (
+                                                <TouchableOpacity
+                                                    style={[styles.optionButton, { backgroundColor: '#28a745' }]}
+                                                    onPress={() => handlePanKazekTransfer()}
+                                                >
+                                                    <Text style={styles.optionText}>Od Pana Kazka</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </>
                                     );
                                 }
                                 
@@ -1262,6 +1335,45 @@ const fetchSales = async () => {
                             onPress={() => setSuccessModalVisible(false)}
                         >
                             <Text style={styles.optionText}>OK</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Pan Kazek Confirmation Modal */}
+            <Modal
+                visible={panKazekModalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setPanKazekModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Potwierdzenie</Text>
+                        <Text style={styles.modalMessage}>
+                            Czy chcesz dodać tę kurtkę do listy "Od Pana Kazka"?
+                        </Text>
+                        {selectedItem && (
+                            <View style={{ marginVertical: 15 }}>
+                                <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>
+                                    {selectedItem.fullName} {selectedItem.size}
+                                </Text>
+                                <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginTop: 5 }}>
+                                    Cena: {selectedItem.price} PLN
+                                </Text>
+                            </View>
+                        )}
+                        <TouchableOpacity
+                            style={[styles.optionButton, { backgroundColor: '#28a745' }]}
+                            onPress={confirmPanKazekTransfer}
+                        >
+                            <Text style={styles.optionText}>Tak, dodaj</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.optionButton, styles.closeButton]}
+                            onPress={() => setPanKazekModalVisible(false)}
+                        >
+                            <Text style={styles.closeText}>Anuluj</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

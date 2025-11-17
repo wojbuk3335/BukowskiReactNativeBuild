@@ -5,6 +5,18 @@ import Home from '../../app/(tabs)/home';
 import TestWrapper, { GlobalStateContext } from '../utils/TestUtils';
 import tokenService from '../../services/tokenService';
 
+// Mock expo-camera
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  return {
+    CameraView: jest.fn(({children, ...props}) => React.createElement('CameraView', props, children)),
+    useCameraPermissions: jest.fn(() => [
+      { granted: true, status: 'granted' },
+      jest.fn(() => Promise.resolve({ granted: true, status: 'granted' }))
+    ]),
+  };
+});
+
 // Mock dependencies
 jest.mock('../../services/tokenService');
 jest.mock('../../config/api', () => ({

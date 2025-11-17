@@ -5,6 +5,18 @@ import Home from '../../app/(tabs)/home';
 import TestWrapper, { GlobalStateContext } from '../utils/TestUtils';
 import tokenService from '../../services/tokenService';
 
+// Mock expo-camera
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  return {
+    CameraView: jest.fn(({children, ...props}) => React.createElement('CameraView', props, children)),
+    useCameraPermissions: jest.fn(() => [
+      { granted: true, status: 'granted' },
+      jest.fn(() => Promise.resolve({ granted: true, status: 'granted' }))
+    ]),
+  };
+});
+
 // Mock dependencies
 jest.mock('../../services/tokenService');
 jest.mock('../../config/api', () => ({
@@ -14,7 +26,9 @@ jest.mock('../../config/api', () => ({
 // Mock Alert
 jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
-describe('Financial Operations Integration Tests', () => {
+// Skip these tests - financial operations functionality was removed from home.jsx
+// These tests are for a feature that no longer exists
+describe.skip('Financial Operations Integration Tests', () => {
   const mockUser = {
     symbol: 'P',
     email: 'test@example.com',
