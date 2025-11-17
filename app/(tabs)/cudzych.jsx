@@ -10,7 +10,8 @@ import {
   Alert,
   ScrollView,
   RefreshControl,
-  Platform
+  Platform,
+  KeyboardAvoidingView
 } from 'react-native';
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -65,6 +66,10 @@ const Cudzych = () => {
   const [zwrotModalVisible, setZwrotModalVisible] = useState(false);
   const [wplataModalVisible, setWplataModalVisible] = useState(false);
   const [wyplataModalVisible, setWyplataModalVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   
   // Form states
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -96,15 +101,87 @@ const Cudzych = () => {
   // Price list state
   const [cudzichPriceList, setCudzichPriceList] = useState(null);
 
+  // Fetch current balance
+  const fetchBalance = React.useCallback(async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/balance?userSymbol=P&recipientId=cudzich'));
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBalance(data.balance || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+    }
+  }, []);
+
+  // Fetch transactions
+  const fetchTransactions = React.useCallback(async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/transactions?userSymbol=P&recipientId=cudzich'));
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  }, []);
+
+  // Fetch Cudzich price list
+  const fetchCudzichPriceList = React.useCallback(async () => {
+    try {
+      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/pricelist'));
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCudzichPriceList(data);
+      } else {
+        console.error('❌ Błąd pobierania cennika:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching Cudzich price list:', error);
+    }
+  }, []);
+
+  // Load balance, transactions and price list
+  const loadInitialData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchBalance(),
+        fetchTransactions(),
+        fetchCudzichPriceList(),
+        fetchGoods(),
+        fetchSizes(),
+        fetchStock(),
+        fetchColors(),
+        fetchBags(),
+        fetchWallets(),
+        fetchState(),
+        fetchUsers()
+      ]);
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+      Alert.alert('Błąd', 'Nie udało się załadować danych');
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load data when component mounts and every time tab is focused
   useEffect(() => {
     loadInitialData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Pobierz dane przy każdym wejściu w zakładkę
   useFocusEffect(
     React.useCallback(() => {
       loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
 
@@ -132,10 +209,10 @@ const Cudzych = () => {
       return;
     }
 
-    let filtered = transactions;
+    let filtered = Array.isArray(transactions) ? transactions : [];
 
     if (filterStartDate || filterEndDate) {
-      filtered = transactions.filter(transaction => {
+      filtered = filtered.filter(transaction => {
         const transactionDate = new Date(transaction.date);
         const startDate = filterStartDate ? new Date(filterStartDate.setHours(0, 0, 0, 0)) : null;
         const endDate = filterEndDate ? new Date(filterEndDate.setHours(23, 59, 59, 999)) : null;
@@ -162,92 +239,6 @@ const Cudzych = () => {
       setPrice(fetchedPrice.toString());
     }
   }, [selectedProduct, cudzichPriceList]);
-
-  // Access control - after all hooks
-  if (user?.symbol !== 'P') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.text}>Brak dostępu do tej sekcji</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Load balance, transactions and price list
-  const loadInitialData = async () => {
-    setLoading(true);
-    try {
-      await Promise.all([
-        fetchBalance(),
-        fetchTransactions(),
-        fetchCudzichPriceList(),
-        fetchGoods(),
-        fetchSizes(),
-        fetchStock(),
-        fetchColors(),
-        fetchBags(),
-        fetchWallets(),
-        fetchState(),
-        fetchUsers()
-      ]);
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-      Alert.alert('Błąd', 'Nie udało się załadować danych');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch current balance
-  const fetchBalance = async () => {
-    try {
-      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/balance?userSymbol=P&recipientId=cudzich'));
-      
-      if (response.ok) {
-        const data = await response.json();
-        setBalance(data.balance || 0);
-      }
-    } catch (error) {
-      console.error('Error fetching balance:', error);
-    }
-  };
-
-  // Fetch transactions
-  const fetchTransactions = async () => {
-    try {
-      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/transactions?userSymbol=P&recipientId=cudzich'));
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTransactions(data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    }
-  };
-
-  // Fetch Cudzich price list
-  const fetchCudzichPriceList = async () => {
-    try {
-      const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/pricelist'));
-      
-      if (response.ok) {
-        const data = await response.json();
-        setCudzichPriceList(data);
-      } else {
-        console.error('❌ Błąd pobierania cennika:', response.status);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching Cudzich price list:', error);
-    }
-  };
-
-
-
-
-
-
 
   // Handle product selection
   const handleProductSelect = (product) => {
@@ -395,10 +386,10 @@ const Cudzych = () => {
           }
         }
         
-        Alert.alert(
-          'Sukces', 
+        setSuccessMessage(
           `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nNowe saldo: ${data.newBalance}zł`
         );
+        setSuccessModalVisible(true);
         
         // Refresh data
         await Promise.all([fetchBalance(), fetchTransactions()]);
@@ -538,10 +529,10 @@ const Cudzych = () => {
           }
         }
         
-        Alert.alert(
-          'Sukces', 
+        setSuccessMessage(
           `${type === 'odbior' ? 'Odbiór' : 'Zwrot'} został zapisany\nProdukt: ${productName} ${productSize}\nCena: ${productPrice}zł\nNowe saldo: ${data.newBalance}zł`
         );
+        setSuccessModalVisible(true);
         
         // Refresh data
         await Promise.all([fetchBalance(), fetchTransactions()]);
@@ -586,10 +577,10 @@ const Cudzych = () => {
 
       if (response.ok) {
         const data = await response.json();
-        Alert.alert(
-          'Sukces', 
+        setSuccessMessage(
           `${type === 'wplata' ? 'Wpłata' : 'Wypłata'} została zapisana\nNowe saldo: ${data.newBalance}zł`
         );
+        setSuccessModalVisible(true);
         
         // Refresh data
         await Promise.all([fetchBalance(), fetchTransactions()]);
@@ -1029,6 +1020,17 @@ const Cudzych = () => {
     </View>
   );
 
+  // Access control check
+  if (user?.symbol !== 'P') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.text}>Brak dostępu do tej sekcji</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <LogoutButton position="top-right" />
@@ -1056,10 +1058,7 @@ const Cudzych = () => {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.smallButton, { backgroundColor: '#dc3545' }]}
-            onPress={() => {
-              setScannerType('odbior');
-              setScannerVisible(true);
-            }}
+            onPress={() => setOdbiorModalVisible(true)}
           >
             <Text style={styles.smallButtonText}>Odbiór</Text>
           </TouchableOpacity>
@@ -1137,13 +1136,20 @@ const Cudzych = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { width: '85%', maxHeight: '90%' }]}>
             <Text style={styles.modalTitle}>
               {odbiorModalVisible ? 'ODBIÓR KURTKI' : 'ZWROT KURTKI'}
             </Text>
 
+            <ScrollView 
+              style={{ width: '100%' }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+
             {/* Product search */}
-            <View style={styles.productContainer}>
+            <View style={styles.formField}>
               <View style={styles.productHeaderContainer}>
                 <Text style={styles.fieldLabel}>Wybierz produkt:</Text>
                 {odbiorModalVisible && (
@@ -1186,109 +1192,184 @@ const Cudzych = () => {
               />
 
               {/* Product dropdown */}
-              {productDropdownVisible && (
-                <View style={styles.relativeDropdown}>
-                {!goods || goods.length === 0 ? (
-                  <Text style={styles.noDataText}>Brak dostępnych produktów</Text>
-                ) : filteredProducts.length === 0 ? (
-                  <Text style={styles.noDataText}>Brak produktów pasujących do wyszukiwania</Text>
-                ) : (
-                  <FlatList
-                    data={filteredProducts}
-                    keyExtractor={(item) => item._id}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          handleProductSelect(item);
-                          setProductDropdownVisible(false);
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>{item.fullName}</Text>
-                      </TouchableOpacity>
+              {productDropdownVisible && productSearchText && (
+                <View style={{
+                  maxHeight: 120,
+                  backgroundColor: 'black',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#0d6efd',
+                  marginBottom: 10,
+                }}>
+                  <TouchableOpacity
+                    style={{
+                      position: 'absolute',
+                      top: 5,
+                      right: 10,
+                      zIndex: 1,
+                      backgroundColor: '#333',
+                      borderRadius: 10,
+                      width: 20,
+                      height: 20,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setProductDropdownVisible(false)}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                  </TouchableOpacity>
+                  <ScrollView>
+                    {filteredProducts.length > 0 ? (
+                      filteredProducts.slice(0, 10).map((item) => (
+                        <TouchableOpacity
+                          key={item._id}
+                          style={{
+                            padding: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#333',
+                            backgroundColor: selectedProduct?._id === item._id ? '#0d6efd' : 'transparent',
+                          }}
+                          onPress={() => {
+                            handleProductSelect(item);
+                            setProductDropdownVisible(false);
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 13 }}>
+                            {item.fullName}
+                          </Text>
+                        </TouchableOpacity>
+                      ))
+                    ) : (
+                      <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                        {!goods || goods.length === 0 ? 'Brak dostępnych produktów' : 'Brak produktów pasujących do wyszukiwania'}
+                      </Text>
                     )}
-                    maxHeight={200}
-                  />
-                )}
-                <TouchableOpacity
-                  style={styles.closeDropdownButton}
-                  onPress={() => setProductDropdownVisible(false)}
-                >
-                  <Text style={styles.closeDropdownText}>Zamknij</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* Size dropdown */}
-            <View style={styles.productContainer}>
+            <View style={styles.formField}>
               <Text style={styles.fieldLabel}>Rozmiar:</Text>
-              <TouchableOpacity
+              <TextInput
                 style={styles.input}
-                onPress={() => setSizeDropdownVisible(!sizeDropdownVisible)}
-              >
-                <Text style={[styles.inputText, !size && { color: '#666' }]}>
-                  {size || 'Wybierz rozmiar...'}
-                </Text>
-              </TouchableOpacity>
+                placeholder="Wpisz rozmiar..."
+                placeholderTextColor="#ccc"
+                value={size}
+                onChangeText={(text) => {
+                  setSize(text);
+                  setSizeDropdownVisible(text.length > 0);
+                }}
+                onFocus={() => {
+                  if (size.length > 0) setSizeDropdownVisible(true);
+                }}
+              />
 
               {/* Size dropdown list */}
-              {sizeDropdownVisible && (
-                <View style={styles.relativeDropdown}>
-                {!sizes || sizes.length === 0 ? (
-                  <Text style={styles.noDataText}>Brak dostępnych rozmiarów</Text>
-                ) : (
-                  <FlatList
-                    data={sizes}
-                    keyExtractor={(item) => item._id}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          const sizeText = item.Roz_Opis || item.nazwa || item.name;
-                          setSelectedSize(item);
-                          setSize(sizeText);
-                          setSizeDropdownVisible(false);
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>
-                          {item.Roz_Opis || item.nazwa || item.name}
-                        </Text>
-                      </TouchableOpacity>
+              {sizeDropdownVisible && size && (
+                <View style={{
+                  maxHeight: 120,
+                  backgroundColor: 'black',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: '#0d6efd',
+                  marginBottom: 10,
+                }}>
+                  <TouchableOpacity
+                    style={{
+                      position: 'absolute',
+                      top: 5,
+                      right: 10,
+                      zIndex: 1,
+                      backgroundColor: '#333',
+                      borderRadius: 10,
+                      width: 20,
+                      height: 20,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setSizeDropdownVisible(false)}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                  </TouchableOpacity>
+                  <ScrollView>
+                    {sizes.filter((item) => {
+                      const query = size.toLowerCase().trim();
+                      const opis = (item.Roz_Opis || item.nazwa || item.name || '').toLowerCase();
+                      const kod = (item.Roz_Kod || '').toLowerCase();
+                      
+                      // Exact match or starts with query
+                      return opis === query || kod === query || 
+                             opis.startsWith(query + ' ') || kod.startsWith(query + ' ') ||
+                             opis.startsWith(query) || kod.startsWith(query);
+                    }).length > 0 ? (
+                      sizes.filter((item) => {
+                        const query = size.toLowerCase().trim();
+                        const opis = (item.Roz_Opis || item.nazwa || item.name || '').toLowerCase();
+                        const kod = (item.Roz_Kod || '').toLowerCase();
+                        
+                        // Exact match or starts with query
+                        return opis === query || kod === query || 
+                               opis.startsWith(query + ' ') || kod.startsWith(query + ' ') ||
+                               opis.startsWith(query) || kod.startsWith(query);
+                      }).slice(0, 10).map((item) => {
+                        const sizeText = item.Roz_Opis || item.nazwa || item.name;
+                        return (
+                          <TouchableOpacity
+                            key={item._id}
+                            style={{
+                              padding: 12,
+                              borderBottomWidth: 1,
+                              borderBottomColor: '#333',
+                              backgroundColor: selectedSize?._id === item._id ? '#0d6efd' : 'transparent',
+                            }}
+                            onPress={() => {
+                              setSelectedSize(item);
+                              setSize(sizeText);
+                              setSizeDropdownVisible(false);
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 13 }}>
+                              {sizeText}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    ) : (
+                      <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                        {!sizes || sizes.length === 0 ? 'Brak dostępnych rozmiarów' : 'Brak pasujących rozmiarów'}
+                      </Text>
                     )}
-                    maxHeight={200}
-                  />
-                )}
-                <TouchableOpacity
-                  style={styles.closeDropdownButton}
-                  onPress={() => setSizeDropdownVisible(false)}
-                >
-                  <Text style={styles.closeDropdownText}>Zamknij</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* Price input */}
-            <Text style={styles.fieldLabel}>Cena (zł):</Text>
-            <TextInput
-              style={[styles.input, styles.readonlyInput]}
-              placeholder="Cena z cennika"
-              value={price}
-              editable={false}
-              placeholderTextColor="#666"
-            />
+            <View style={styles.formField}>
+              <Text style={styles.fieldLabel}>Cena (zł):</Text>
+              <TextInput
+                style={[styles.input, styles.readonlyInput]}
+                placeholder="Cena z cennika"
+                value={price}
+                editable={false}
+                placeholderTextColor="#666"
+              />
+            </View>
 
             {/* Notes input */}
-            <Text style={styles.fieldLabel}>Uwagi (opcjonalne):</Text>
-            <TextInput
-              style={[styles.input, styles.notesInput]}
-              placeholder="Dodatkowe informacje..."
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              placeholderTextColor="#666"
-            />
+            <View style={styles.formField}>
+              <Text style={styles.fieldLabel}>Uwagi (opcjonalne):</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                placeholder="Dodatkowe informacje..."
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                placeholderTextColor="#666"
+              />
+            </View>
 
             {/* Historical sale checkbox - only for zwrot */}
             {zwrotModalVisible && (
@@ -1311,6 +1392,8 @@ const Cudzych = () => {
                 )}
               </View>
             )}
+
+            </ScrollView>
 
             {/* Modal buttons */}
             <View style={styles.modalButtons}>
@@ -1352,34 +1435,47 @@ const Cudzych = () => {
           setWyplataModalVisible(false);
         }}
       >
-        <View style={styles.modalBackground}>
-          <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '85%', maxHeight: '90%' }]}>
             <Text style={styles.modalTitle}>
               {wplataModalVisible ? 'WPŁATA OD TOMKA' : 'WYPŁATA DLA TOMKA'}
             </Text>
 
+            <ScrollView 
+              style={{ width: '100%' }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+
             {/* Amount input */}
-            <Text style={styles.fieldLabel}>Kwota (zł):</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Wpisz kwotę..."
-              value={paymentAmount}
-              onChangeText={setPaymentAmount}
-              keyboardType="numeric"
-              placeholderTextColor="#666"
-            />
+            <View style={styles.formField}>
+              <Text style={styles.fieldLabel}>Kwota (zł):</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Wpisz kwotę..."
+                value={paymentAmount}
+                onChangeText={setPaymentAmount}
+                keyboardType="numeric"
+                placeholderTextColor="#666"
+              />
+            </View>
 
             {/* Notes input */}
-            <Text style={styles.fieldLabel}>Uwagi (opcjonalne):</Text>
-            <TextInput
-              style={[styles.input, styles.notesInput]}
-              placeholder="Dodatkowe informacje..."
-              value={paymentNotes}
-              onChangeText={setPaymentNotes}
-              multiline={true}
-              numberOfLines={3}
-              placeholderTextColor="#666"
-            />
+            <View style={styles.formField}>
+              <Text style={styles.fieldLabel}>Uwagi (opcjonalne):</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                placeholder="Dodatkowe informacje..."
+                value={paymentNotes}
+                onChangeText={setPaymentNotes}
+                multiline={true}
+                numberOfLines={3}
+                placeholderTextColor="#666"
+              />
+            </View>
+
+            </ScrollView>
 
             {/* Modal buttons */}
             <View style={styles.modalButtons}>
@@ -1417,27 +1513,69 @@ const Cudzych = () => {
         visible={dateFilterVisible}
         onRequestClose={() => setDateFilterVisible(false)}
       >
-        <View style={styles.modalBackground}>
-          <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '90%', maxHeight: '80%' }]}>
             <Text style={styles.modalTitle}>Filtruj po dacie</Text>
+            <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+              Wybierz przedział czasowy dla transakcji
+            </Text>
 
-
+            {/* Display selected date range */}
+            {(filterStartDate || filterEndDate) && (
+              <View style={{ 
+                backgroundColor: '#10b981', 
+                padding: 12, 
+                borderRadius: 8, 
+                marginBottom: 15,
+                borderWidth: 1,
+                borderColor: '#ffffff'
+              }}>
+                <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', textAlign: 'center' }}>
+                  ✓ Wybrany okres:
+                </Text>
+                <Text style={{ color: '#ffffff', fontSize: 13, textAlign: 'center', marginTop: 4 }}>
+                  {formatDateForDisplay(filterStartDate) || 'Od początku'} - {formatDateForDisplay(filterEndDate) || 'Do teraz'}
+                </Text>
+              </View>
+            )}
 
             {/* Quick filters */}
             <Text style={styles.fieldLabel}>Szybki wybór:</Text>
             <View style={styles.quickFilters}>
               <TouchableOpacity 
-                style={styles.quickFilterButton}
+                style={{
+                  backgroundColor: '#0d6efd',
+                  paddingVertical: 15,
+                  paddingHorizontal: 20,
+                  borderRadius: 10,
+                  marginVertical: 8,
+                  borderWidth: 1,
+                  borderColor: '#ffffff',
+                  alignItems: 'center',
+                  flex: 1,
+                  marginHorizontal: 4
+                }}
                 onPress={() => {
                   const today = new Date();
                   setFilterStartDate(today);
                   setFilterEndDate(today);
                 }}
               >
-                <Text style={styles.quickFilterText}>Dziś</Text>
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>Dziś</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.quickFilterButton}
+                style={{
+                  backgroundColor: '#0d6efd',
+                  paddingVertical: 15,
+                  paddingHorizontal: 20,
+                  borderRadius: 10,
+                  marginVertical: 8,
+                  borderWidth: 1,
+                  borderColor: '#ffffff',
+                  alignItems: 'center',
+                  flex: 1,
+                  marginHorizontal: 4
+                }}
                 onPress={() => {
                   const today = new Date();
                   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1445,10 +1583,21 @@ const Cudzych = () => {
                   setFilterEndDate(today);
                 }}
               >
-                <Text style={styles.quickFilterText}>7 dni</Text>
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>7 dni</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.quickFilterButton}
+                style={{
+                  backgroundColor: '#0d6efd',
+                  paddingVertical: 15,
+                  paddingHorizontal: 20,
+                  borderRadius: 10,
+                  marginVertical: 8,
+                  borderWidth: 1,
+                  borderColor: '#ffffff',
+                  alignItems: 'center',
+                  flex: 1,
+                  marginHorizontal: 4
+                }}
                 onPress={() => {
                   const today = new Date();
                   const monthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
@@ -1456,30 +1605,48 @@ const Cudzych = () => {
                   setFilterEndDate(today);
                 }}
               >
-                <Text style={styles.quickFilterText}>30 dni</Text>
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>30 dni</Text>
               </TouchableOpacity>
             </View>
 
             {/* Modal buttons */}
-            <View style={styles.modalButtons}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, width: '100%' }}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={{
+                  backgroundColor: '#ef4444',
+                  paddingVertical: 12,
+                  paddingHorizontal: 20,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: 'white',
+                  flex: 1,
+                  marginRight: 8,
+                  alignItems: 'center'
+                }}
                 onPress={() => {
                   clearDateFilters();
                   setDateFilterVisible(false);
                 }}
               >
-                <Text style={styles.cancelButtonText}>Wyczyść</Text>
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>✕ Wyczyść</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.saveButton, { backgroundColor: '#339af0' }]}
+                style={{
+                  backgroundColor: '#10b981',
+                  paddingVertical: 12,
+                  paddingHorizontal: 20,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: 'white',
+                  flex: 1,
+                  marginLeft: 8,
+                  alignItems: 'center'
+                }}
                 onPress={() => setDateFilterVisible(false)}
               >
-                <Text style={styles.saveButtonText}>Zastosuj</Text>
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>✓ Zastosuj</Text>
               </TouchableOpacity>
             </View>
-
-
 
           </View>
         </View>
@@ -1681,6 +1848,60 @@ const Cudzych = () => {
           </View>
         </Modal>
       )}
+
+      {/* Success Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={successModalVisible}
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={qrStyles.successModalOverlay}>
+          <View style={qrStyles.successModalContent}>
+            <View style={qrStyles.successIconContainer}>
+              <Text style={qrStyles.successIcon}>✓</Text>
+            </View>
+            <Text style={qrStyles.successModalTitle}>Sukces!</Text>
+            <Text style={qrStyles.successModalMessage}>
+              {successMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[qrStyles.optionButton, { backgroundColor: '#007bff', marginTop: 20, width: '90%' }]}
+              onPress={() => setSuccessModalVisible(false)}
+            >
+              <Text style={qrStyles.optionText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={errorModalVisible}
+        onRequestClose={() => setErrorModalVisible(false)}
+      >
+        <View style={qrStyles.errorModalOverlay}>
+          <View style={qrStyles.errorModalContent}>
+            <View style={qrStyles.errorIconContainer}>
+              <Text style={qrStyles.errorIcon}>⚠</Text>
+            </View>
+            <Text style={qrStyles.errorModalTitle}>Błąd!</Text>
+            <Text style={qrStyles.errorModalMessage}>
+              {errorMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[qrStyles.optionButton, { backgroundColor: '#dc3545', marginTop: 20, width: '90%' }]}
+              onPress={() => setErrorModalVisible(false)}
+            >
+              <Text style={qrStyles.optionText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1893,18 +2114,27 @@ const styles = StyleSheet.create({
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: 'black',
-    borderRadius: 10,
-    padding: 16,
-    width: '80%', // Szerszy modal
-    maxHeight: '80%', // Ograniczamy wysokość
-    borderWidth: 1,
-    borderColor: 'white',
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0d6efd',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   modalBackground: {
     flex: 1,
@@ -1921,42 +2151,68 @@ const styles = StyleSheet.create({
     borderColor: 'white',
   },
   modalTitle: {
-    color: 'white',
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#ffffff',
     textAlign: 'center',
-    marginBottom: 16,
   },
   
   // Form styles
+  formField: {
+    width: '100%',
+    marginBottom: 15,
+  },
   fieldLabel: {
-    color: 'white',
+    color: '#fff',
     fontSize: 14,
-    fontWeight: 'bold',
     marginBottom: 8,
-    marginTop: 15,
   },
   input: {
+    width: '100%',
     backgroundColor: 'black',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'white',
     padding: 12,
+    fontSize: 16,
     color: 'white',
-    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#0d6efd',
   },
   inputText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 16,
+  },
+  selectButton: {
+    width: '100%',
+    backgroundColor: '#0d6efd',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  selectButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   notesInput: {
+    width: '100%',
     height: 80,
     textAlignVertical: 'top',
+    backgroundColor: 'black',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: 'white',
+    borderWidth: 1,
+    borderColor: '#0d6efd',
   },
   readonlyInput: {
-    backgroundColor: '#333',
-    borderColor: 'white',
-    color: 'white',
+    backgroundColor: '#1a1a1a',
+    borderColor: '#666',
+    color: '#ccc',
   },
   
   // Product container
@@ -1971,7 +2227,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 5,
     borderWidth: 1,
-    borderColor: 'white',
+    borderColor: '#0d6efd',
     maxHeight: 250,
   },
   
@@ -1984,7 +2240,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'white',
+    borderColor: '#0d6efd',
     maxHeight: 250,
     zIndex: 1000,
     elevation: 1000, // For Android
@@ -1992,16 +2248,15 @@ const styles = StyleSheet.create({
   dropdownItem: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: 'white',
+    borderBottomColor: '#0d6efd',
   },
   dropdownItemText: {
     color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: 'bold',
   },
   closeDropdownButton: {
-    backgroundColor: '#555',
+    backgroundColor: '#0d6efd',
     padding: 12,
     alignItems: 'center',
     borderBottomLeftRadius: 8,
@@ -2388,6 +2643,123 @@ const qrStyles = StyleSheet.create({
   currencyModalCloseButtonText: {
     color: "white",
     fontSize: 16,
+  },
+  // Success Modal Styles
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#007bff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  successIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  successModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  successModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 10,
+  },
+  // Error Modal Styles
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorModalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  errorIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorIcon: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  errorModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  errorModalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 10,
+  },
+  // Button styles for modals
+  optionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

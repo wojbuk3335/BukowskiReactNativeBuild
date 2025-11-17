@@ -2147,7 +2147,7 @@ const Home = () => {
                   },
                 ]}
               >
-                {index + 1}. {item.fullName || 'Unknown'} {item.size || ''} ({item.from || ''}){item.source === 'Cudzich' ? '(Cudzych)' : ''}{" "}
+                {index + 1}. {item.fullName || 'Unknown'} {item.size || ''} ({item.from || ''}){item.source === 'Cudzich' ? '(Cudzich)' : ''}{" "}
                 {[...(item.cash || []), ...(item.card || [])]
                   .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
                   .map(({ price, currency }, idx, arr) => (
