@@ -458,8 +458,8 @@ const Profile = () => {
         setOrderNumber(backendOrderId);
         setSuccessMessage(
           email 
-            ? 'Zamówienie zostało złożone!\n\nEmail z potwierdzeniem został wysłany na Twój adres.\n\nSkontaktujemy się z Tobą w sprawie realizacji.'
-            : 'Zamówienie zostało złożone!\n\nPowiadomienie o zamówieniu zostało wysłane do sklepu.\n\nSkontaktujemy się z Tobą w sprawie realizacji.'
+            ? 'Zamówienie zostało złożone!\n\nEmail z potwierdzeniem został wysłany na adres klienta.'
+            : 'Zamówienie zostało złożone!\n\nPowiadomienie zostało wysłane do sklepu.'
         );
         setSuccessModalVisible(true);
         
