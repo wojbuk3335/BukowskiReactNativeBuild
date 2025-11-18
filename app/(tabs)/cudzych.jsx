@@ -1058,14 +1058,20 @@ const Cudzych = () => {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.smallButton, { backgroundColor: '#dc3545' }]}
-            onPress={() => setOdbiorModalVisible(true)}
+            onPress={() => {
+              setScannerType('odbior');
+              setScannerVisible(true);
+            }}
           >
             <Text style={styles.smallButtonText}>Odbiór</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[styles.smallButton, { backgroundColor: '#28a745' }]}
-            onPress={() => setZwrotModalVisible(true)}
+            onPress={() => {
+              setScannerType('zwrot');
+              setScannerVisible(true);
+            }}
           >
             <Text style={styles.smallButtonText}>Zwrot</Text>
           </TouchableOpacity>
@@ -1699,6 +1705,30 @@ const Cudzych = () => {
                 </TouchableOpacity>
               </View>
             )}
+            
+            {/* Przycisk do ręcznego wprowadzenia */}
+            <View style={{ position: "absolute", bottom: 30, left: 0, right: 0, alignItems: "center" }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: "#6c757d",
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8,
+                  opacity: 0.9
+                }}
+                onPress={() => {
+                  setScannerVisible(false);
+                  setScanned(false);
+                  if (scannerType === 'odbior') {
+                    setOdbiorModalVisible(true);
+                  } else {
+                    setZwrotModalVisible(true);
+                  }
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>✏️ Wpisz ręcznie</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}

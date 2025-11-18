@@ -64,6 +64,26 @@ describe('Cudzych Component', () => {
     );
   };
 
+  // Helper function to open Odbiór modal via scanner
+  const openOdbiorModal = async (getByText) => {
+    await act(async () => {
+      fireEvent.press(getByText('Odbiór'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('✏️ Wpisz ręcznie'));
+    });
+  };
+
+  // Helper function to open Zwrot modal via scanner
+  const openZwrotModal = async (getByText) => {
+    await act(async () => {
+      fireEvent.press(getByText('Zwrot'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('✏️ Wpisz ręcznie'));
+    });
+  };
+
   describe('Initial Render', () => {
     it('should render component successfully', async () => {
       tokenService.authenticatedFetch.mockResolvedValue({
@@ -160,23 +180,25 @@ describe('Cudzych Component', () => {
   });
 
   describe('Odbiór Modal', () => {
-    it('should open Odbiór modal when button pressed', async () => {
+    it('should open scanner when Odbiór button pressed', async () => {
       tokenService.authenticatedFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ balance: 0, transactions: [] }),
       });
 
-      const { getByText } = renderComponent();
+      const { getByText, queryByText } = renderComponent();
       
-      await waitFor(() => {
+      await act(async () => {
         const odbiorButton = getByText('Odbiór');
         fireEvent.press(odbiorButton);
       });
 
-      expect(getByText('ODBIÓR KURTKI')).toBeTruthy();
+      // Scanner should be visible (camera component rendered)
+      expect(queryByText('X')).toBeTruthy(); // Close button for scanner
+      expect(queryByText('✏️ Wpisz ręcznie')).toBeTruthy(); // Manual entry button
     });
 
-    it('should display product search field in modal', async () => {
+    it('should display product search field in modal after manual entry', async () => {
       tokenService.authenticatedFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ balance: 0, transactions: [] }),
@@ -184,9 +206,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       expect(getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...')).toBeTruthy();
     });
@@ -199,9 +219,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const searchInput = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
       
@@ -222,9 +240,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText, queryByText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const sizeInput = getByPlaceholderText('Wpisz rozmiar...');
       
@@ -270,9 +286,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       // Select product
       const productSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
@@ -318,9 +332,7 @@ describe('Cudzych Component', () => {
 
       const { getByText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       // Try to submit without selecting product
       await act(async () => {
@@ -365,9 +377,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Zwrot'));
-      });
+      await openZwrotModal(getByText);
 
       // Select product
       const productSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
@@ -413,9 +423,7 @@ describe('Cudzych Component', () => {
 
       const { getByText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Zwrot'));
-      });
+      await openZwrotModal(getByText);
 
       expect(getByText('Sprzedaż historyczna (sprzed systemu)')).toBeTruthy();
     });
@@ -675,9 +683,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText, getByDisplayValue } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const productSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
       await act(async () => {
@@ -703,9 +709,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, queryByText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       expect(getByText('ODBIÓR KURTKI')).toBeTruthy();
 
@@ -726,9 +730,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const productSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
       await act(async () => {
@@ -740,9 +742,7 @@ describe('Cudzych Component', () => {
       });
 
       // Reopen modal
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const newProductSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
       expect(newProductSearch.props.value).toBe('');
@@ -785,9 +785,7 @@ describe('Cudzych Component', () => {
 
       const { getByText, getByPlaceholderText } = renderComponent();
       
-      await waitFor(() => {
-        fireEvent.press(getByText('Odbiór'));
-      });
+      await openOdbiorModal(getByText);
 
       const productSearch = getByPlaceholderText('Wyszukaj kurtkę lub zeskanuj kod...');
       await act(async () => {
