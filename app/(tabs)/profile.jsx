@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ScrollView, ActivityIndicator, TextInput, FlatList, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ScrollView, ActivityIndicator, TextInput, FlatList, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
@@ -17,6 +17,11 @@ const Profile = () => {
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedSize, setSelectedSize] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Success modal states
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
 
   // Search text states
   const [productSearchText, setProductSearchText] = useState('');
@@ -50,21 +55,13 @@ const Profile = () => {
   // Customer data states
   const [customerName, setCustomerName] = useState('');
   const [postalCode, setPostalCode] = useState('');
-  const [cities, setCities] = useState([]);
-  const [selectedCity, setSelectedCity] = useState(null);
-  const [filteredCities, setFilteredCities] = useState([]);
   const [citySearchText, setCitySearchText] = useState('');
-  const [cityDropdownVisible, setCityDropdownVisible] = useState(false);
   const [customerNameFocused, setCustomerNameFocused] = useState(false);
   const [postalCodeFocused, setPostalCodeFocused] = useState(false);
   const [cityInputFocused, setCityInputFocused] = useState(false);
   
   // Street data states
-  const [streets, setStreets] = useState([]);
-  const [selectedStreet, setSelectedStreet] = useState(null);
-  const [filteredStreets, setFilteredStreets] = useState([]);
   const [streetSearchText, setStreetSearchText] = useState('');
-  const [streetDropdownVisible, setStreetDropdownVisible] = useState(false);
   const [streetInputFocused, setStreetInputFocused] = useState(false);
   
   // House number state
@@ -87,6 +84,7 @@ const Profile = () => {
   // Payment states
   const [totalPrice, setTotalPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositCurrency, setDepositCurrency] = useState('PLN'); // Waluta zaliczki
   const [totalPriceFocused, setTotalPriceFocused] = useState(false);
   const [depositFocused, setDepositFocused] = useState(false);
 
@@ -103,59 +101,7 @@ const Profile = () => {
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Function to fetch cities by postal code
-  const fetchCitiesByPostalCode = async (zipCode) => {
-    if (!zipCode || zipCode.length !== 6) return; // Format: xx-xxx
-    
-    try {
-      console.log('Fetching cities for postal code:', zipCode);
-      const response = await fetch(`https://kodpocztowy.intami.pl/api/${zipCode}`, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      console.log('API Response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('API Response data:', data);
-        
-        // API returns array of objects with miejscowosc field (lowercase)
-        if (Array.isArray(data) && data.length > 0) {
-          // Filter out entries without miejscowosc and get unique cities
-          const validEntries = data.filter(item => item.miejscowosc && item.miejscowosc.trim() !== '');
-          const uniqueCities = [...new Set(validEntries.map(item => item.miejscowosc))];
-          
-          console.log('Unique cities found:', uniqueCities);
-          
-          const cityObjects = uniqueCities.map((city, index) => ({
-            id: index,
-            name: city,
-            fullData: validEntries.find(item => item.miejscowosc === city)
-          }));
-          
-          setCities(cityObjects);
-          setFilteredCities(cityObjects);
-          
-          // Automatically show dropdown if cities are found
-          if (cityObjects.length > 0) {
-            setCityDropdownVisible(true);
-          }
-        } else {
-          console.log('No valid cities found in response');
-          setCities([]);
-          setFilteredCities([]);
-        }
-      } else {
-        console.error('API Error:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Error fetching cities:', error);
-    }
-  };
-
-  // Handle postal code change
+  // Handle postal code change with validation only (no API)
   const handlePostalCodeChange = (text) => {
     // Auto-format postal code (add dash after 2 digits)
     let formatted = text.replace(/[^0-9]/g, '');
@@ -164,106 +110,11 @@ const Profile = () => {
     }
     
     setPostalCode(formatted);
-    
-    // Clear cities and selected city when postal code changes
-    setCities([]);
-    setSelectedCity(null);
-    setCitySearchText('');
-    
-    // Fetch cities when postal code is complete
-    if (formatted.length === 6) {
-      fetchCitiesByPostalCode(formatted);
-    }
   };
 
-  // Handle city selection
-  const handleCitySelect = (city) => {
-    setSelectedCity(city);
-    setCitySearchText(city.name);
-    setCityDropdownVisible(false);
-    
-    // Clear streets when city changes
-    setStreets([]);
-    setSelectedStreet(null);
-    setStreetSearchText('');
-    
-    // Extract streets for selected city
-    extractStreetsFromPostalData(city.name);
-  };
-
-  // Function to extract streets from already fetched postal code data
-  const extractStreetsFromPostalData = (cityName) => {
-    console.log('Extracting streets for city:', cityName);
-    
-    // Find the selected city data from the postal code API response
-    const selectedCityData = cities.find(city => city.name === cityName);
-    if (!selectedCityData || !selectedCityData.fullData) {
-      console.log('No city data found');
-      setStreets([]);
-      setFilteredStreets([]);
-      return;
-    }
-
-    // Fetch the original postal code data again to get all entries for this city
-    if (postalCode && postalCode.length === 6) {
-      fetchStreetsFromPostalCode(postalCode, cityName);
-    }
-  };
-
-  // Function to fetch streets from postal code data for specific city
-  const fetchStreetsFromPostalCode = async (zipCode, cityName) => {
-    try {
-      console.log('Fetching postal data to extract streets for:', cityName);
-      const response = await fetch(`https://kodpocztowy.intami.pl/api/${zipCode}`, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Postal API Response for streets:', data);
-        
-        if (Array.isArray(data) && data.length > 0) {
-          // Filter entries for the selected city that have streets
-          const cityEntries = data.filter(item => 
-            item.miejscowosc === cityName && 
-            item.ulica && 
-            item.ulica.trim() !== ''
-          );
-          
-          console.log('City entries with streets:', cityEntries);
-          
-          if (cityEntries.length > 0) {
-            // Extract unique streets
-            const uniqueStreets = [...new Set(cityEntries.map(item => item.ulica))];
-            console.log('Unique streets found:', uniqueStreets);
-            
-            const streetObjects = uniqueStreets.map((street, index) => ({
-              id: index,
-              name: street,
-              fullData: cityEntries.find(item => item.ulica === street)
-            }));
-            
-            setStreets(streetObjects);
-            setFilteredStreets(streetObjects);
-          } else {
-            console.log('No streets found for this city in postal data');
-            setStreets([]);
-            setFilteredStreets([]);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching streets from postal data:', error);
-    }
-  };
-
-  // Handle street selection
-  const handleStreetSelect = (street) => {
-    setSelectedStreet(street);
-    setStreetSearchText(street.name);
-    setStreetDropdownVisible(false);
+  // Handle city text change (simple text input, no API)
+  const handleCityChange = (text) => {
+    setCitySearchText(text);
   };
 
   // Phone number validation and formatting
@@ -401,24 +252,33 @@ const Profile = () => {
   };
 
   const handleNipChange = (text) => {
-    // Format NIP with dashes
-    let formatted = text.replace(/\D/g, '');
-    if (formatted.length > 3) {
-      formatted = formatted.substring(0, 3) + '-' + formatted.substring(3);
+    // Format NIP with dashes (XXX-XXX-XX-XX)
+    let cleaned = text.replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    if (cleaned.length > 10) {
+      cleaned = cleaned.substring(0, 10);
     }
-    if (formatted.length > 7) {
-      formatted = formatted.substring(0, 7) + '-' + formatted.substring(7, 9);
-    }
-    if (formatted.length > 10) {
-      formatted = formatted.substring(0, 10) + '-' + formatted.substring(10, 12);
+    
+    // Add dashes at proper positions based on clean length
+    let formatted = cleaned;
+    if (cleaned.length > 8) {
+      // XXX-XXX-XX-XX (full format with 9-10 digits)
+      formatted = cleaned.substring(0, 3) + '-' + cleaned.substring(3, 6) + '-' + cleaned.substring(6, 8) + '-' + cleaned.substring(8);
+    } else if (cleaned.length > 6) {
+      // XXX-XXX-XX (7-8 digits)
+      formatted = cleaned.substring(0, 3) + '-' + cleaned.substring(3, 6) + '-' + cleaned.substring(6);
+    } else if (cleaned.length > 3) {
+      // XXX-XXX (4-6 digits)
+      formatted = cleaned.substring(0, 3) + '-' + cleaned.substring(3);
     }
     
     setNip(formatted);
     
     // Validate NIP
-    if (formatted.length > 0) {
-      const isValid = validateNIP(formatted);
-      if (!isValid && formatted.replace(/\D/g, '').length === 10) {
+    if (cleaned.length > 0) {
+      const isValid = validateNIP(cleaned);
+      if (!isValid && cleaned.length === 10) {
         setNipError('Nieprawidłowy numer NIP');
       } else {
         setNipError('');
@@ -474,8 +334,8 @@ const Profile = () => {
         Alert.alert('Błąd', 'Kod pocztowy jest wymagany dla wysyłki');
         return false;
       }
-      if (!selectedCity) {
-        Alert.alert('Błąd', 'Proszę wybrać miejscowość dla wysyłki');
+      if (!citySearchText.trim()) {
+        Alert.alert('Błąd', 'Miejscowość jest wymagana dla wysyłki');
         return false;
       }
     }
@@ -530,7 +390,7 @@ const Profile = () => {
           deliveryOption,
           address: {
             postalCode: deliveryOption === 'shipping' ? postalCode : null,
-            city: deliveryOption !== 'pickup' ? (selectedCity?.name || citySearchText) : null,
+            city: deliveryOption !== 'pickup' ? citySearchText : null,
             street: deliveryOption !== 'pickup' ? streetSearchText : null,
             houseNumber: deliveryOption !== 'pickup' ? houseNumber : null
           }
@@ -538,14 +398,23 @@ const Profile = () => {
         payment: {
           totalPrice: parsePrice(totalPrice),
           deposit: parsePrice(deposit),
+          depositCurrency: depositCurrency, // Waluta zaliczki (PLN, EUR, USD, etc.)
           cashOnDelivery: calculateCashOnDelivery(),
           documentType,
           nip: documentType === 'invoice' ? nip : null
         },
         realizationDate: realizationDate.toISOString(),
         createdAt: new Date().toISOString(),
-        createdBy: user?.email
+        createdBy: user?.symbol || user?.email // Symbol punktu sprzedaży dla operacji finansowych
       };
+
+      // Debug: sprawdź co jest w obiekcie user
+      console.log('🔍 DEBUG USER OBJECT:', {
+        hasUser: !!user,
+        symbol: user?.symbol,
+        email: user?.email,
+        createdBy: orderData.createdBy
+      });
 
       // Save to database
       const response = await tokenService.authenticatedFetch(getApiUrl('/orders'), {
@@ -585,19 +454,19 @@ const Profile = () => {
           console.error('❌ Błąd wysyłania emaili:', emailError);
         }
 
-        Alert.alert(
-          'Sukces', 
-          `Zamówienie zostało złożone!\nNumer zamówienia: ${backendOrderId}\n\n${email ? 'Email z potwierdzeniem został wysłany na Twój adres.' : 'Powiadomienie o zamówieniu zostało wysłane do sklepu.'}\n\nSkontaktujemy się z Tobą w sprawie realizacji.`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Reset form
-                resetForm();
-              }
-            }
-          ]
+        // Set success message and show modal
+        setOrderNumber(backendOrderId);
+        setSuccessMessage(
+          email 
+            ? 'Zamówienie zostało złożone!\n\nEmail z potwierdzeniem został wysłany na Twój adres.\n\nSkontaktujemy się z Tobą w sprawie realizacji.'
+            : 'Zamówienie zostało złożone!\n\nPowiadomienie o zamówieniu zostało wysłane do sklepu.\n\nSkontaktujemy się z Tobą w sprawie realizacji.'
         );
+        setSuccessModalVisible(true);
+        
+        // Reset form after a short delay
+        setTimeout(() => {
+          resetForm();
+        }, 500);
       } else {
         const errorData = await response.json();
         console.error('❌ Backend error:', errorData);
@@ -627,12 +496,12 @@ const Profile = () => {
     setPhoneNumber('');
     setEmail('');
     setPostalCode('');
-    setSelectedCity(null);
     setCitySearchText('');
     setStreetSearchText('');
     setHouseNumber('');
     setTotalPrice('');
     setDeposit('');
+    setDepositCurrency('PLN'); // Reset waluty zaliczki do PLN
     setDocumentType('receipt');
     setNip('');
     setRealizationDate(new Date());
@@ -714,41 +583,17 @@ const Profile = () => {
     if (sizeSearchText.length > 0) {
       const filtered = sizes.filter(size => {
         const sizeName = size.Roz_Opis || size.name || '';
-        return sizeName.toLowerCase().includes(sizeSearchText.toLowerCase());
+        const sizeText = sizeName.toLowerCase();
+        const searchText = sizeSearchText.toLowerCase().trim();
+        // Exact match: size must equal search OR start with search and be followed by space
+        return sizeText === searchText || 
+               (sizeText.startsWith(searchText) && sizeText[searchText.length] === ' ');
       }).filter(size => size.Roz_Opis && size.Roz_Opis.trim() !== ''); // Filter out empty names
       setFilteredSizes(filtered.slice(0, 10)); // Limit to 10 results
     } else {
       setFilteredSizes([]);
     }
   }, [sizeSearchText, sizes]);
-
-  // Filter cities based on search text
-  useEffect(() => {
-    if (citySearchText.length > 0 && cities.length > 0) {
-      const filtered = cities.filter(city => {
-        const cityName = city.name || '';
-        return cityName.toLowerCase().includes(citySearchText.toLowerCase());
-      }).filter(city => city.name && city.name.trim() !== ''); // Filter out empty names
-      setFilteredCities(filtered.slice(0, 10)); // Limit to 10 results
-      console.log('Filtered cities:', filtered);
-    } else {
-      setFilteredCities(cities); // Show all cities when no search text
-    }
-  }, [citySearchText, cities]);
-
-  // Filter streets based on search text
-  useEffect(() => {
-    if (streetSearchText.length > 0 && streets.length > 0) {
-      const filtered = streets.filter(street => {
-        const streetName = street.name || '';
-        return streetName.toLowerCase().includes(streetSearchText.toLowerCase());
-      }).filter(street => street.name && street.name.trim() !== ''); // Filter out empty names
-      setFilteredStreets(filtered.slice(0, 10)); // Limit to 10 results
-      console.log('Filtered streets:', filtered);
-    } else {
-      setFilteredStreets(streets); // Show all streets when no search text
-    }
-  }, [streetSearchText, streets]);
 
   // Selection handlers
   const handleProductSelect = (product) => {
@@ -1147,128 +992,40 @@ const Profile = () => {
                     </View>
                   )}
 
-                  {/* City Selection Field */}
-                  {deliveryOption === 'shipping' && cities.length > 0 && (
+                  {/* City Field - simple text input */}
+                  {deliveryOption === 'shipping' && (
                     <View style={styles.fieldContainer}>
                       <Text style={styles.fieldLabel}>Miejscowość:</Text>
                       <TextInput
                         style={[styles.input, cityInputFocused && styles.inputFocused]}
-                        placeholder="Wybierz miejscowość..."
+                        placeholder="Wpisz miejscowość..."
                         value={citySearchText}
-                        onChangeText={(text) => {
-                          setCitySearchText(text);
-                          setCityDropdownVisible(text.length > 0);
-                          // Clear selected city if text doesn't match
-                          if (selectedCity && !selectedCity.name.toLowerCase().includes(text.toLowerCase())) {
-                            setSelectedCity(null);
-                          }
-                        }}
-                        onFocus={() => {
-                          setCityInputFocused(true);
-                          if (citySearchText.length > 0) setCityDropdownVisible(true);
-                        }}
+                        onChangeText={handleCityChange}
+                        onFocus={() => setCityInputFocused(true)}
                         onBlur={() => setCityInputFocused(false)}
                         placeholderTextColor="#666"
                       />
-                      {/* City dropdown */}
-                      {(cityDropdownVisible || (cities.length > 0 && citySearchText.length === 0)) && (
-                        <View style={styles.dropdown}>
-                          <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                            {cities.length === 0 ? (
-                              <Text style={styles.noDataText}>Wpisz kod pocztowy aby wyświetlić miejscowości</Text>
-                            ) : filteredCities.length === 0 && citySearchText.length > 0 ? (
-                              <Text style={styles.noDataText}>Brak miejscowości pasujących do wyszukiwania</Text>
-                            ) : (
-                              (filteredCities.length > 0 ? filteredCities : cities).map((city) => (
-                                <TouchableOpacity
-                                  key={city.id}
-                                  style={styles.dropdownItem}
-                                  onPress={() => handleCitySelect(city)}
-                                >
-                                  <Text style={styles.dropdownItemText}>{city.name}</Text>
-                                  {city.fullData && (
-                                    <Text style={styles.dropdownItemSubtext}>
-                                      {city.fullData.gmina}, {city.fullData.powiat}
-                                    </Text>
-                                  )}
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                          <TouchableOpacity
-                            style={styles.closeDropdownButton}
-                            onPress={() => setCityDropdownVisible(false)}
-                          >
-                            <Text style={styles.closeDropdownText}>Zamknij</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
                     </View>
                   )}
 
-                  {/* Street Selection Field */}
-                  {deliveryOption === 'shipping' && selectedCity && (
+                  {/* Street Field - simple text input */}
+                  {deliveryOption === 'shipping' && (
                     <View style={styles.fieldContainer}>
                       <Text style={styles.fieldLabel}>Ulica (opcjonalnie):</Text>
                       <TextInput
                         style={[styles.input, streetInputFocused && styles.inputFocused]}
-                        placeholder="Wybierz ulicę..."
+                        placeholder="Wpisz ulicę..."
                         value={streetSearchText}
-                        onChangeText={(text) => {
-                          setStreetSearchText(text);
-                          setStreetDropdownVisible(text.length > 0);
-                          // Clear selected street if text doesn't match
-                          if (selectedStreet && !selectedStreet.name.toLowerCase().includes(text.toLowerCase())) {
-                            setSelectedStreet(null);
-                          }
-                        }}
-                        onFocus={() => {
-                          setStreetInputFocused(true);
-                          setStreetDropdownVisible(true);
-                        }}
+                        onChangeText={setStreetSearchText}
+                        onFocus={() => setStreetInputFocused(true)}
                         onBlur={() => setStreetInputFocused(false)}
                         placeholderTextColor="#666"
                       />
-                      {/* Street dropdown */}
-                      {streetDropdownVisible && (
-                        <View style={styles.dropdown}>
-                          <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                            {streets.length === 0 ? (
-                              <Text style={styles.noDataText}>
-                                {selectedCity ? 'Brak ulic w bazie dla tej miejscowości lub możesz wpisać ulicę ręcznie' : 'Wybierz najpierw miejscowość'}
-                              </Text>
-                            ) : filteredStreets.length === 0 && streetSearchText.length > 0 ? (
-                              <Text style={styles.noDataText}>Brak ulic pasujących do wyszukiwania</Text>
-                            ) : (
-                              (filteredStreets.length > 0 ? filteredStreets : streets).map((street) => (
-                                <TouchableOpacity
-                                  key={street.id}
-                                  style={styles.dropdownItem}
-                                  onPress={() => handleStreetSelect(street)}
-                                >
-                                  <Text style={styles.dropdownItemText}>{street.name}</Text>
-                                  {street.fullData && street.fullData.kod && (
-                                    <Text style={styles.dropdownItemSubtext}>
-                                      Kod: {street.fullData.kod}
-                                    </Text>
-                                  )}
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                          <TouchableOpacity
-                            style={styles.closeDropdownButton}
-                            onPress={() => setStreetDropdownVisible(false)}
-                          >
-                            <Text style={styles.closeDropdownText}>Zamknij</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
                     </View>
                   )}
 
                   {/* House Number Field */}
-                  {deliveryOption === 'shipping' && selectedCity && (
+                  {deliveryOption === 'shipping' && (
                     <View style={styles.fieldContainer}>
                       <Text style={styles.fieldLabel}>Numer domu/mieszkania:</Text>
                       <TextInput
@@ -1536,6 +1293,35 @@ const Profile = () => {
         </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      
+      {/* Success Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={successModalVisible}
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.successModalOverlay}>
+          <View style={styles.successModalContent}>
+            <View style={styles.successIconContainer}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+            <Text style={styles.successModalTitle}>Sukces!</Text>
+            <Text style={styles.successModalSubtitle}>Numer zamówienia:</Text>
+            <Text style={styles.orderNumber}>{orderNumber}</Text>
+            <Text style={styles.successModalMessage}>
+              {successMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.submitButton, { marginTop: 20, width: '90%' }]}
+              onPress={() => setSuccessModalVisible(false)}
+            >
+              <Text style={styles.submitButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 };
@@ -1798,5 +1584,65 @@ const styles = StyleSheet.create({
   errorBorder: {
     borderColor: '#ff4444',
     borderWidth: 2,
+  },
+  // Success Modal Styles
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  successIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#28a745',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    fontSize: 50,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  successModalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 10,
+  },
+  successModalSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 5,
+  },
+  orderNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#28a745',
+    marginBottom: 15,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  successModalMessage: {
+    fontSize: 15,
+    color: '#ccc',
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
