@@ -801,12 +801,14 @@ describe('Profile Component - Order Form', () => {
         fireEvent.press(getByText('Zatwierdź zamówienie'));
       });
 
+      // Should show success modal instead of Alert
       await waitFor(() => {
-        expect(Alert.alert).toHaveBeenCalledWith(
-          'Sukces',
-          expect.stringContaining('ORD-12345'),
-          expect.any(Array)
-        );
+        expect(getByText(/Zamówienie zostało złożone/i)).toBeTruthy();
+      }, { timeout: 3000 });
+      
+      // Verify order ID is shown
+      await waitFor(() => {
+        expect(getByText(/ORD-12345/i)).toBeTruthy();
       });
     });
   });

@@ -1,5 +1,5 @@
 // Token Management Service for React Native Mobile App
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { getApiUrl } from '../config/api';
 import AuthErrorHandler from '../utils/authErrorHandler';
 
@@ -12,36 +12,36 @@ class TokenService {
         this.isLoggingOut = false; // Flag to indicate logout in progress
     }
 
-    // Get tokens from AsyncStorage
+    // Get tokens from SecureStore
     async getTokens() {
         try {
-            const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
-            const refreshToken = await AsyncStorage.getItem('BukowskiRefreshToken');
+            const accessToken = await SecureStore.getItemAsync('BukowskiAccessToken');
+            const refreshToken = await SecureStore.getItemAsync('BukowskiRefreshToken');
             return { accessToken, refreshToken };
         } catch (error) {
-            console.error('❌ TOKEN SERVICE: Error getting tokens from AsyncStorage:', error);
+            console.error('❌ TOKEN SERVICE: Error getting tokens from SecureStore:', error);
             return { accessToken: null, refreshToken: null };
         }
     }
 
-    // Store tokens in AsyncStorage
+    // Store tokens in SecureStore
     async setTokens(accessToken, refreshToken) {
         try {
             if (accessToken) {
-                await AsyncStorage.setItem('BukowskiAccessToken', accessToken);
+                await SecureStore.setItemAsync('BukowskiAccessToken', accessToken);
                 
                 // Also store expiry time for proactive refresh
                 const payload = this.parseJWT(accessToken);
                 if (payload && payload.exp) {
                     const expiryTime = payload.exp * 1000;
-                    await AsyncStorage.setItem('BukowskiTokenExpiry', expiryTime.toString());
+                    await SecureStore.setItemAsync('BukowskiTokenExpiry', expiryTime.toString());
                 }
                 
                 // 🧪 AUTO-LOGOUT: Start monitoring after setting new token
                 this.startAutoLogoutMonitoring();
             }
             if (refreshToken) {
-                await AsyncStorage.setItem('BukowskiRefreshToken', refreshToken);
+                await SecureStore.setItemAsync('BukowskiRefreshToken', refreshToken);
             }
         } catch (error) {
             console.error('❌ TOKEN SERVICE: Error storing tokens:', error);
@@ -51,14 +51,12 @@ class TokenService {
     // Clear all tokens
     async clearTokens() {
         try {
-            await AsyncStorage.multiRemove([
-                'BukowskiAccessToken',
-                'BukowskiRefreshToken',
-                'BukowskiTokenExpiry',
-                'user' // Clear user data as well
-            ]);
+            await SecureStore.deleteItemAsync('BukowskiAccessToken');
+            await SecureStore.deleteItemAsync('BukowskiRefreshToken');
+            await SecureStore.deleteItemAsync('BukowskiTokenExpiry');
+            // Note: user data stays in AsyncStorage if needed
         } catch (error) {
-            console.error('Error clearing tokens from AsyncStorage:', error);
+            console.error('Error clearing tokens from SecureStore:', error);
         }
     }
 
