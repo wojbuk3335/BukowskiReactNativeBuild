@@ -683,9 +683,15 @@ const Remanent = () => {
         filteredRemanentData.forEach(remanentItem => {
           const code = remanentItem.code;
           if (!remanentGroups[code]) {
+            // Wydobądź rozmiar z nazwy (ostatnia część po spacjach, np. "Amanda ZŁOTY 3XL" -> "3XL")
+            const nameParts = remanentItem.name.trim().split(' ');
+            const extractedSize = nameParts[nameParts.length - 1];
+            // Usuń rozmiar z nazwy (zostaw tylko "Amanda ZŁOTY")
+            const nameWithoutSize = nameParts.slice(0, -1).join(' ');
+            
             remanentGroups[code] = {
-              name: remanentItem.name,
-              size: remanentItem.size || 'Nieznany',
+              name: nameWithoutSize || remanentItem.name, // Nazwa bez rozmiaru
+              size: remanentItem.size || extractedSize || 'Nieznany',
               code: code,
               price: remanentItem.value,
               count: 0
