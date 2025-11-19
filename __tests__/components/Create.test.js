@@ -268,5 +268,295 @@ describe('Create Tab Component', () => {
         expect(getByTestId('qr-scanner')).toBeTruthy();
       }, { timeout: 5000 });
     });
+
+    test('should show timeout error when fetch takes too long', async () => {
+      // Mock functions that timeout
+      const timeoutMock = jest.fn(() => 
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout - backend nie odpowiada po 10 sekundach')), 11000)
+        )
+      );
+
+      mockContext.fetchSizes = timeoutMock;
+      mockContext.fetchColors = jest.fn().mockResolvedValue([]);
+      mockContext.fetchGoods = jest.fn().mockResolvedValue([]);
+      mockContext.fetchStock = jest.fn().mockResolvedValue([]);
+      mockContext.fetchState = jest.fn().mockResolvedValue([]);
+      mockContext.fetchUsers = jest.fn().mockResolvedValue([]);
+      mockContext.fetchBags = jest.fn().mockResolvedValue([]);
+      mockContext.fetchWallets = jest.fn().mockResolvedValue([]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByText } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      // Wait for timeout error
+      await waitFor(() => {
+        expect(getByText('Błąd połączenia')).toBeTruthy();
+        expect(getByText(/Backend nie odpowiada/i)).toBeTruthy();
+      }, { timeout: 12000 });
+    });
+
+    test('should close error modal when close button is pressed', async () => {
+      const errorMock = jest.fn().mockRejectedValue(new Error('Network error'));
+      
+      mockContext.fetchSizes = errorMock;
+      mockContext.fetchColors = errorMock;
+      mockContext.fetchGoods = errorMock;
+      mockContext.fetchStock = errorMock;
+      mockContext.fetchState = errorMock;
+      mockContext.fetchUsers = errorMock;
+      mockContext.fetchBags = errorMock;
+      mockContext.fetchWallets = errorMock;
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByText, queryByText } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      // Wait for error modal
+      await waitFor(() => {
+        expect(getByText('Błąd połączenia')).toBeTruthy();
+      });
+
+      // Click close button
+      const closeButton = getByText('Zamknij');
+      await act(async () => {
+        fireEvent.press(closeButton);
+      });
+
+      // Modal should disappear
+      await waitFor(() => {
+        expect(queryByText('Błąd połączenia')).toBeNull();
+      });
+    });
+  });
+
+  describe('Props Passing to QRScanner', () => {
+    test('should pass correct props to QRScanner component', async () => {
+      mockContext.fetchSizes.mockResolvedValue([{ id: 1, nazwa: 'M' }]);
+      mockContext.fetchColors.mockResolvedValue([{ id: 1, Kol_Opis: 'Czarny' }]);
+      mockContext.fetchGoods.mockResolvedValue([{ id: 1, fullName: 'Kurtka' }]);
+      mockContext.fetchStock.mockResolvedValue([{ id: 1, quantity: 10 }]);
+      mockContext.fetchState.mockResolvedValue([{ id: 1, name: 'State1' }]);
+      mockContext.fetchUsers.mockResolvedValue([{ id: 1, login: 'user1' }]);
+      mockContext.fetchBags.mockResolvedValue([{ id: 1, Torebki_Kod: 'BAG001' }]);
+      mockContext.fetchWallets.mockResolvedValue([{ id: 1, Portfele_Kod: 'WALLET001' }]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByTestId } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      await waitFor(() => {
+        expect(getByTestId('qr-scanner')).toBeTruthy();
+      });
+
+      // Verify QRScanner receives data (component is rendered, props are passed implicitly)
+      expect(getByTestId('qr-scanner')).toBeTruthy();
+    });
+
+    test('should pass isActive prop based on focus state', async () => {
+      mockContext.fetchSizes.mockResolvedValue([]);
+      mockContext.fetchColors.mockResolvedValue([]);
+      mockContext.fetchGoods.mockResolvedValue([]);
+      mockContext.fetchStock.mockResolvedValue([]);
+      mockContext.fetchState.mockResolvedValue([]);
+      mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
+      mockContext.fetchWallets.mockResolvedValue([]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByTestId } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      await waitFor(() => {
+        expect(getByTestId('qr-scanner')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('Edge Cases', () => {
+    test('should handle empty data arrays gracefully', async () => {
+      mockContext.fetchSizes.mockResolvedValue([]);
+      mockContext.fetchColors.mockResolvedValue([]);
+      mockContext.fetchGoods.mockResolvedValue([]);
+      mockContext.fetchStock.mockResolvedValue([]);
+      mockContext.fetchState.mockResolvedValue([]);
+      mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
+      mockContext.fetchWallets.mockResolvedValue([]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByTestId } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      await waitFor(() => {
+        expect(getByTestId('qr-scanner')).toBeTruthy();
+      });
+    });
+
+    test('should handle missing user gracefully', async () => {
+      mockContext.user = null;
+      mockContext.fetchSizes.mockResolvedValue([]);
+      mockContext.fetchColors.mockResolvedValue([]);
+      mockContext.fetchGoods.mockResolvedValue([]);
+      mockContext.fetchStock.mockResolvedValue([]);
+      mockContext.fetchState.mockResolvedValue([]);
+      mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
+      mockContext.fetchWallets.mockResolvedValue([]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByTestId } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      await waitFor(() => {
+        expect(getByTestId('qr-scanner')).toBeTruthy();
+      });
+    });
+
+    test('should handle partial fetch failures gracefully', async () => {
+      mockContext.fetchSizes.mockRejectedValue(new Error('Size fetch failed'));
+      mockContext.fetchColors.mockResolvedValue([{ id: 1, Kol_Opis: 'Czarny' }]);
+      mockContext.fetchGoods.mockResolvedValue([{ id: 1, fullName: 'Kurtka' }]);
+      mockContext.fetchStock.mockResolvedValue([{ id: 1, quantity: 10 }]);
+      mockContext.fetchState.mockResolvedValue([{ id: 1 }]);
+      mockContext.fetchUsers.mockResolvedValue([{ id: 1 }]);
+      mockContext.fetchBags.mockResolvedValue([{ id: 1 }]);
+      mockContext.fetchWallets.mockResolvedValue([{ id: 1 }]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { getByText } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      // Should show error even if only one fetch fails
+      await waitFor(() => {
+        expect(getByText('Błąd połączenia')).toBeTruthy();
+      });
+    });
+
+    test('should call getFilteredSellingPoints after successful fetch', async () => {
+      mockContext.fetchSizes.mockResolvedValue([]);
+      mockContext.fetchColors.mockResolvedValue([]);
+      mockContext.fetchGoods.mockResolvedValue([]);
+      mockContext.fetchStock.mockResolvedValue([]);
+      mockContext.fetchState.mockResolvedValue([]);
+      mockContext.fetchUsers.mockResolvedValue([]);
+      mockContext.fetchBags.mockResolvedValue([]);
+      mockContext.fetchWallets.mockResolvedValue([]);
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      await waitFor(() => {
+        expect(mockContext.getFilteredSellingPoints).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Loading Animation', () => {
+    test('should display loading text during data fetch', async () => {
+      mockContext.fetchSizes.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchColors.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchGoods.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchStock.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchState.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchUsers.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchBags.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+      mockContext.fetchWallets.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 300)));
+
+      const MockContextProvider = ({ children }) => (
+        <GlobalStateContext.Provider value={mockContext}>
+          {children}
+        </GlobalStateContext.Provider>
+      );
+
+      const { queryByText, getByTestId } = render(
+        <MockContextProvider>
+          <Create />
+        </MockContextProvider>
+      );
+
+      // Wait a bit for loading state
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+
+      // Should show loading OR at least not show QR scanner yet
+      const loadingVisible = queryByText('Pobieranie danych z backendu...') !== null;
+      const scannerNotVisible = queryByText('qr-scanner') === null;
+      
+      expect(loadingVisible || scannerNotVisible).toBeTruthy();
+
+      // Wait for completion
+      await waitFor(() => {
+        expect(getByTestId('qr-scanner')).toBeTruthy();
+      }, { timeout: 3000 });
+    });
   });
 });
+

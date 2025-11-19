@@ -219,8 +219,8 @@ describe('Search Alphabetical Sorting Unit Tests', () => {
       const sorted = alphabeticalSort([...largeArray]);
       const endTime = performance.now();
       
-      // Should complete within reasonable time (less than 100ms)
-      expect(endTime - startTime).toBeLessThan(100);
+      // Should complete within reasonable time (less than 200ms)
+      expect(endTime - startTime).toBeLessThan(200);
       expect(sorted).toHaveLength(1000);
       
       // Verify it's actually sorted

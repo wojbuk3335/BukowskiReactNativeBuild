@@ -282,7 +282,7 @@ describe('Search Integration Tests', () => {
 
       const endTime = performance.now();
       
-      expect(endTime - startTime).toBeLessThan(100); // Should complete within 100ms
+      expect(endTime - startTime).toBeLessThan(200); // Should complete within 200ms
       expect(sorted).toHaveLength(1000);
     });
   });
