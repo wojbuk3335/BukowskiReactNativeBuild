@@ -1,8 +1,12 @@
 // Authentication Error Handler for Mobile App
 import { router } from "expo-router";
+import Logger from '../services/logger';
 
 class AuthErrorHandler {
     static tokenService = null;
+    static isRedirecting = false; // Prevent multiple simultaneous redirects
+    static lastRedirectTime = 0;
+    static REDIRECT_COOLDOWN = 1000; // 1 second cooldown between redirects
     
     // Set token service reference to avoid circular import
     static setTokenService(service) {
@@ -43,9 +47,23 @@ class AuthErrorHandler {
     
     // Handle authentication errors with automatic redirect
     static async handleAuthError(error, context = 'Unknown') {
-        // Don't log during logout process to keep console clean
-        if (!this.tokenService?.isLoggingOut) {
-            console.log(`🔄 Auth error detected in ${context}:`, error?.message || error);
+        // Skip if we're in the middle of logging out - it's expected
+        if (this.tokenService?.isLoggingOut) {
+            return;
+        }
+        
+        // Prevent redirect spam - only redirect once per second
+        const now = Date.now();
+        if (this.isRedirecting || (now - this.lastRedirectTime) < this.REDIRECT_COOLDOWN) {
+            return;
+        }
+        
+        this.isRedirecting = true;
+        this.lastRedirectTime = now;
+        
+        // Log only in development
+        if (__DEV__) {
+            Logger.debug(`🔄 Auth error detected in ${context}:`, error?.message || error);
         }
         
         try {
@@ -57,18 +75,22 @@ class AuthErrorHandler {
             // Redirect to login page
             router.replace("/(auth)/sign-in");
             
-            // Don't log during logout process
-            if (!this.tokenService?.isLoggingOut) {
-                console.log('✅ User redirected to login page');
+            if (__DEV__) {
+                Logger.debug('✅ User redirected to login page');
             }
         } catch (redirectError) {
-            console.error('❌ Error during redirect:', redirectError);
+            Logger.error('❌ Error during redirect:', redirectError);
             // Fallback - try to go to root
             try {
                 router.replace("/");
             } catch (fallbackError) {
-                console.error('❌ Fallback redirect failed:', fallbackError);
+                Logger.error('❌ Fallback redirect failed:', fallbackError);
             }
+        } finally {
+            // Reset redirect flag after a short delay
+            setTimeout(() => {
+                this.isRedirecting = false;
+            }, 500);
         }
     }
     

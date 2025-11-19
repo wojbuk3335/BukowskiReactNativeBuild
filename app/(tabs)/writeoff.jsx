@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl } from "../../config/api";
 import { GlobalStateContext } from "../../context/GlobalState";
 import tokenService from "../../services/tokenService";
-import { debugTokens } from "../../debug_tokens";
+import Logger from "../../services/logger"; // Import logger service
 import AuthFix from "../../components/AuthFix";
 import LogoutButton from "../../components/LogoutButton";
 
@@ -114,9 +114,6 @@ const WriteOff = () => {
     }, [globalUsers]);
 
     const fetchAllRequiredData = async (isRefreshAction = false) => {
-        // Debug tokens
-        await debugTokens();
-        
         // Ustawienie odpowiedniego stanu ładowania
         if (isRefreshAction) {
             setIsRefreshing(true);
@@ -271,10 +268,6 @@ const fetchSales = async () => {
     const openModal = (item) => {
         setSelectedItem(item);
         setModalVisible(true);
-        // Debug: sprawdź dane użytkownika
-        console.log('User data:', user);
-        console.log('User symbol:', user?.symbol);
-        console.log('User email:', user?.email);
     };
 
     const closeModal = () => {

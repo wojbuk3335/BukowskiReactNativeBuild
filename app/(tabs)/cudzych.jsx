@@ -20,6 +20,7 @@ import { GlobalStateContext } from '../../context/GlobalState';
 
 import { getApiUrl } from '../../config/api';
 import tokenService from '../../services/tokenService';
+import Logger from '../../services/logger'; // Import logger service
 import LogoutButton from '../../components/LogoutButton';
 
 const Cudzych = () => {
@@ -111,7 +112,7 @@ const Cudzych = () => {
         setBalance(data.balance || 0);
       }
     } catch (error) {
-      console.error('Error fetching balance:', error);
+      Logger.error('Error fetching balance:', error);
     }
   }, []);
 
@@ -125,7 +126,7 @@ const Cudzych = () => {
         setTransactions(data || []);
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      Logger.error('Error fetching transactions:', error);
     }
   }, []);
 
@@ -138,10 +139,10 @@ const Cudzych = () => {
         const data = await response.json();
         setCudzichPriceList(data);
       } else {
-        console.error('❌ Błąd pobierania cennika:', response.status);
+        Logger.error('❌ Błąd pobierania cennika:', response.status);
       }
     } catch (error) {
-      console.error('❌ Error fetching Cudzich price list:', error);
+      Logger.error('❌ Error fetching Cudzich price list:', error);
     }
   }, []);
 
@@ -163,7 +164,7 @@ const Cudzych = () => {
         fetchUsers()
       ]);
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      Logger.error('Error loading initial data:', error);
       Alert.alert('Błąd', 'Nie udało się załadować danych');
     } finally {
       setLoading(false);
@@ -350,14 +351,14 @@ const Cudzych = () => {
                 
                 if (!returnResponse.ok) {
                   const returnError = await returnResponse.json();
-                  console.warn('Warning: Could not mark historical sale as returned:', returnError.error);
+                  Logger.warn('Warning: Could not mark historical sale as returned:', returnError.error);
                 }
               } else {
                 const historicalError = await historicalSaleResponse.json();
-                console.warn('Warning: Could not create historical sale:', historicalError.error);
+                Logger.warn('Warning: Could not create historical sale:', historicalError.error);
               }
             } catch (historicalError) {
-              console.warn('Warning: Could not create historical sale:', historicalError);
+              Logger.warn('Warning: Could not create historical sale:', historicalError);
             }
           } else {
             // Normal return - just mark existing sales as returned
@@ -378,10 +379,10 @@ const Cudzych = () => {
               
               if (!returnResponse.ok) {
                 const returnError = await returnResponse.json();
-                console.warn('Warning: Could not mark sales as returned (manual):', returnError.error);
+                Logger.warn('Warning: Could not mark sales as returned (manual):', returnError.error);
               }
             } catch (returnError) {
-              console.warn('Warning: Could not mark sales as returned (manual):', returnError);
+              Logger.warn('Warning: Could not mark sales as returned (manual):', returnError);
             }
           }
         }
@@ -403,7 +404,7 @@ const Cudzych = () => {
         Alert.alert('Błąd', errorData.error || 'Nie udało się zapisać transakcji');
       }
     } catch (error) {
-      console.error('Error creating transaction:', error);
+      Logger.error('Error creating transaction:', error);
       Alert.alert('Błąd', 'Nie udało się połączyć z serwerem');
     } finally {
       setLoading(false);
@@ -425,10 +426,10 @@ const Cudzych = () => {
         
         if (matchedProduct) {
           productId = matchedProduct._id;
-          console.log('DEBUG: Found matching product ID:', productId, 'for name:', productName);
+          Logger.debug('DEBUG: Found matching product ID:', productId, 'for name:', productName);
         } else {
-          console.log('DEBUG: No matching product found for name:', productName);
-          console.log('DEBUG: Available products sample:', goods.slice(0, 3).map(g => g.fullName));
+          Logger.debug('DEBUG: No matching product found for name:', productName);
+          Logger.debug('DEBUG: Available products sample:', goods.slice(0, 3).map(g => g.fullName));
         }
       }
       
@@ -461,7 +462,7 @@ const Cudzych = () => {
         // Also save as regular sale (sprzedaż) if it's 'odbior' type
         if (type === 'odbior') {
           try {
-            console.log('DEBUG: Saving as regular sale...');
+            Logger.debug('DEBUG: Saving as regular sale...');
             
             // Get current date and time for timestamp - use ISO format for consistent parsing
             const now = new Date();
@@ -488,20 +489,20 @@ const Cudzych = () => {
             });
             
             if (salesResponse.ok) {
-              console.log('DEBUG: Sale saved successfully');
+              Logger.debug('DEBUG: Sale saved successfully');
             } else {
               const salesError = await salesResponse.json();
-              console.warn('Warning: Could not save as regular sale:', salesError.error);
+              Logger.warn('Warning: Could not save as regular sale:', salesError.error);
             }
           } catch (salesError) {
-            console.warn('Warning: Could not save as regular sale:', salesError);
+            Logger.warn('Warning: Could not save as regular sale:', salesError);
           }
         }
         
         // Mark related sales as returned if it's 'zwrot' type
         if (type === 'zwrot') {
           try {
-            console.log('DEBUG: Marking related sales as returned...');
+            Logger.debug('DEBUG: Marking related sales as returned...');
             
             const returnResponse = await tokenService.authenticatedFetch(getApiUrl('/sales/mark-as-returned'), {
               method: 'POST',
@@ -519,13 +520,13 @@ const Cudzych = () => {
             
             if (returnResponse.ok) {
               const returnData = await returnResponse.json();
-              console.log('DEBUG: Sales marked as returned:', returnData.modifiedCount);
+              Logger.debug('DEBUG: Sales marked as returned:', returnData.modifiedCount);
             } else {
               const returnError = await returnResponse.json();
-              console.warn('Warning: Could not mark sales as returned:', returnError.error);
+              Logger.warn('Warning: Could not mark sales as returned:', returnError.error);
             }
           } catch (returnError) {
-            console.warn('Warning: Could not mark sales as returned:', returnError);
+            Logger.warn('Warning: Could not mark sales as returned:', returnError);
           }
         }
         
@@ -542,7 +543,7 @@ const Cudzych = () => {
         Alert.alert('Błąd', errorData.error || 'Nie udało się zapisać transakcji');
       }
     } catch (error) {
-      console.error('Error saving scanned transaction:', error);
+      Logger.error('Error saving scanned transaction:', error);
       Alert.alert('Błąd', 'Nie udało się połączyć z serwerem');
     } finally {
       setLoading(false);
@@ -594,7 +595,7 @@ const Cudzych = () => {
         Alert.alert('Błąd', errorData.error || 'Nie udało się zapisać płatności');
       }
     } catch (error) {
-      console.error('❌ Error creating payment:', error);
+      Logger.error('❌ Error creating payment:', error);
       Alert.alert('Błąd', 'Nie udało się połączyć z serwerem');
     } finally {
       setLoading(false);
@@ -675,7 +676,7 @@ const Cudzych = () => {
         sizeObj: sizeItem
       };
     } catch (error) {
-      console.error("Error building jacket name from barcode:", error);
+      Logger.error("Error building jacket name from barcode:", error);
       return null;
     }
   };
@@ -719,7 +720,7 @@ const Cudzych = () => {
       
       return fullBagName;
     } catch (error) {
-      console.error("Error building bag name from barcode:", error);
+      Logger.error("Error building bag name from barcode:", error);
       return null;
     }
   };
@@ -764,7 +765,7 @@ const Cudzych = () => {
       
       return fullWalletName;
     } catch (error) {
-      console.error("Error building wallet name from barcode:", error);
+      Logger.error("Error building wallet name from barcode:", error);
       return null;
     }
   };
@@ -810,11 +811,11 @@ const Cudzych = () => {
         
         return fullRemainingProductName;
       } catch (error) {
-        console.error("Error fetching remaining products:", error);
+        Logger.error("Error fetching remaining products:", error);
         return `Produkt_${productCode} ${colorName}`;
       }
     } catch (error) {
-      console.error("Error building remaining product name from barcode:", error);
+      Logger.error("Error building remaining product name from barcode:", error);
       return null;
     }
   };
@@ -1816,15 +1817,15 @@ const Cudzych = () => {
                   style={[styles.smallButton, { backgroundColor: '#28a745' }]}
                   onPress={async () => {
                     // Use price from scannedProductData
-                    console.log('DEBUG: Scanned product data:', scannedProductData);
+                    Logger.debug('DEBUG: Scanned product data:', scannedProductData);
                     
                     if (scannedProductData.price && scannedProductData.price !== "Brak ceny") {
-                      console.log('DEBUG: Using price:', scannedProductData.price);
+                      Logger.debug('DEBUG: Using price:', scannedProductData.price);
                       await saveTransaction('odbior', scannedProductData.name, scannedProductData.size, scannedProductData.price, '', scannedProductData.barcode);
                       setScannedProductModalVisible(false);
                       setScanned(false);
                     } else {
-                      console.log('DEBUG: No price available for product:', scannedProductData.name);
+                      Logger.debug('DEBUG: No price available for product:', scannedProductData.name);
                       Alert.alert("Błąd", `Brak ceny dla produktu ${scannedProductData.name} w cenniku Cudzich`);
                     }
                   }}

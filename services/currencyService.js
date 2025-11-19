@@ -1,5 +1,6 @@
 // Currency Service - obsługuje kursy walut z ręcznym wprowadzaniem
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Logger from './logger';
 
 class CurrencyService {
   // Cache dla kursów
@@ -35,7 +36,7 @@ class CurrencyService {
         return this.DEFAULT_RATES;
       }
     } catch (error) {
-      console.error('Error loading exchange rates:', error);
+      Logger.error('Error loading exchange rates:', error);
       this.exchangeRatesCache = this.DEFAULT_RATES;
       return this.DEFAULT_RATES;
     }
@@ -52,7 +53,7 @@ class CurrencyService {
       this.exchangeRatesCache = rates;
       return true;
     } catch (error) {
-      console.error('Error saving exchange rates:', error);
+      Logger.error('Error saving exchange rates:', error);
       return false;
     }
   }
@@ -77,7 +78,7 @@ class CurrencyService {
       
       return await this.saveExchangeRates(updatedRates);
     } catch (error) {
-      console.error(`Error updating rate for ${currency}:`, error);
+      Logger.error(`Error updating rate for ${currency}:`, error);
       return false;
     }
   }
@@ -162,7 +163,7 @@ class CurrencyService {
       };
       
     } catch (error) {
-      console.error('Błąd obliczania procentu zaliczki:', error);
+      Logger.error('Błąd obliczania procentu zaliczki:', error);
       throw error;
     }
   }

@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'; // Import 
 import { getApiUrl } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import tokenService from '../../services/tokenService';
-import CurrencyService from '../../services/currencyService'; // Import currency service
+import CurrencyService from '../../services/currencyService';
+import Logger from '../../services/logger'; // Import currency service
 import LogoutButton from '../../components/LogoutButton';
 import { CameraView, useCameraPermissions } from "expo-camera"; // Import camera for QR scanning
 
@@ -202,7 +203,7 @@ const Home = () => {
       });
       setTotals(currencyTotals); // Update totals state
     } catch (error) {
-      console.error('Error fetching sales data:', error);
+      Logger.error('Error fetching sales data:', error);
     }
   };
 
@@ -225,7 +226,7 @@ const Home = () => {
 
       setEditModalVisible(true); // Show the edit modal
     } catch (error) {
-      console.error("Error fetching item data:", error.message);
+      Logger.error("Error fetching item data:", error.message);
     }
   };
 
@@ -260,10 +261,10 @@ const Home = () => {
         ); // Update the item in the list
         setEditModalVisible(false); // Close the edit modal
       } else {
-        console.error("No valid ID found for the item to update.");
+        Logger.error("No valid ID found for the item to update.");
       }
     } catch (error) {
-      console.error("Error updating item:", error.message);
+      Logger.error("Error updating item:", error.message);
     }
   };
 
@@ -299,7 +300,7 @@ const Home = () => {
   // Set products from stateData when stateData are loaded (use stateData for product selection with barcodes)
   useEffect(() => {
     if (stateData && Array.isArray(stateData) && stateData.length > 0) {
-      // console.log('Setting products from stateData:', stateData.length);
+      // Logger.debug('Setting products from stateData:', stateData.length);
       setProducts(stateData);
       setFilteredProducts(stateData); // Initialize filtered products
     }
@@ -397,7 +398,7 @@ const Home = () => {
       
       setTransferredItems(filteredData); // Filter items by transfer_from
     } catch (error) {
-      console.error("Error fetching transferred items:", error);
+      Logger.error("Error fetching transferred items:", error);
       setTransferredItems([]); // Fallback to empty array
     }
   };
@@ -416,7 +417,7 @@ const Home = () => {
       const transferArray = Array.isArray(data) ? data : (data?.transfers || data?.data || []);
       setReceivedItems(transferArray.filter((item) => item.transfer_to === user.symbol)); // Filter items by transfer_to
     } catch (error) {
-      console.error("Error fetching received items:", error);
+      Logger.error("Error fetching received items:", error);
       setReceivedItems([]); // Fallback to empty array
     }
   };
@@ -443,7 +444,7 @@ const Home = () => {
       
       setAdvancesData(advancesFiltered);
     } catch (error) {
-      console.error("Error fetching advances:", error);
+      Logger.error("Error fetching advances:", error);
       setAdvancesData([]); // Fallback to empty array
     }
   };
@@ -470,7 +471,7 @@ const Home = () => {
     } catch (error) {
       // Silent error handling for testing - log only in production
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error fetching financial operations:", error);
+        Logger.error("Error fetching financial operations:", error);
       }
       // Fallback to old deductions endpoint if new one doesn't exist yet
       try {
@@ -487,7 +488,7 @@ const Home = () => {
         );
         setDeductionsData(deductionsFiltered);
       } catch (fallbackError) {
-        console.error("Error fetching deductions fallback:", fallbackError);
+        Logger.error("Error fetching deductions fallback:", fallbackError);
         setDeductionsData([]);
       }
     }
@@ -565,15 +566,15 @@ const Home = () => {
           : employeesArray;
           
         setEmployees(filteredEmployees);
-        // console.log(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
+        // Logger.debug(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
       } else {
         if (process.env.NODE_ENV !== 'test') {
-          console.error('Failed to fetch employees:', response.status);
+          Logger.error('Failed to fetch employees:', response.status);
         }
       }
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error fetching employees:", error);
+        Logger.error("Error fetching employees:", error);
       }
       setEmployees([]);
     }
@@ -582,15 +583,15 @@ const Home = () => {
   // Fetch assigned salespeople from database
   const fetchAssignedSalespeople = async () => {
     try {
-      const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+      const { accessToken } = await tokenService.getTokens();
       const userData = await AsyncStorage.getItem('user');
       
-      // console.log('Fetch assigned - Token:', accessToken ? 'present' : 'missing');
-      // console.log('Fetch assigned - UserData:', userData ? 'present' : 'missing');
+      // Logger.debug('Fetch assigned - Token:', accessToken ? 'present' : 'missing');
+      // Logger.debug('Fetch assigned - UserData:', userData ? 'present' : 'missing');
       
       if (!accessToken || !userData) {
         if (process.env.NODE_ENV !== 'test') {
-          console.log('No token or user data available');
+          Logger.debug('No token or user data available');
         }
         return;
       }
@@ -599,7 +600,7 @@ const Home = () => {
       const sellingPoint = user.sellingPoint || user.symbol;
 
       if (!sellingPoint) {
-        console.log('No selling point available');
+        Logger.debug('No selling point available');
         return;
       }
 
@@ -616,12 +617,12 @@ const Home = () => {
         // Extract employee data from assignments
         const assignedEmployees = assignments.map(assignment => assignment.employeeId);
         setAssignedSalespeople(assignedEmployees);
-        // console.log('Loaded assigned salespeople:', assignedEmployees.length);
+        // Logger.debug('Loaded assigned salespeople:', assignedEmployees.length);
       } else {
-        console.error('Failed to fetch sales assignments:', response.status);
+        Logger.error('Failed to fetch sales assignments:', response.status);
       }
     } catch (error) {
-      console.error("Error fetching assigned salespeople:", error);
+      Logger.error("Error fetching assigned salespeople:", error);
     }
   };
 
@@ -629,11 +630,11 @@ const Home = () => {
     if (!assignedSalespeople.find(person => person._id === employee._id)) {
       try {
         // Pobierz dane użytkownika z localStorage
-        const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+        const { accessToken } = await tokenService.getTokens();
         const userData = await AsyncStorage.getItem('user');
         
-        console.log('Assign salesperson - Token:', accessToken ? 'present' : 'missing');
-        console.log('Assign salesperson - UserData:', userData ? 'present' : 'missing');
+        Logger.debug('Assign salesperson - Token:', accessToken ? 'present' : 'missing');
+        Logger.debug('Assign salesperson - UserData:', userData ? 'present' : 'missing');
         
         if (!accessToken || !userData) {
           setErrorMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
@@ -683,7 +684,7 @@ const Home = () => {
           setErrorModalVisible(true);
         }
       } catch (error) {
-        console.error('Error assigning salesperson:', error);
+        Logger.error('Error assigning salesperson:', error);
         setErrorMessage("Błąd połączenia z serwerem. Spróbuj ponownie.");
         setErrorModalVisible(true);
       }
@@ -716,11 +717,11 @@ const Home = () => {
   const performRemoval = async (employeeId, deleteWorkHours) => {
     try {
       // Pobierz dane użytkownika z localStorage
-      const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+      const { accessToken } = await tokenService.getTokens();
       const userData = await AsyncStorage.getItem('user');
       
-      // console.log('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
-      // console.log('Remove salesperson - UserData:', userData ? 'present' : 'missing');
+      // Logger.debug('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
+      // Logger.debug('Remove salesperson - UserData:', userData ? 'present' : 'missing');
       
       if (!accessToken || !userData) {
         setSuccessMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
@@ -731,8 +732,8 @@ const Home = () => {
       const user = JSON.parse(userData);
       const sellingPoint = user.sellingPoint || user.symbol;
       
-      // console.log('Remove salesperson - Selling point:', sellingPoint);
-      // console.log('Remove salesperson - Employee ID:', employeeId);
+      // Logger.debug('Remove salesperson - Selling point:', sellingPoint);
+      // Logger.debug('Remove salesperson - Employee ID:', employeeId);
 
       if (!sellingPoint) {
         setSuccessMessage("Nie można określić punktu sprzedaży.");
@@ -741,7 +742,7 @@ const Home = () => {
       }
 
       const url = `http://192.168.1.11:3000/api/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}&deleteWorkHours=${deleteWorkHours}`;
-      // console.log('Remove salesperson - URL:', url);
+      // Logger.debug('Remove salesperson - URL:', url);
 
       const response = await fetch(url, {
         method: 'DELETE',
@@ -751,10 +752,10 @@ const Home = () => {
         }
       });
 
-      // console.log('Remove salesperson - Response status:', response.status);
+      // Logger.debug('Remove salesperson - Response status:', response.status);
       
       const data = await response.json();
-      // console.log('Remove salesperson - Response data:', data);
+      // Logger.debug('Remove salesperson - Response data:', data);
 
       if (response.ok) {
         // Usuń z lokalnego stanu
@@ -784,7 +785,7 @@ const Home = () => {
         setSuccessModalVisible(true);
       }
     } catch (error) {
-      console.error('Error removing salesperson:', error);
+      Logger.error('Error removing salesperson:', error);
       setSuccessMessage("Błąd połączenia z serwerem. Spróbuj ponownie.");
       setSuccessModalVisible(true);
     }
@@ -818,7 +819,7 @@ const Home = () => {
     let errorCount = 0;
 
     // Pobierz dane autoryzacji
-    const accessToken = await AsyncStorage.getItem('BukowskiAccessToken');
+    const { accessToken } = await tokenService.getTokens();
     const userData = await AsyncStorage.getItem('user');
     
     if (!accessToken || !userData) {
@@ -840,7 +841,7 @@ const Home = () => {
     for (const employee of selectedSalespeople) {
       if (!assignedSalespeople.find(person => person._id === employee._id)) {
         try {
-          // console.log(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
+          // Logger.debug(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
           
           const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
             method: 'POST',
@@ -859,14 +860,14 @@ const Home = () => {
 
           if (response.ok) {
             addedCount++;
-            // console.log(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
+            // Logger.debug(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
           } else {
             errorCount++;
-            console.error(`Failed to assign ${employee.firstName} ${employee.lastName}:`, data.message);
+            Logger.error(`Failed to assign ${employee.firstName} ${employee.lastName}:`, data.message);
           }
         } catch (error) {
           errorCount++;
-          console.error(`Error assigning ${employee.firstName} ${employee.lastName}:`, error);
+          Logger.error(`Error assigning ${employee.firstName} ${employee.lastName}:`, error);
         }
       } else {
         alreadyAssignedNames.push(`${employee.firstName} ${employee.lastName}`);
@@ -898,7 +899,7 @@ const Home = () => {
   // Commission recalculation function
   const recalculateCommissions = async () => {
     try {
-      console.log('🔄 Przeliczam prowizje...');
+      Logger.debug('🔄 Przeliczam prowizje...');
       
       const response = await tokenService.authenticatedFetch(
         getApiUrl('/sales-assignments/recalculate-commissions'),
@@ -932,7 +933,7 @@ const Home = () => {
         setErrorModalVisible(true);
       }
     } catch (error) {
-      console.error("Error recalculating commissions:", error);
+      Logger.error("Error recalculating commissions:", error);
       setErrorMessage("Wystąpił błąd podczas przeliczania prowizji.");
       setErrorModalVisible(true);
     }
@@ -956,7 +957,7 @@ const Home = () => {
       setSuccessMessage("Sprzedaż została pomyślnie usunięta!");
       setSuccessModalVisible(true);
     } catch (error) {
-      console.error("Error deleting item:", error.message);
+      Logger.error("Error deleting item:", error.message);
       setErrorMessage("Nie udało się usunąć sprzedaży. Spróbuj ponownie.");
       setErrorModalVisible(true);
     }
@@ -979,7 +980,7 @@ const Home = () => {
     }
 
     // Debug: sprawdźmy strukturę selectedItem
-    console.log('Selected item for Pan Kazek:', selectedItem);
+    Logger.debug('Selected item for Pan Kazek:', selectedItem);
 
     // Get today's date
     const today = new Date().toISOString().split('T')[0];
@@ -1011,7 +1012,7 @@ const Home = () => {
       symbol: user.symbol
     };
 
-    console.log('Pan Kazek data to send:', panKazekData);
+    Logger.debug('Pan Kazek data to send:', panKazekData);
 
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl('/pan-kazek'), {
@@ -1087,7 +1088,7 @@ const Home = () => {
       }
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error fetching today's work hours:", error);
+        Logger.error("Error fetching today's work hours:", error);
       }
     }
   };
@@ -1097,12 +1098,12 @@ const Home = () => {
     setWorkNotes("");
     
     try {
-      // console.log(`🔍 Sprawdzam istniejące godziny pracy dla ${employee.firstName} ${employee.lastName}`);
+      // Logger.debug(`🔍 Sprawdzam istniejące godziny pracy dla ${employee.firstName} ${employee.lastName}`);
       
       // Pobierz punkt sprzedaży z danych użytkownika
       const currentSellingPoint = user?.sellingPoint || user?.symbol;
       if (!currentSellingPoint) {
-        console.log(`❌ Brak punktu sprzedaży - używam domyślnych godzin`);
+        Logger.debug(`❌ Brak punktu sprzedaży - używam domyślnych godzin`);
         setWorkStartTime("08:00");
         setWorkEndTime("16:00");
         setWorkHoursModalVisible(true);
@@ -1120,22 +1121,22 @@ const Home = () => {
         const result = await response.json();
         if (result.workHours && result.workHours.length > 0) {
           const workHours = result.workHours[0]; // Pierwszy (i jedyny) wynik
-          // console.log(`✅ Znaleziono godziny pracy: ${workHours.startTime} - ${workHours.endTime}`);
+          // Logger.debug(`✅ Znaleziono godziny pracy: ${workHours.startTime} - ${workHours.endTime}`);
           setWorkStartTime(workHours.startTime);
           setWorkEndTime(workHours.endTime);
           if (workHours.notes) setWorkNotes(workHours.notes);
         } else {
-          console.log(`📝 Brak godzin pracy - używam domyślnych`);
+          Logger.debug(`📝 Brak godzin pracy - używam domyślnych`);
           setWorkStartTime("08:00");
           setWorkEndTime("16:00");
         }
       } else {
-        console.log(`📝 Nie można pobrać godzin pracy - używam domyślnych`);
+        Logger.debug(`📝 Nie można pobrać godzin pracy - używam domyślnych`);
         setWorkStartTime("08:00");
         setWorkEndTime("16:00");
       }
     } catch (error) {
-      console.error("Błąd podczas pobierania godzin pracy:", error);
+      Logger.error("Błąd podczas pobierania godzin pracy:", error);
       setWorkStartTime("08:00");
       setWorkEndTime("16:00");
     }
@@ -1198,8 +1199,8 @@ const Home = () => {
         notes: workNotes.trim()
       };
 
-      // console.log('🔍 DEBUG Work Hours Submit:');
-      // console.log('- workHoursData:', workHoursData);
+      // Logger.debug('🔍 DEBUG Work Hours Submit:');
+      // Logger.debug('- workHoursData:', workHoursData);
 
       // Użyj endpoint upsert - automatycznie update lub create
       const response = await tokenService.authenticatedFetch(getApiUrl('/work-hours/upsert'), {
@@ -1221,14 +1222,14 @@ const Home = () => {
         fetchTodaysWorkHours(); // Refresh today's work hours
       } else {
         const errorData = await response.json();
-        console.error('❌ Error saving work hours:', errorData);
+        Logger.error('❌ Error saving work hours:', errorData);
         setSuccessMessage(
           errorData.message || "Nie udało się zapisać godzin pracy."
         );
         setSuccessModalVisible(true);
       }
     } catch (error) {
-      console.error("Error saving work hours:", error);
+      Logger.error("Error saving work hours:", error);
       setSuccessMessage(
         `Wystąpił błąd podczas zapisywania godzin pracy.\n\nSzczegóły: ${error.message}`
       );
@@ -1352,7 +1353,7 @@ const Home = () => {
       setSuccessModalVisible(true);
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error submitting deduction:", error);
+        Logger.error("Error submitting deduction:", error);
       }
       setErrorMessage("Nie udało się odpisać kwoty. Spróbuj ponownie.");
       setErrorModalVisible(true);
@@ -1524,7 +1525,7 @@ const Home = () => {
                   `. Pozostało: ${remainingInCurrency.toFixed(2)} ${productSaleCurrency}`;
               }
             } catch (error) {
-              console.error('Currency conversion error:', error);
+              Logger.error('Currency conversion error:', error);
               // Fallback to simple calculation
               const remaining = finalPricePLN - advanceAmount;
               finalReason = `Zaliczka na produkt: ${productName}. Cena finalna: ${finalPricePLN.toFixed(2)} PLN, Dopłata: ${remaining.toFixed(2)} PLN`;
@@ -1650,7 +1651,7 @@ const Home = () => {
       setSuccessModalVisible(true);
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error submitting addition:", error);
+        Logger.error("Error submitting addition:", error);
       }
       setErrorMessage("Nie udało się dopisać kwoty. Spróbuj ponownie.");
       setErrorModalVisible(true);
@@ -1682,7 +1683,7 @@ const Home = () => {
       setSuccessModalVisible(true);
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
-        console.error("Error canceling deduction:", error);
+        Logger.error("Error canceling deduction:", error);
       }
       setErrorMessage("Nie udało się anulować odpisanej kwoty. Spróbuj ponownie.");
       setErrorModalVisible(true);
@@ -1738,7 +1739,7 @@ const Home = () => {
         setPanKazekItems(data.data || []);
       }
     } catch (error) {
-      console.error('Error fetching Pan Kazek items:', error);
+      Logger.error('Error fetching Pan Kazek items:', error);
     }
   };
 
@@ -1805,10 +1806,10 @@ const Home = () => {
         ); // Update the item in the list
         setEditFromModalVisible(false); // Close the modal
       } else {
-        console.error("No valid ID found for the selected item.");
+        Logger.error("No valid ID found for the selected item.");
       }
     } catch (error) {
-      console.error("Error updating 'from' field:", error.message);
+      Logger.error("Error updating 'from' field:", error.message);
     }
   };
 
@@ -1877,7 +1878,7 @@ const Home = () => {
         const currentRate = await CurrencyService.getCurrencyRate(currency);
         setAddAmountCurrencyRate(currentRate.toString());
       } catch (error) {
-        console.error('Error loading currency rate:', error);
+        Logger.error('Error loading currency rate:', error);
         setAddAmountCurrencyRate("1.0");
       }
     }
@@ -1899,7 +1900,7 @@ const Home = () => {
         const currentRate = await CurrencyService.getCurrencyRate(currency);
         setDeductionCurrencyRate(currentRate.toString());
       } catch (error) {
-        console.error('Error loading currency rate:', error);
+        Logger.error('Error loading currency rate:', error);
         setDeductionCurrencyRate("1.0");
       }
     }
@@ -1928,7 +1929,7 @@ const Home = () => {
         }));
         
       } catch (error) {
-        console.error('Error loading currency rate:', error);
+        Logger.error('Error loading currency rate:', error);
         setProductSaleCurrencyRate("1.0");
         
         // Set default rate in exchangeRates as well
@@ -1970,7 +1971,7 @@ const Home = () => {
           results[currency] = (pricePLN / rate).toFixed(2);
         }
       } catch (error) {
-        console.error(`Error converting to ${currency}:`, error);
+        Logger.error(`Error converting to ${currency}:`, error);
       }
     }
     
@@ -1984,7 +1985,7 @@ const Home = () => {
       setExchangeRates(rates);
       return rates;
     } catch (error) {
-      console.error('Error loading exchange rates:', error);
+      Logger.error('Error loading exchange rates:', error);
       // Use default rates
       const defaultRates = CurrencyService.getDefaultRates();
       setExchangeRates(defaultRates);
@@ -2029,7 +2030,7 @@ const Home = () => {
         setErrorModalVisible(true);
       }
     } catch (error) {
-      console.error('Error saving currency rate:', error);
+      Logger.error('Error saving currency rate:', error);
       setErrorMessage("Błąd podczas zapisywania kursu. Spróbuj ponownie.");
       setErrorModalVisible(true);
     }
@@ -2074,7 +2075,7 @@ const Home = () => {
         setShowCurrencyConversion(true);
       }
     } catch (error) {
-      console.error('Error converting price:', error);
+      Logger.error('Error converting price:', error);
       setProductPriceInCurrency(pricePLN.toFixed(2));
       setShowCurrencyConversion(false);
     }
@@ -2108,7 +2109,7 @@ const Home = () => {
         return calculation;
       }
     } catch (error) {
-      console.error('Error calculating advance percentage:', error);
+      Logger.error('Error calculating advance percentage:', error);
       return null;
     }
   };
@@ -3183,7 +3184,7 @@ const Home = () => {
                     setDeleteConfirmMessage("Czy na pewno chcesz usunąć tę sprzedaż?");
                     setConfirmDeleteModalVisible(true);
                   } else {
-                    console.error("No valid ID found for the selected item.");
+                    Logger.error("No valid ID found for the selected item.");
                   }
                 }}
                 style={[styles.optionButton, styles.deleteButton]}
@@ -3351,7 +3352,7 @@ const Home = () => {
                       setDeductionCurrencyRate(value);
                       // Save rate to storage when user types
                       if (value && parseFloat(value) > 0) {
-                        CurrencyService.updateCurrencyRate(deductionCurrency, parseFloat(value)).catch(console.error);
+                        CurrencyService.updateCurrencyRate(deductionCurrency, parseFloat(value)).catch(Logger.error);
                       }
                     }}
                     keyboardType="decimal-pad"
@@ -3695,7 +3696,7 @@ const Home = () => {
                       setAddAmountCurrencyRate(value);
                       // Save rate to storage when user types
                       if (value && parseFloat(value) > 0) {
-                        CurrencyService.updateCurrencyRate(addAmountCurrency, parseFloat(value)).catch(console.error);
+                        CurrencyService.updateCurrencyRate(addAmountCurrency, parseFloat(value)).catch(Logger.error);
                       }
                     }}
                     keyboardType="decimal-pad"
@@ -3726,7 +3727,7 @@ const Home = () => {
                       marginBottom: 10,
                     }}
                     onPress={() => {
-                      console.log('Selected product radio');
+                      Logger.debug('Selected product radio');
                       setReasonType('product');
                       setAddAmountReason('');
                       setShowProductDropdown(false);
@@ -4257,7 +4258,7 @@ const Home = () => {
                                 // Save rate to storage when user types
                                 if (value && parseFloat(value) > 0) {
                                   const newRate = parseFloat(value);
-                                  CurrencyService.updateCurrencyRate(productSaleCurrency, newRate).catch(console.error);
+                                  CurrencyService.updateCurrencyRate(productSaleCurrency, newRate).catch(Logger.error);
                                   
                                   // Update local exchangeRates state immediately
                                   setExchangeRates(prev => ({
@@ -6159,3 +6160,6 @@ const styles = StyleSheet.create({
   },
 });
 export default Home; // Export the Home component
+
+
+

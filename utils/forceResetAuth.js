@@ -1,9 +1,10 @@
 // Force clear all tokens and reset authentication
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Logger from '../services/logger';
 
 export const forceResetAuth = async () => {
     try {
-        console.log('🔄 FORCE RESET: Clearing all auth data...');
+        Logger.debug('🔄 FORCE RESET: Clearing all auth data...');
         
         // Clear ALL possible token keys (old and new)
         await AsyncStorage.multiRemove([
@@ -16,15 +17,15 @@ export const forceResetAuth = async () => {
             'AdminToken'             // Admin token if exists
         ]);
         
-        console.log('✅ FORCE RESET: All tokens cleared');
+        Logger.debug('✅ FORCE RESET: All tokens cleared');
         
         // Show all remaining keys for debugging
         const allKeys = await AsyncStorage.getAllKeys();
-        console.log('🔍 FORCE RESET: Remaining AsyncStorage keys:', allKeys);
+        Logger.debug('🔍 FORCE RESET: Remaining AsyncStorage keys:', allKeys);
         
         return true;
     } catch (error) {
-        console.error('❌ FORCE RESET: Error clearing tokens:', error);
+        Logger.error('❌ FORCE RESET: Error clearing tokens:', error);
         return false;
     }
 };

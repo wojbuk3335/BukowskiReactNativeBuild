@@ -1,4 +1,5 @@
 import { createContext, useState } from 'react';
+import Logger from '../services/logger';
 
 export const AuthContext = createContext();
 
@@ -9,7 +10,7 @@ export const AuthProvider = ({ children }) => {
         if (data && data.email) {
             setAuthData(data); // Set authData with the received fields
         } else {
-            console.error('Invalid data passed to login:', data);
+            Logger.error('Invalid data passed to login:', data);
         }
     };
 

@@ -2,6 +2,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { getApiUrl } from '../config/api';
 import AuthErrorHandler from '../utils/authErrorHandler';
+import Logger from './logger';
 
 class TokenService {
     constructor() {
@@ -19,7 +20,7 @@ class TokenService {
             const refreshToken = await SecureStore.getItemAsync('BukowskiRefreshToken');
             return { accessToken, refreshToken };
         } catch (error) {
-            console.error('❌ TOKEN SERVICE: Error getting tokens from SecureStore:', error);
+            Logger.error('Error getting tokens from SecureStore:', error);
             return { accessToken: null, refreshToken: null };
         }
     }
@@ -27,6 +28,9 @@ class TokenService {
     // Store tokens in SecureStore
     async setTokens(accessToken, refreshToken) {
         try {
+            // Reset logout flag when setting new tokens (user is logging in)
+            this.isLoggingOut = false;
+            
             if (accessToken) {
                 await SecureStore.setItemAsync('BukowskiAccessToken', accessToken);
                 
@@ -44,7 +48,7 @@ class TokenService {
                 await SecureStore.setItemAsync('BukowskiRefreshToken', refreshToken);
             }
         } catch (error) {
-            console.error('❌ TOKEN SERVICE: Error storing tokens:', error);
+            Logger.error('Error storing tokens:', error);
         }
     }
 
@@ -56,7 +60,7 @@ class TokenService {
             await SecureStore.deleteItemAsync('BukowskiTokenExpiry');
             // Note: user data stays in AsyncStorage if needed
         } catch (error) {
-            console.error('Error clearing tokens from SecureStore:', error);
+            Logger.error('Error clearing tokens from SecureStore:', error);
         }
     }
 
@@ -95,7 +99,7 @@ class TokenService {
             
             return JSON.parse(decoded);
         } catch (error) {
-            console.error('Error parsing JWT:', error);
+            Logger.error('Error parsing JWT:', error);
             return null;
         }
     }
@@ -192,7 +196,7 @@ class TokenService {
             
             return data.accessToken;
         } catch (error) {
-            console.error('Token refresh error:', error);
+            Logger.error('Token refresh error:', error);
             throw error;
         }
     }
@@ -239,7 +243,7 @@ class TokenService {
         } catch (error) {
             // Only log errors in non-test environment and not during logout process
             if (typeof jest === 'undefined' && error.message !== 'No access token available') {
-                console.error('❌ getAuthHeaders error:', error);
+                Logger.error('getAuthHeaders error:', error);
             }
             // Return headers without authorization if token is not available
             return {
@@ -276,7 +280,9 @@ class TokenService {
                 // Handle auth response error
                 const wasHandled = await AuthErrorHandler.handleResponseError(response, 'Authenticated Fetch');
                 if (wasHandled) {
-                    throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+                    const error = new Error(`Authentication failed: ${response.status}`);
+                    error.isAuthError = true; // Mark as auth error
+                    throw error;
                 }
                 
                 try {
@@ -300,8 +306,17 @@ class TokenService {
                         await this.clearTokens();
                         await AuthErrorHandler.handleAuthError(refreshError, 'Fetch Retry');
                     }
+                    refreshError.isAuthError = true; // Mark as auth error
                     throw refreshError;
                 }
+            }
+            
+            // If 401 during logout, throw silent auth error
+            if (response.status === 401 && this.isLoggingOut) {
+                const error = new Error(`Authentication failed: ${response.status}`);
+                error.isAuthError = true; // Mark as auth error
+                error.isDuringLogout = true; // Mark as logout error
+                throw error;
             }
 
             return response;
@@ -311,7 +326,7 @@ class TokenService {
             
             // Suppress all errors during logout - they're just noise
             if (!this.isLoggingOut && typeof jest === 'undefined' && !wasHandled) {
-                console.error('❌ authenticatedFetch error:', error);
+                Logger.error('authenticatedFetch error:', error);
             }
             throw error;
         }
@@ -345,7 +360,7 @@ class TokenService {
                 });
             } catch (error) {
                 // Server logout failed, continuing with local logout
-                console.error('Server logout failed:', error);
+                Logger.warn('Server logout failed:', error);
             }
         }
 
@@ -388,11 +403,11 @@ class TokenService {
                     const seconds = Math.floor((timeLeft % 60000) / 1000);
                     
                     if (hours > 0) {
-                        console.log(`🧪 Time left: ${hours}h ${minutes}m`);
+                        Logger.debug(`Time left: ${hours}h ${minutes}m`);
                     } else if (minutes > 0) {
-                        console.log(`🧪 Time left: ${minutes}m ${seconds}s`);
+                        Logger.debug(`Time left: ${minutes}m ${seconds}s`);
                     } else {
-                        console.log(`🧪 Time left: ${seconds}s`);
+                        Logger.debug(`Time left: ${seconds}s`);
                     }
                 }
 
@@ -416,7 +431,7 @@ class TokenService {
                 this.autoLogoutTimer = setTimeout(checkTokenExpiration, nextCheckIn);
 
             } catch (error) {
-                console.error('🧪 AUTO-LOGOUT: Error checking token:', error);
+                Logger.error('AUTO-LOGOUT: Error checking token:', error);
                 // On error, check again in 5 seconds
                 this.autoLogoutTimer = setTimeout(checkTokenExpiration, 5000);
             }
@@ -438,7 +453,7 @@ class TokenService {
                 this.onAutoLogout();
             }
         } catch (error) {
-            console.error('🧪 AUTO-LOGOUT: Error during automatic logout:', error);
+            Logger.error('AUTO-LOGOUT: Error during automatic logout:', error);
         } finally {
             this.isLoggingOut = false; // Clear logout flag
         }

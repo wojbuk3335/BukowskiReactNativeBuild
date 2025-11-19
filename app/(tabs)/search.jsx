@@ -2,6 +2,7 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useCallback, useContext, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GlobalStateContext } from '../../context/GlobalState';
+import Logger from '../../services/logger'; // Import logger service
 import QRScannerSearch from '../QRScannerSearch';
 import LogoutButton from '../../components/LogoutButton';
 
@@ -33,7 +34,7 @@ const SearchScreen = () => {
     try {
       await fetchState(); // Odświeżenie danych z backendu
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      Logger.error('Error refreshing data:', error);
     } finally {
       setIsRefreshing(false);
     }

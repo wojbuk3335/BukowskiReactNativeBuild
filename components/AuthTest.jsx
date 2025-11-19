@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import tokenService from '../services/tokenService';
 import { getApiUrl } from '../config/api';
 import { forceResetAuth } from '../utils/forceResetAuth';
+import Logger from '../services/logger';
 
 const AuthTest = () => {
     const [authStatus, setAuthStatus] = useState('Checking...');
@@ -12,16 +13,16 @@ const AuthTest = () => {
 
     const checkAuthStatus = async () => {
         try {
-            console.log('🔍 AUTH TEST: Starting...');
+            Logger.debug('🔍 AUTH TEST: Starting...');
             
             // Check AsyncStorage
             const accessToken = await AsyncStorage.getItem('accessToken');
             const refreshToken = await AsyncStorage.getItem('refreshToken');
             const user = await AsyncStorage.getItem('user');
             
-            console.log('🔍 AUTH TEST: Access token exists:', !!accessToken);
-            console.log('🔍 AUTH TEST: Refresh token exists:', !!refreshToken);
-            console.log('🔍 AUTH TEST: User exists:', !!user);
+            Logger.debug('🔍 AUTH TEST: Access token exists:', !!accessToken);
+            Logger.debug('🔍 AUTH TEST: Refresh token exists:', !!refreshToken);
+            Logger.debug('🔍 AUTH TEST: User exists:', !!user);
             
             if (!accessToken) {
                 setAuthStatus('❌ No access token found');
@@ -31,7 +32,7 @@ const AuthTest = () => {
             
             // Test authenticated request
             const response = await tokenService.authenticatedFetch(getApiUrl('/transfer'));
-            console.log('🔍 AUTH TEST: Transfer API response status:', response.status);
+            Logger.debug('🔍 AUTH TEST: Transfer API response status:', response.status);
             
             if (response.status === 200) {
                 setAuthStatus('✅ Authentication working');
@@ -45,7 +46,7 @@ const AuthTest = () => {
             }
             
         } catch (error) {
-            console.log('❌ AUTH TEST: Error:', error);
+            Logger.debug('❌ AUTH TEST: Error:', error);
             setAuthStatus('❌ Error occurred');
             setTokenInfo(error.message);
         }

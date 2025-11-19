@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import FormField from "../../components/FormField";
 import { GlobalStateContext } from "../../context/GlobalState";
+import Logger from "../../services/logger"; // Import logger service
 import bukowskiLogo from "./bukowski.png"; // Import the image
 
 const SignIn = () => {
@@ -28,7 +29,7 @@ const SignIn = () => {
         } else {
         }
       } catch (error) {
-        console.error("Failed to retrieve user data from storage:", error);
+        Logger.error("Failed to retrieve user data from storage:", error);
       }
     };
 
@@ -142,3 +143,4 @@ const styles = StyleSheet.create({
 });
 
 export default SignIn;
+

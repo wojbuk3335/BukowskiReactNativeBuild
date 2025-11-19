@@ -3,6 +3,7 @@ import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ScrollView, Act
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
+import Logger from '../../services/logger'; // Import logger service
 import { getApiUrl } from '../../config/api';
 import LogoutButton from '../../components/LogoutButton';
 
@@ -409,7 +410,7 @@ const Profile = () => {
       };
 
       // Debug: sprawdź co jest w obiekcie user
-      console.log('🔍 DEBUG USER OBJECT:', {
+      Logger.debug('🔍 DEBUG USER OBJECT:', {
         hasUser: !!user,
         symbol: user?.symbol,
         email: user?.email,
@@ -429,10 +430,10 @@ const Profile = () => {
         const result = await response.json();
         const backendOrderId = result.orderId; // Use orderId from backend
         
-        console.log('✅ Zamówienie zapisane, ID:', backendOrderId);
+        Logger.debug('✅ Zamówienie zapisane, ID:', backendOrderId);
 
         // Send email notifications (always send to owner, optionally to customer)
-        console.log('📧 Wysyłanie powiadomień email...');
+        Logger.debug('📧 Wysyłanie powiadomień email...');
         
         const emailResponse = await tokenService.authenticatedFetch(getApiUrl('/orders/send-email'), {
           method: 'POST',
@@ -448,10 +449,10 @@ const Profile = () => {
         
         if (emailResponse.ok) {
           const emailResult = await emailResponse.json();
-          console.log('✅ Emaile wysłane pomyślnie:', emailResult);
+          Logger.debug('✅ Emaile wysłane pomyślnie:', emailResult);
         } else {
           const emailError = await emailResponse.json();
-          console.error('❌ Błąd wysyłania emaili:', emailError);
+          Logger.error('❌ Błąd wysyłania emaili:', emailError);
         }
 
         // Set success message and show modal
@@ -469,11 +470,11 @@ const Profile = () => {
         }, 500);
       } else {
         const errorData = await response.json();
-        console.error('❌ Backend error:', errorData);
+        Logger.error('❌ Backend error:', errorData);
         throw new Error(errorData.message || 'Błąd podczas zapisywania zamówienia');
       }
     } catch (error) {
-      console.error('❌ Submit error:', error);
+      Logger.error('❌ Submit error:', error);
       Alert.alert(
         'Błąd', 
         `Nie udało się złożyć zamówienia.\n\nSzczegóły: ${error.message}\n\nSpróbuj ponownie.`
@@ -533,7 +534,7 @@ const Profile = () => {
           setSizes(Array.isArray(sizesData) ? sizesData : sizesData.sizes || []);
         }
       } catch (error) {
-        console.error('Error fetching order data:', error);
+        Logger.error('Error fetching order data:', error);
       } finally {
         setLoading(false);
       }
@@ -1646,3 +1647,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 });
+

@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
+import Logger from '../../services/logger'; // Import logger service
 import { getApiUrl } from '../../config/api';
 import LogoutButton from '../../components/LogoutButton';
 
@@ -126,7 +127,7 @@ const Remanent = () => {
           return sizeMatch ? sizeMatch[0] : '';
         }).filter(size => size))].sort();
         
-        console.log('📝 Fallback options from state - assortments:', assortments, 'colors:', colors, 'sizes:', sizes);
+        Logger.debug('📝 Fallback options from state - assortments:', assortments, 'colors:', colors, 'sizes:', sizes);
         setAvailableAssortments(assortments);
         setAvailableColors(colors);
         setAvailableSizes(sizes);
@@ -334,10 +335,10 @@ const Remanent = () => {
         const data = await response.json();
         setRemanentPriceList(data);
       } else {
-        console.error('❌ Błąd pobierania cennika remanent:', response.status);
+        Logger.error('❌ Błąd pobierania cennika remanent:', response.status);
       }
     } catch (error) {
-      console.error('❌ Error fetching remanent price list:', error);
+      Logger.error('❌ Error fetching remanent price list:', error);
     }
   };
 
@@ -503,7 +504,7 @@ const Remanent = () => {
 
         setRemanentData(prev => [...prev, ...newRemanentItems]);
       } else {
-        console.error('❌ Failed to save remanent items:', response.status);
+        Logger.error('❌ Failed to save remanent items:', response.status);
         // Still add to local state even if API fails
         const newRemanentItems = scannedJackets.map(jacket => {
           const price = getPriceFromProductName(jacket.name);
@@ -529,7 +530,7 @@ const Remanent = () => {
       
       // No success alert - continue scanning immediately
     } catch (error) {
-      console.error('Error adding scanned jackets:', error);
+      Logger.error('Error adding scanned jackets:', error);
       // Even on error, add to local state and clear the list
       const newRemanentItems = scannedJackets.map(jacket => {
         const price = getPriceFromProductName(jacket.name);
@@ -562,7 +563,7 @@ const Remanent = () => {
       const itemToDelete = remanentData.find(item => item.id === itemId);
       
       if (!itemToDelete) {
-        console.error('❌ Item not found in local data');
+        Logger.error('❌ Item not found in local data');
         return;
       }
 
@@ -588,7 +589,7 @@ const Remanent = () => {
         setRemanentData(prev => prev.filter(item => item.id !== itemId));
       }
     } catch (error) {
-      console.error('❌ Error deleting item:', error);
+      Logger.error('❌ Error deleting item:', error);
       // Still remove from local state on error
       setRemanentData(prev => prev.filter(item => item.id !== itemId));
     }
@@ -629,7 +630,7 @@ const Remanent = () => {
         performStateCheck();
       }
     } catch (error) {
-      console.error('❌ Error in checkCurrentState:', error);
+      Logger.error('❌ Error in checkCurrentState:', error);
       Alert.alert('Błąd', 'Wystąpił błąd podczas sprawdzania stanu');
     }
   };
@@ -750,7 +751,7 @@ const Remanent = () => {
         });
         
         // Pokaż wyniki w modalu
-        console.log('🔍 Porównanie:', {
+        Logger.debug('🔍 Porównanie:', {
           currentStateCount: currentState.length,
           remanentCount: filteredRemanentData.length,
           missingItems: missingItems,
@@ -766,11 +767,11 @@ const Remanent = () => {
         setComparisonModalVisible(true);
         
       } else {
-        console.error('❌ Failed to fetch current state:', response.status);
+        Logger.error('❌ Failed to fetch current state:', response.status);
         Alert.alert('Błąd', 'Nie udało się pobrać aktualnego stanu');
       }
     } catch (error) {
-      console.error('❌ Error checking current state:', error);
+      Logger.error('❌ Error checking current state:', error);
       Alert.alert('Błąd', 'Wystąpił błąd podczas sprawdzania stanu');
     }
   };
@@ -804,7 +805,7 @@ const Remanent = () => {
         transactionId: `REMANENT_${user?.symbol || 'UNKNOWN'}_${Date.now()}`
       };
 
-      console.log('📤 Wysyłanie korekty:', correctionData);
+      Logger.debug('📤 Wysyłanie korekty:', correctionData);
 
       const response = await tokenService.authenticatedFetch(getApiUrl('/corrections'), {
         method: 'POST',
@@ -816,7 +817,7 @@ const Remanent = () => {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Korekta wysłana:', result);
+        Logger.debug('✅ Korekta wysłana:', result);
         
         // Dodaj do wysłanych korekt i zapisz do localStorage
         const newSentCorrections = new Set(sentCorrections).add(correctionKey);
@@ -825,13 +826,13 @@ const Remanent = () => {
         
         // Usuń alert - tylko zmień wygląd przycisku
       } else {
-        console.error('❌ Błąd wysyłania korekty:', response.status);
+        Logger.error('❌ Błąd wysyłania korekty:', response.status);
         const errorText = await response.text();
-        console.error('❌ Error details:', errorText);
+        Logger.error('❌ Error details:', errorText);
         Alert.alert('Błąd', 'Nie udało się wysłać korekty do systemu');
       }
     } catch (error) {
-      console.error('❌ Error sending correction:', error);
+      Logger.error('❌ Error sending correction:', error);
       Alert.alert('Błąd', 'Wystąpił błąd podczas wysyłania korekty');
     }
   };
@@ -850,10 +851,10 @@ const Remanent = () => {
       if (savedCorrections) {
         const parsed = JSON.parse(savedCorrections);
         setSentCorrections(new Set(parsed));
-        console.log('📥 Załadowano wysłane korekty:', parsed.length);
+        Logger.debug('📥 Załadowano wysłane korekty:', parsed.length);
       }
     } catch (error) {
-      console.error('❌ Błąd ładowania wysłanych korekt:', error);
+      Logger.error('❌ Błąd ładowania wysłanych korekt:', error);
     }
   };
 
@@ -862,9 +863,9 @@ const Remanent = () => {
       const userKey = `sentCorrections_${user?.symbol || 'unknown'}`;
       const correctionsArray = Array.from(corrections);
       await AsyncStorage.setItem(userKey, JSON.stringify(correctionsArray));
-      console.log('💾 Zapisano wysłane korekty:', correctionsArray.length);
+      Logger.debug('💾 Zapisano wysłane korekty:', correctionsArray.length);
     } catch (error) {
-      console.error('❌ Błąd zapisywania wysłanych korekt:', error);
+      Logger.error('❌ Błąd zapisywania wysłanych korekt:', error);
     }
   };
 
@@ -874,7 +875,7 @@ const Remanent = () => {
       const userKey = `sentCorrections_${user?.symbol || 'unknown'}`;
       await AsyncStorage.removeItem(userKey);
       setSentCorrections(new Set());
-      console.log('🗑️ Zresetowano wysłane korekty');
+      Logger.debug('🗑️ Zresetowano wysłane korekty');
       
       // Pokaż krótkie potwierdzenie tylko jeśli showAlert = true
       if (showAlert) {
@@ -886,7 +887,7 @@ const Remanent = () => {
         );
       }
     } catch (error) {
-      console.error('❌ Błąd resetowania korekt:', error);
+      Logger.error('❌ Błąd resetowania korekt:', error);
     }
   };
 
@@ -912,7 +913,7 @@ const Remanent = () => {
           await fetchStock();
         }
       } catch (error) {
-        console.log('Error loading lookup data:', error);
+        Logger.debug('Error loading lookup data:', error);
       }
     };
     
@@ -938,8 +939,8 @@ const Remanent = () => {
         return null; // This is a bag, not a jacket
       }
       
-      console.log('Barcode pattern match:', { stockCode, colorCode, sizeCode });
-      console.log('Available data:', { 
+      Logger.debug('Barcode pattern match:', { stockCode, colorCode, sizeCode });
+      Logger.debug('Available data:', { 
         stocksCount: stocks?.length || 0, 
         colorsCount: colors?.length || 0, 
         sizesCount: sizes?.length || 0 
@@ -992,14 +993,14 @@ const Remanent = () => {
       const sizeItem = finalSizes.find(size => size.Roz_Kod === sizeCode);
       const sizeName = sizeItem?.Roz_Opis || `Rozmiar_${sizeCode}`;
       
-      console.log('Lookup results:', { stockName, colorName, sizeName });
+      Logger.debug('Lookup results:', { stockName, colorName, sizeName });
       
       // Build the jacket name with proper fallbacks
       const jacketName = `${stockName || 'Nieznany'} ${colorName || 'Nieznany'} ${sizeName || 'Nieznany'}`;
       
       return jacketName;
     } catch (error) {
-      console.error("Error building jacket name from barcode:", error);
+      Logger.error("Error building jacket name from barcode:", error);
       return null;
     }
   };
@@ -1067,7 +1068,7 @@ const Remanent = () => {
       
       return fullRemainingProductName;
     } catch (error) {
-      console.error("Error building remaining product name from barcode:", error);
+      Logger.error("Error building remaining product name from barcode:", error);
       return null;
     }
   };

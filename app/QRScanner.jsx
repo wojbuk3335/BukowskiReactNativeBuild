@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { getApiUrl } from "../config/api";
 import tokenService from "../services/tokenService"; // Import tokenService
+import Logger from "../services/logger"; // Import logger service
 
 const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, getFilteredSellingPoints, isActive }) => {
   const [facing, setFacing] = useState("back");
@@ -120,7 +121,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       return jacketName;
     } catch (error) {
-      console.error("Error building jacket name from barcode:", error);
+      Logger.error("Error building jacket name from barcode:", error);
       return null;
     }
   };
@@ -178,7 +179,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       return fullBagName;
     } catch (error) {
-      console.error("Error building bag name from barcode:", error);
+      Logger.error("Error building bag name from barcode:", error);
       return null;
     }
   };
@@ -237,7 +238,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       return fullWalletName;
     } catch (error) {
-      console.error("Error building wallet name from barcode:", error);
+      Logger.error("Error building wallet name from barcode:", error);
       return null;
     }
   };
@@ -297,12 +298,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
         
         return fullRemainingProductName;
       } catch (error) {
-        console.error("Error fetching remaining products:", error);
+        Logger.error("Error fetching remaining products:", error);
         // Fallback if API call fails
         return `Produkt_${productCode} ${colorName}`;
       }
     } catch (error) {
-      console.error("Error building remaining product name from barcode:", error);
+      Logger.error("Error building remaining product name from barcode:", error);
       return null;
     }
   };
@@ -573,7 +574,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   // Funkcja do wyszukiwania zaliczek na podstawie nazwy produktu i rozmiaru
   const searchAdvances = async (productName, size) => {
     try {
-      console.log(`🔍 Szukam zaliczek dla: ${productName}, rozmiar: ${size}`);
+      Logger.debug(`🔍 Szukam zaliczek dla: ${productName}, rozmiar: ${size}`);
       
       const response = await tokenService.authenticatedFetch(
         getApiUrl(`/financial-operations/search/advances?productName=${encodeURIComponent(productName)}&size=${encodeURIComponent(size)}`),
@@ -587,7 +588,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       }
       
       const advances = await response.json();
-      console.log(`✅ Znaleziono ${advances.length} zaliczek`);
+      Logger.debug(`✅ Znaleziono ${advances.length} zaliczek`);
       
       setAvailableAdvances(advances);
       
@@ -599,7 +600,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       return advances;
     } catch (error) {
-      console.error('❌ Błąd wyszukiwania zaliczek:', error);
+      Logger.error('❌ Błąd wyszukiwania zaliczek:', error);
       Alert.alert('Błąd', 'Nie udało się wyszukać zaliczek');
       return [];
     }
@@ -698,7 +699,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
 
     // Walidacja wymaganych pól
     if (!payload.fullName || !payload.size || !payload.from) {
-      console.error('❌ Brakuje wymaganych pól:', {
+      Logger.error('❌ Brakuje wymaganych pól:', {
         fullName: payload.fullName,
         size: payload.size,
         from: payload.from
@@ -729,7 +730,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       setSelectedOption("");
       setModalMessage("");
     } catch (error) {
-      console.error("Error saving data:", error);
+      Logger.error("Error saving data:", error);
       
       let errorMessage = "Failed to save data.";
       if (error.message.includes('401')) {

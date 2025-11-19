@@ -3,6 +3,21 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// Mock expo-constants
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    manifest: {},
+    systemFonts: [],
+    sessionId: 'test-session-id',
+    platform: {
+      ios: undefined,
+      android: undefined,
+    },
+    isDevice: false,
+  },
+}));
+
 // Mock expo-router
 jest.mock('expo-router', () => ({
   useNavigation: () => ({
