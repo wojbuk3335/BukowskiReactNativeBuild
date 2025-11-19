@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { useContext } from "react";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { icons } from "../../constants";
 import { GlobalStateContext } from "../../context/GlobalState";
@@ -41,11 +42,12 @@ const TabIcon = ({ icon, color, name, focused, customIcon }) => {
 const TabLayout = () => {
   const { user } = useContext(GlobalStateContext);
   const isParzygnat = user?.symbol === 'P';
+  const insets = useSafeAreaInsets();
 
   return (
     <>
       {/* Add a View to set the status bar background color */}
-      <View style={{ height: 32, backgroundColor: "#161622" }} />
+      <View style={{ height: 32, backgroundColor: "black" }} />
       <Tabs
         options={{ headerShown: false }}
         screenOptions={{
@@ -57,6 +59,7 @@ const TabLayout = () => {
             borderTopWidth: 1,
             borderTopColor: "#232533",
             height: 84,
+            paddingBottom: Math.max(insets.bottom - 10, 0),
             paddingHorizontal: 4,
           },
         }}
@@ -174,7 +177,7 @@ const TabLayout = () => {
         />
       </Tabs>
 
-      <StatusBar style="light" />
+      <StatusBar backgroundColor="black" style="light" />
     </>
   );
 };

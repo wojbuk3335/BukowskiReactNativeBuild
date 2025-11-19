@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useNavigation } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useContext, useEffect, useState } from "react";
 import { Dimensions, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -50,6 +51,7 @@ const SignIn = () => {
 
   return (
     <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+      <StatusBar backgroundColor="black" style="light" />
       <ScrollView>
         <View
           style={[

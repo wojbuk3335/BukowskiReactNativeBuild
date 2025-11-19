@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Bukowski 2025",
+    "name": "Bukowski",
     "slug": "bukowski-mobile-2025",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,18 @@
     "scheme": "bukowski",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bukowski.inventory5.mobile2025",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory2.mobile2025"
+      "package": "com.bukowski.inventory5.app2025"
     },
     "web": {
       "bundler": "metro",

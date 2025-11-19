@@ -9,8 +9,6 @@ import CustomButton from "../components/CustomButton";
 const Welcome = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Add a View to set the status bar background color */}
-      <View style={{ height: 32, backgroundColor: "#161622" }} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.container}>
           <Image
@@ -25,7 +23,7 @@ const Welcome = () => {
           />
         </View>
       </ScrollView>
-      <StatusBar style="light" />
+      <StatusBar backgroundColor="black" style="light" />
     </SafeAreaView>
   );
 };

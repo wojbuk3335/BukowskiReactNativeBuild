@@ -2,6 +2,7 @@ import { useFonts } from 'expo-font';
 import { SplashScreen, Stack } from 'expo-router';
 import React, { useEffect } from 'react';
 import "react-native-url-polyfill/auto";
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
 
 SplashScreen.preventAutoHideAsync();
@@ -36,14 +37,16 @@ const RootLayout = () => {
   }
 
   return (
-    <GlobalStateProvider>
-      <Stack options={{ headerShown: false }}>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <SafeAreaProvider>
+      <GlobalStateProvider>
+        <Stack options={{ headerShown: false }}>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-      </Stack>
-    </GlobalStateProvider>
+        </Stack>
+      </GlobalStateProvider>
+    </SafeAreaProvider>
   );
 };
 
