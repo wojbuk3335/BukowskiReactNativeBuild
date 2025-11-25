@@ -100,9 +100,13 @@ describe('SignIn Component', () => {
       renderSignIn();
 
       await waitFor(() => {
-        expect(consoleError).toHaveBeenCalledWith(
-          'Failed to retrieve user data from storage:',
-          expect.any(Error)
+        expect(consoleError).toHaveBeenCalled();
+        expect(consoleError.mock.calls[0]).toEqual(
+          expect.arrayContaining([
+            expect.stringContaining('ERROR'),
+            'Failed to retrieve user data from storage:',
+            expect.any(Error)
+          ])
         );
       });
 

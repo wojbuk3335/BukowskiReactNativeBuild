@@ -1695,6 +1695,8 @@ const Home = () => {
     setCancelDeductionModalVisible(true);
   };
 
+
+
   // Handle barcode scan for product selection in Add Amount
   const handleBarcodeScanned = ({ data }) => {
     if (scanned) return;
@@ -1743,6 +1745,10 @@ const Home = () => {
     }
   };
 
+
+
+
+
   useFocusEffect(
     React.useCallback(() => {
       // Skip API fetching in test environment unless explicitly testing API calls
@@ -1778,6 +1784,7 @@ const Home = () => {
     await fetchSalesData(); // Fetch data on pull-to-refresh
     await fetchUsers(); // Fetch users data for symbol selection
     await fetchState(); // Fetch state data for product selection with barcodes
+    await fetchPanKazekItems(); // Fetch Pan Kazek items
     if (user?.symbol) {
       await fetchTransferredItems();
       await fetchReceivedItems();
@@ -2597,6 +2604,7 @@ const Home = () => {
                   );
                 })()}
                 
+
                 {/* Financial Summary Section - Zamknięcie Dnia */}
                 {(() => {
                   // FOR TESTING: Uncomment line below to simulate tomorrow

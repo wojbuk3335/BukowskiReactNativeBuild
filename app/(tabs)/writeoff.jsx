@@ -25,6 +25,7 @@ const WriteOff = () => {
     const [magazynReasonModalVisible, setMagazynReasonModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [users, setUsers] = useState([]); // List of users for transfer
+    const [exchangeUsers, setExchangeUsers] = useState([]); // List of users for exchange (includes current user)
     const [transfers, setTransfers] = useState([]); // List of current transfers
     const [allTransfers, setAllTransfers] = useState([]); // List of ALL transfers for validation
     const [salesData, setSalesData] = useState([]); // List of sales for blocking validation
@@ -40,6 +41,7 @@ const WriteOff = () => {
     const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
     const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
     const [panKazekModalVisible, setPanKazekModalVisible] = useState(false); // Modal for Pan Kazek confirmation
+    const [exchangeModalVisible, setExchangeModalVisible] = useState(false); // Modal for exchange location selection
     
     // Animacje dla kropek ładowania
     const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -140,7 +142,8 @@ const WriteOff = () => {
                 fetchState(),
                 fetchUsersFromContext(), // Użyj funkcji z Global State zamiast lokalnej
                 fetchTransfers(),
-                fetchSales() // Add sales data fetching
+                fetchSales(), // Add sales data fetching
+                fetchExchangeUsers() // Fetch users for exchange modal
             ]);
             
             await Promise.race([
@@ -315,6 +318,71 @@ const fetchSales = async () => {
             setUsers(finalFilteredUsers);
         } catch (error) {
             throw error; // Re-throw to be caught by fetchAllRequiredData
+        }
+    };
+
+    // Fetch exchange items from API
+    const fetchExchangeItems = async () => {
+        if (!user?.symbol) {
+            return;
+        }
+        
+        try {
+            const response = await tokenService.authenticatedFetch(getApiUrl('/exchange'));
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch exchanges: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const allExchanges = Array.isArray(data.data) ? data.data : [];
+            
+            // Filter exchanges for current user's symbol (today only)
+            const today = new Date().toISOString().split('T')[0];
+            const todayExchanges = allExchanges.filter(
+                (exchange) => exchange.symbol === user?.symbol && exchange.dateString === today
+            );
+            
+            setExchangeItems(todayExchanges);
+        } catch (error) {
+            Logger.error('Error fetching exchange items:', error);
+        }
+    };
+
+    // Fetch users for exchange modal (includes current user)
+    const fetchExchangeUsers = async () => {
+        try {
+            if (!globalUsers || globalUsers.length === 0) {
+                const filteredUsers = getFilteredSellingPoints();
+                setExchangeUsers(filteredUsers); // Include all, even current user
+                return;
+            }
+            
+            // Filter users from same location (including current user)
+            const filteredUsers = globalUsers.filter(u => {
+                // Always include users with "dom" role
+                if (u.role && u.role.toLowerCase() === 'dom') {
+                    return true;
+                }
+                
+                // For other users, apply standard filtering
+                const userLocation = u.location || u.sellingPoint || null;
+                const currentUserLocation = user?.location || user?.sellingPoint || null;
+                
+                const shouldInclude = userLocation && currentUserLocation &&
+                    userLocation.trim().toLowerCase() === currentUserLocation.trim().toLowerCase() && 
+                    u.role !== 'admin' && 
+                    u.role !== 'magazyn' &&
+                    u.sellingPoint && 
+                    u.sellingPoint.trim() !== '';
+                    
+                return shouldInclude;
+            });
+            
+            // Do NOT exclude current user for exchange modal
+            setExchangeUsers(filteredUsers);
+        } catch (error) {
+            Logger.error('Error fetching exchange users:', error);
         }
     };
 
@@ -537,6 +605,98 @@ const fetchSales = async () => {
         setPanKazekModalVisible(true);
     };
 
+    const handleExchange = async (toSymbol) => {
+        if (!selectedItem) {
+            Alert.alert("Error", "No item selected for exchange.");
+            return;
+        }
+
+        if (!user || !user.symbol) {
+            Alert.alert("Błąd", "Brak danych zalogowanego użytkownika");
+            return;
+        }
+
+        const exchangeData = {
+            productId: selectedItem.id,
+            fullName: selectedItem.fullName,
+            size: selectedItem.size,
+            price: selectedItem.price,
+            barcode: selectedItem.barcode,
+            date: today + 'T' + new Date().toISOString().split('T')[1],
+            dateString: today,
+            from: user.symbol,
+            to: toSymbol,
+            symbol: user.symbol
+        };
+
+        // Również zapisz jako transfer (aby pojawił się w aplikacji webowej jako niebieski element)
+        const transferData = {
+            fullName: selectedItem.fullName,
+            size: selectedItem.size,
+            date: today + 'T' + new Date().toISOString().split('T')[1],
+            dateString: today,
+            transfer_from: user.symbol,
+            transfer_to: 'Wymiana',
+            productId: selectedItem.id,
+            reason: "Wymiana",
+            advancePayment: 0,
+            advancePaymentCurrency: 'PLN',
+        };
+
+        try {
+            // Zapisz wymianę
+            const exchangeResponse = await tokenService.authenticatedFetch(getApiUrl('/exchange'), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(exchangeData),
+            });
+
+            if (!exchangeResponse.ok) {
+                const errorData = await exchangeResponse.json();
+                Logger.error('Exchange creation failed:', errorData);
+                Alert.alert("Błąd", errorData.message || "Nie udało się zapisać wymiany");
+                return;
+            }
+
+            const exchangeResult = await exchangeResponse.json();
+
+            // Zapisz jako transfer (dla aplikacji webowej)
+            const transferResponse = await tokenService.authenticatedFetch(getApiUrl('/transfer'), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(transferData),
+            });
+
+            if (!transferResponse.ok) {
+                const transferError = await transferResponse.json();
+                Logger.error('Transfer creation failed:', transferError);
+                // Jeśli transfer się nie powiedzie, usuń wymianę
+                if (exchangeResult.data && exchangeResult.data._id) {
+                    await tokenService.authenticatedFetch(getApiUrl(`/exchange/${exchangeResult.data._id}`), {
+                        method: "DELETE",
+                    });
+                }
+                Alert.alert("Błąd", transferError.message || "Nie udało się zapisać transferu");
+                return;
+            }
+
+            const transferResult = await transferResponse.json();
+
+            // Show success message
+            setSuccessMessage(`Wymiana została pomyślnie zapisana!\nTransfer ID: ${transferResult._id || 'unknown'}\nData: ${today}`);
+            setSuccessModalVisible(true);
+
+            // Refresh data to update UI
+            await fetchAllRequiredData(false);
+
+            setModalVisible(false);
+            setExchangeModalVisible(false);
+        } catch (error) {
+            Logger.error('Unexpected error during exchange:', error);
+            Alert.alert("Error", "Wystąpił nieoczekiwany błąd podczas zapisywania wymiany.");
+        }
+    };
+
     const confirmPanKazekTransfer = async () => {
         if (!selectedItem) {
             Alert.alert("Error", "No item selected for transfer.");
@@ -630,6 +790,8 @@ const fetchSales = async () => {
         }
     };
 
+
+
     const handleRetry = () => {
         setShowErrorModal(false);
         fetchAllRequiredData(false); // false = nie jest to refresh action
@@ -693,10 +855,10 @@ const fetchSales = async () => {
         return { isBlocked: false, type: 'none' };
     };
 
-    // Function to check if item should be grayed out (only for transfers, NOT sales)
+    // Function to check if item should be grayed out (transfers only, NOT sales)
     const isTransferred = (item) => {
         const status = getItemBlockStatus(item);
-        return status.isBlocked && status.type === 'transfer'; // Only gray out transfers, not sales
+        return status.isBlocked && status.type === 'transfer'; // Gray out transfers only, not sales
     };
 
     // Check if THIS SPECIFIC item has a transfer (for showing cancel button)
@@ -705,7 +867,7 @@ const fetchSales = async () => {
         return transfers.some((t) => t.productId === item.id);
     };
 
-    // Check if item has active transfer OR sale TODAY ONLY (for validation)
+    // Check if item has active transfer, exchange OR sale TODAY ONLY (for validation)
     // After midnight, all jackets can be transferred again
     const hasActiveTransfer = (item) => {
         if (!Array.isArray(allTransfers)) return false;
@@ -906,6 +1068,15 @@ const fetchSales = async () => {
                                                     <Text style={styles.optionText}>Od Pana Kazka</Text>
                                                 </TouchableOpacity>
                                             )}
+                                            <TouchableOpacity
+                                                style={[styles.optionButton, { backgroundColor: '#ff9800' }]}
+                                                onPress={() => {
+                                                    setModalVisible(false);
+                                                    setExchangeModalVisible(true);
+                                                }}
+                                            >
+                                                <Text style={styles.optionText}>Wymiana</Text>
+                                            </TouchableOpacity>
                                         </>
                                     );
                                 }
@@ -1365,6 +1536,42 @@ const fetchSales = async () => {
                         <TouchableOpacity
                             style={[styles.optionButton, styles.closeButton]}
                             onPress={() => setPanKazekModalVisible(false)}
+                        >
+                            <Text style={styles.closeText}>Anuluj</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Exchange Modal - wybór stanowiska */}
+            <Modal
+                visible={exchangeModalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setExchangeModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Wybierz stanowisko wymiany</Text>
+                        {selectedItem && (
+                            <View style={{ marginVertical: 10 }}>
+                                <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center' }}>
+                                    {selectedItem.fullName} {selectedItem.size}
+                                </Text>
+                            </View>
+                        )}
+                        {exchangeUsers.map((item) => (
+                            <TouchableOpacity
+                                key={item._id}
+                                style={styles.optionButton}
+                                onPress={() => handleExchange(item.symbol)}
+                            >
+                                <Text style={styles.optionText}>{item.symbol}</Text>
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                            style={[styles.optionButton, styles.closeButton]}
+                            onPress={() => setExchangeModalVisible(false)}
                         >
                             <Text style={styles.closeText}>Anuluj</Text>
                         </TouchableOpacity>

@@ -100,9 +100,13 @@ describe('CurrencyService', () => {
       const rates = await CurrencyService.loadExchangeRates();
       
       expect(rates).toEqual(CurrencyService.DEFAULT_RATES);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Error loading exchange rates:',
-        expect.any(Error)
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(consoleErrorSpy.mock.calls[0]).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('ERROR'),
+          'Error loading exchange rates:',
+          expect.any(Error)
+        ])
       );
       
       consoleErrorSpy.mockRestore();

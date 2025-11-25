@@ -104,7 +104,7 @@
       "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(react-native|@react-native|expo|@expo|@react-navigation|react-native-gesture-handler|expo-secure-store|expo-modules-core)/)"
+      "node_modules/(?!(react-native|@react-native|expo|@expo|@react-navigation|react-native-gesture-handler|expo-secure-store|expo-modules-core|expo-status-bar)/)"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",

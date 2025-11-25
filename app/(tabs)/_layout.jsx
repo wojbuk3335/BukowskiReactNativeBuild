@@ -59,7 +59,7 @@ const TabLayout = () => {
             borderTopWidth: 1,
             borderTopColor: "#232533",
             height: 84,
-            paddingBottom: Math.max(insets.bottom - 10, 0),
+            paddingBottom: Math.max(insets.bottom - 5, 0),
             paddingHorizontal: 4,
           },
         }}
