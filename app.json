@@ -9,9 +9,12 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bukowski.inventory5.mobile2025",
+      "bundleIdentifier": "com.bukowski.inventory7.mobile2025",
+      "buildNumber": "7",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "This app requires camera access exclusively for scanning barcodes and QR codes on inventory items. For example, when you scan a product's barcode, the app uses the camera to read the code and retrieve product details from the inventory database. The camera is used only during active scanning and no photos or videos are captured, stored, or transmitted.",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to let you attach product images to inventory records for documentation purposes."
       }
     },
     "android": {
@@ -19,7 +22,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory5.app2025"
+      "package": "com.bukowski.inventory6.app2025"
     },
     "web": {
       "bundler": "metro",

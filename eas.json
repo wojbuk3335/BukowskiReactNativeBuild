@@ -19,6 +19,15 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal"
+      },
+      "ios": {
+        "appleId":"bukowskibukowski1985@gmai.com",
+        "ascAppId": "6755741831",
+        "appleTeamId": "3LR32JKUHA"
+      }
+    }
   }
 }

@@ -604,7 +604,7 @@ const Home = () => {
         return;
       }
 
-      const response = await fetch(`http://192.168.1.11:3000/api/sales-assignments?sellingPoint=${encodeURIComponent(sellingPoint)}`, {
+      const response = await fetch(getApiUrl(`/sales-assignments?sellingPoint=${encodeURIComponent(sellingPoint)}`), {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -652,7 +652,7 @@ const Home = () => {
         }
 
         // Wyślij zapytanie do API
-        const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
+        const response = await fetch(getApiUrl('/sales-assignments'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -741,7 +741,7 @@ const Home = () => {
         return;
       }
 
-      const url = `http://192.168.1.11:3000/api/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}&deleteWorkHours=${deleteWorkHours}`;
+      const url = getApiUrl(`/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}&deleteWorkHours=${deleteWorkHours}`);
       // Logger.debug('Remove salesperson - URL:', url);
 
       const response = await fetch(url, {
@@ -843,7 +843,7 @@ const Home = () => {
         try {
           // Logger.debug(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
           
-          const response = await fetch('http://192.168.1.11:3000/api/sales-assignments', {
+          const response = await fetch(getApiUrl('/sales-assignments'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
