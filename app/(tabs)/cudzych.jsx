@@ -484,7 +484,9 @@ const Cudzych = () => {
                 card: [], // Empty card array
                 symbol: selectedOption || 'P', // Use selected selling point symbol
                 source: 'Cudzich', // NEW FIELD: Add source information for Cudzich transactions
-                notes: 'Transakcja z systemu Cudzich' // Additional notes for identification
+                notes: 'Transakcja z systemu Cudzich', // Additional notes for identification
+                employeeId: user?.employeeId || null, // Use Employee ObjectId for WorkHours matching
+                employeeName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unknown' : null // Add employee name
               })
             });
             

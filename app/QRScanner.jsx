@@ -622,6 +622,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   };
 
   const handleSubmit = async () => {
+    Logger.debug('🔵 handleSubmit wywołane!');
+    
     const matchedItems = stateData?.filter(item => item.barcode === barcode);
     
     let fullName, size, symbol;
@@ -694,8 +696,15 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       symbol, // Add symbol field
       isPickup: isPickup, // Add pickup information
       advanceAmount: isPickup ? parseFloat(advanceAmount) || 0 : 0, // Add advance amount for pickups
-      relatedAdvanceId: isPickup && selectedAdvance?._id ? selectedAdvance._id : null // Add related advance ID
+      advanceOperationId: isPickup && selectedAdvance?._id ? selectedAdvance._id : null, // Add related advance ID (matches backend field name)
+      employeeId: user?.employeeId || null, // Use Employee ObjectId for WorkHours matching
+      employeeName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unknown' : null // Add employee name
     };
+
+    Logger.debug('👤 User object:', user);
+    Logger.debug('👤 Employee ID (for WorkHours):', user?.employeeId);
+    Logger.debug('👤 User ID:', user?.userId);
+    Logger.debug('👤 User name:', user?.firstName, user?.lastName, 'Email:', user?.email);
 
     // Walidacja wymaganych pól
     if (!payload.fullName || !payload.size || !payload.from) {
@@ -708,16 +717,24 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       return;
     }
 
+    Logger.debug('📤 Wysyłanie sprzedaży:', payload);
+
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/sales/save-sales"), {
         method: 'POST',
         body: JSON.stringify(payload)
       });
       
+      Logger.debug('📥 Response status:', response.status, response.ok);
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        Logger.error('❌ Response error:', errorData);
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+      
+      const responseData = await response.json();
+      Logger.debug('✅ Sprzedaż zapisana:', responseData);
       
       // Show success modal instead of alert
       setSuccessMessage("Dane zostały zapisane pomyślnie!");
