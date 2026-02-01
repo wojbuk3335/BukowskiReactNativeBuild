@@ -993,9 +993,14 @@ const fetchSales = async () => {
                     <FlatList
                         testID="writeoff-flatlist"
                         ListHeaderComponent={
-                            <Text style={styles.headerText}>
-                                Stan użytkownika: {user?.email || "Nieznany użytkownik"}
-                            </Text>
+                            <View>
+                                <Text style={styles.headerText}>
+                                    Stan użytkownika: {user?.email || "Nieznany użytkownik"}
+                                </Text>
+                                <Text style={styles.productCountText}>
+                                    Produktów: {filteredData.length}
+                                </Text>
+                            </View>
                         }
                         contentContainerStyle={{ paddingHorizontal: 0 }}
                         data={filteredData}
@@ -1717,6 +1722,19 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         marginBottom: 10,
         textAlign: "center",
+    },
+    productCountText: {
+        color: "white",
+        fontSize: 13,
+        fontWeight: "bold",
+        marginBottom: 5,
+        textAlign: "center",
+        marginTop: 10,
+        backgroundColor: "#0d6efd",
+        paddingVertical: 8,
+        paddingHorizontal: 15,
+        borderRadius: 8,
+        alignSelf: "center",
     },
     headerText: {
         color: "white",

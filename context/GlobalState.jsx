@@ -154,7 +154,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchGoods = async () => {
         try {
-            const response = await fetchWithTimeout(getApiUrl("/excel/goods/get-all-goods"));
+            const response = await fetchWithTimeout(getApiUrl("/excel/stock/get-all-goods"));
             
             if (!response || !response.ok) {
                 setGoods([]); // Set fallback immediately
@@ -162,8 +162,8 @@ export const GlobalStateProvider = ({ children }) => {
             }
             const data = await response.json();
             
-            // Extract goods array from the response object
-            const goodsArray = Array.isArray(data?.goods) ? data.goods : [];
+            // Extract goods array from the response object (using 'stocks' key for compatibility)
+            const goodsArray = Array.isArray(data?.stocks) ? data.stocks : [];
             setGoods(goodsArray); // Set the fetched goods into state
             return goodsArray; // Return fetched goods as array
         } catch (error) {

@@ -204,7 +204,7 @@ const Home = () => {
       });
       setTotals(currencyTotals); // Update totals state
     } catch (error) {
-      Logger.error('Error fetching sales data:', error);
+      // Silent error handling
     }
   };
 
@@ -227,7 +227,7 @@ const Home = () => {
 
       setEditModalVisible(true); // Show the edit modal
     } catch (error) {
-      Logger.error("Error fetching item data:", error.message);
+      // Silent error handling
     }
   };
 
@@ -298,14 +298,13 @@ const Home = () => {
     }
   }, [contextFilteredData, contextTransferredItems, contextDeductionsData]);
 
-  // Set products from stateData when stateData are loaded (use stateData for product selection with barcodes)
+  // Set products from goods when goods are loaded (use goods for product selection in advances)
   useEffect(() => {
-    if (stateData && Array.isArray(stateData) && stateData.length > 0) {
-      // Logger.debug('Setting products from stateData:', stateData.length);
-      setProducts(stateData);
-      setFilteredProducts(stateData); // Initialize filtered products
+    if (goods && Array.isArray(goods) && goods.length > 0) {
+      setProducts(goods);
+      setFilteredProducts(goods); // Initialize filtered products from goods
     }
-  }, [stateData]);
+  }, [goods]);
 
   // Update available funds when relevant data changes
   useEffect(() => {
@@ -326,7 +325,9 @@ const Home = () => {
     } else {
       const filtered = products.filter(product => 
         (product.fullName && product.fullName.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
+        (product.Tow_Opis && product.Tow_Opis.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
         (product.code && product.code.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
+        (product.Tow_Kod && product.Tow_Kod.toLowerCase().includes(productSearchQuery.toLowerCase())) ||
         (product.name && product.name.toLowerCase().includes(productSearchQuery.toLowerCase()))
       );
       setFilteredProducts(filtered);
@@ -399,7 +400,6 @@ const Home = () => {
       
       setTransferredItems(filteredData); // Filter items by transfer_from
     } catch (error) {
-      Logger.error("Error fetching transferred items:", error);
       setTransferredItems([]); // Fallback to empty array
     }
   };
@@ -418,7 +418,6 @@ const Home = () => {
       const transferArray = Array.isArray(data) ? data : (data?.transfers || data?.data || []);
       setReceivedItems(transferArray.filter((item) => item.transfer_to === user.symbol)); // Filter items by transfer_to
     } catch (error) {
-      Logger.error("Error fetching received items:", error);
       setReceivedItems([]); // Fallback to empty array
     }
   };
@@ -445,7 +444,6 @@ const Home = () => {
       
       setAdvancesData(advancesFiltered);
     } catch (error) {
-      Logger.error("Error fetching advances:", error);
       setAdvancesData([]); // Fallback to empty array
     }
   };
@@ -470,10 +468,6 @@ const Home = () => {
       
       setDeductionsData(operationsFiltered); // Keep same state variable for now to avoid breaking changes
     } catch (error) {
-      // Silent error handling for testing - log only in production
-      if (process.env.NODE_ENV !== 'test') {
-        Logger.error("Error fetching financial operations:", error);
-      }
       // Fallback to old deductions endpoint if new one doesn't exist yet
       try {
         const response = await tokenService.authenticatedFetch(getApiUrl("/deductions"));
@@ -489,7 +483,6 @@ const Home = () => {
         );
         setDeductionsData(deductionsFiltered);
       } catch (fallbackError) {
-        Logger.error("Error fetching deductions fallback:", fallbackError);
         setDeductionsData([]);
       }
     }
@@ -568,15 +561,8 @@ const Home = () => {
           
         setEmployees(filteredEmployees);
         // Logger.debug(`Loaded ${filteredEmployees.length} employees for location: ${user?.location}`);
-      } else {
-        if (process.env.NODE_ENV !== 'test') {
-          Logger.error('Failed to fetch employees:', response.status);
-        }
       }
     } catch (error) {
-      if (process.env.NODE_ENV !== 'test') {
-        Logger.error("Error fetching employees:", error);
-      }
       setEmployees([]);
     }
   };
@@ -619,11 +605,9 @@ const Home = () => {
         const assignedEmployees = assignments.map(assignment => assignment.employeeId);
         setAssignedSalespeople(assignedEmployees);
         // Logger.debug('Loaded assigned salespeople:', assignedEmployees.length);
-      } else {
-        Logger.error('Failed to fetch sales assignments:', response.status);
       }
     } catch (error) {
-      Logger.error("Error fetching assigned salespeople:", error);
+      // Silent error handling
     }
   };
 
@@ -1088,9 +1072,7 @@ const Home = () => {
         setTodaysWorkHours(data.workHours || []);
       }
     } catch (error) {
-      if (process.env.NODE_ENV !== 'test') {
-        Logger.error("Error fetching today's work hours:", error);
-      }
+      // Silent error handling
     }
   };
 
@@ -1127,7 +1109,6 @@ const Home = () => {
           setWorkEndTime(workHours.endTime);
           if (workHours.notes) setWorkNotes(workHours.notes);
         } else {
-          Logger.debug(`📝 Brak godzin pracy - używam domyślnych`);
           setWorkStartTime("08:00");
           setWorkEndTime("16:00");
         }
@@ -1487,8 +1468,9 @@ const Home = () => {
           productName = `${stockName} ${colorName} ${sizeName}`;
         } else {
           // Search by 'id' field (stateData uses 'id', not '_id')
-          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct);
-          productName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct) ||
+                                      stateData?.find(p => (p.id || p._id) === selectedProduct);
+          productName = selectedProductObj?.fullName || selectedProductObj?.Tow_Opis || selectedProductObj?.code || selectedProductObj?.Tow_Kod || 'Nieznany produkt';
           
           // Add size to product name if selected for standard product
           if (sizeSearchQuery) {
@@ -1582,13 +1564,33 @@ const Home = () => {
       // Add product-related data if it's a product transaction
       if (reasonType === 'product') {
         if (productType === 'standard' && selectedProduct) {
-          // Standard product from state/inventory
-          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct);
-          let productFullName = selectedProductObj?.fullName || selectedProductObj?.code || 'Nieznany produkt';
+          let productFullName;
           
-          // Add size to product name if selected
-          if (sizeSearchQuery) {
-            productFullName += ` ${sizeSearchQuery}`;
+          console.log('🔍 Looking for product:', selectedProduct);
+          console.log('📦 Products array length:', products?.length);
+          console.log('📊 StateData array length:', stateData?.length);
+          
+          // Find the selected product object
+          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct) || 
+                                      stateData?.find(p => (p.id || p._id) === selectedProduct);
+          
+          console.log('✅ Found product:', selectedProductObj);
+          
+          if (selectedProductObj) {
+            productFullName = selectedProductObj.fullName || selectedProductObj.Tow_Opis || selectedProductObj.code || selectedProductObj.Tow_Kod || 'Nieznany produkt';
+            
+            console.log('📝 Product name:', productFullName);
+            console.log('📏 Size:', sizeSearchQuery);
+            
+            // Add size to product name if selected
+            if (sizeSearchQuery) {
+              productFullName += ` ${sizeSearchQuery}`;
+            }
+            
+            console.log('✅ Final product name:', productFullName);
+          } else {
+            console.log('❌ Product not found!');
+            productFullName = 'Nieznany produkt';
           }
           
           operationData.productId = selectedProduct;
@@ -1730,7 +1732,8 @@ const Home = () => {
       setSelectedProduct(product.id || product._id);
       // Show full product name with size (same format as QRScanner)
       const displayName = `${product.fullName} ${product.size}`;
-      setProductSearchQuery(displayName);
+      setProductSearchQuery(displayName); // Show full name with size in text field
+      setSizeSearchQuery(product.size || ''); // Store size separately for later use
       setShowProductDropdown(false);
       setProductScanned(true); // Mark product as scanned (size already included)
       setQrScannerVisible(false);
@@ -1761,7 +1764,7 @@ const Home = () => {
         setPanKazekItems(data.data || []);
       }
     } catch (error) {
-      Logger.error('Error fetching Pan Kazek items:', error);
+      // Silent error handling
     }
   };
 
@@ -1779,6 +1782,7 @@ const Home = () => {
       fetchSalesData(); // Fetch sales data when the tab is focused
       fetchUsers(); // Fetch users data for symbol selection
       fetchState(); // Fetch state data for product selection with barcodes
+      fetchGoods(); // Fetch all goods for standard product selection
       fetchSizes(); // Fetch sizes for custom products
       fetchColors(); // Fetch colors for custom products
       fetchStock(); // Fetch stock/assortment for custom products
@@ -3931,16 +3935,16 @@ const Home = () => {
                                     }}
                                     onPress={() => {
                                       setSelectedProduct(product.id || product._id);
-                                      setProductSearchQuery(product.fullName || product.code || product.name || 'Produkt');
+                                      setProductSearchQuery(product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Produkt');
                                       setShowProductDropdown(false);
                                     }}
                                   >
                                     <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {product.fullName || product.code || product.name || 'Nieznany produkt'}
+                                      {product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Nieznany produkt'}
                                     </Text>
-                                    {product.code && product.fullName && (
+                                    {(product.code || product.Tow_Kod) && (product.fullName || product.Tow_Opis) && (
                                       <Text style={{ color: '#ccc', fontSize: 11 }}>
-                                        Kod: {product.code}
+                                        Kod: {product.code || product.Tow_Kod}
                                       </Text>
                                     )}
                                   </TouchableOpacity>
@@ -5577,6 +5581,10 @@ const Home = () => {
                       setQrScannerVisible(false);
                       setScanned(false);
                       setProductScanned(false); // Reset when user cancels scanning
+                      // Ensure goods are loaded for product selection after canceling scanner
+                      if (!goods || goods.length === 0) {
+                        fetchGoods();
+                      }
                     }}
                   >
                     <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>Anuluj</Text>
