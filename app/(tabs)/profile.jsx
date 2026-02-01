@@ -179,11 +179,13 @@ const Profile = () => {
   };
 
   const handleEmailChange = (text) => {
-    setEmail(text);
+    // Trim whitespace and clean email
+    const cleanEmail = text.trim().replace(/\s+/g, '');
+    setEmail(cleanEmail);
     
     // Validate email if not empty (since it's optional)
-    if (text.length > 0) {
-      const isValid = validateEmail(text);
+    if (cleanEmail.length > 0) {
+      const isValid = validateEmail(cleanEmail);
       if (!isValid) {
         setEmailError('Nieprawidłowy format adresu email');
       } else {
@@ -387,7 +389,7 @@ const Profile = () => {
         customer: {
           name: customerName,
           phone: phoneNumber,
-          email: email || null,
+          email: email ? email.trim() : null, // Clean email before sending
           deliveryOption,
           address: {
             postalCode: deliveryOption === 'shipping' ? postalCode : null,
@@ -432,28 +434,8 @@ const Profile = () => {
         
         Logger.debug('✅ Zamówienie zapisane, ID:', backendOrderId);
 
-        // Send email notifications (always send to owner, optionally to customer)
-        Logger.debug('📧 Wysyłanie powiadomień email...');
-        
-        const emailResponse = await tokenService.authenticatedFetch(getApiUrl('/orders/send-email'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ 
-            orderId: backendOrderId, 
-            email: email || null, // Can be null if customer didn't provide email
-            orderData: result.data // Use full order data from backend
-          })
-        });
-        
-        if (emailResponse.ok) {
-          const emailResult = await emailResponse.json();
-          Logger.debug('✅ Emaile wysłane pomyślnie:', emailResult);
-        } else {
-          const emailError = await emailResponse.json();
-          Logger.error('❌ Błąd wysyłania emaili:', emailError);
-        }
+        // Email is sent automatically by backend in createOrder function
+        Logger.debug('📧 Email wysyłany automatycznie przez backend');
 
         // Set success message and show modal
         setOrderNumber(backendOrderId);
