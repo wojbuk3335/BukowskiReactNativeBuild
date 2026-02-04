@@ -36,6 +36,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   const [cameraVisible, setCameraVisible] = useState(true); // Widoczność kamery
   const [successModalVisible, setSuccessModalVisible] = useState(false); // State for success modal
   const [successMessage, setSuccessMessage] = useState(""); // Message for success modal
+  const [errorModalVisible, setErrorModalVisible] = useState(false); // State for error modal
+  const [errorMessage, setErrorMessage] = useState(""); // Message for error modal
 
   const openSellingPointMenu = () => {
     setSellingPointMenuVisible(true);
@@ -690,7 +692,8 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     const totalPayment = totalCash + totalCard;
 
     if (totalPayment <= 0) {
-      Alert.alert("Błąd płatności", "Nie można sprzedać produktu za darmo! Wprowadź kwotę gotówką lub kartą.");
+      setErrorMessage("Proszę wprowadzić kwotę płatności (gotówka lub karta).");
+      setErrorModalVisible(true);
       return;
     }
 
@@ -1168,6 +1171,33 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
           </TouchableWithoutFeedback>
         </View>
       )}
+      
+      {/* Error Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={errorModalVisible}
+        onRequestClose={() => setErrorModalVisible(false)}
+      >
+        <View style={styles.currencyModalContainer}>
+          <View style={styles.successModalContent}>
+            <View style={[styles.successIconContainer, { backgroundColor: '#dc3545' }]}>
+              <Text style={styles.successIcon}>✕</Text>
+            </View>
+            <Text style={styles.successModalTitle}>Uwaga</Text>
+            <Text style={styles.successModalMessage}>
+              {errorMessage}
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.currencyModalItem, { backgroundColor: '#dc3545', marginTop: 20, width: '90%' }]}
+              onPress={() => setErrorModalVisible(false)}
+            >
+              <Text style={styles.currencyModalItemText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       
       {/* Success Modal */}
       <Modal
