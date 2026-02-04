@@ -684,6 +684,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       .filter(pair => pair.price && pair.price.trim() !== "")
       .map(pair => ({ price: pair.price, currency: pair.currency }));
 
+    // WALIDACJA: Sprawdź czy jest przynajmniej jedna płatność większa od zera
+    const totalCash = validCashPrices.reduce((sum, pair) => sum + parseFloat(pair.price || 0), 0);
+    const totalCard = validCardPrices.reduce((sum, pair) => sum + parseFloat(pair.price || 0), 0);
+    const totalPayment = totalCash + totalCard;
+
+    if (totalPayment <= 0) {
+      Alert.alert("Błąd płatności", "Nie można sprzedać produktu za darmo! Wprowadź kwotę gotówką lub kartą.");
+      return;
+    }
+
     const payload = {
       fullName,
       timestamp: new Date().toISOString(), // Use ISO format for consistent date parsing
