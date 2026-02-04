@@ -466,6 +466,7 @@ const fetchSales = async () => {
             transfer_from: user.symbol,
             transfer_to: toSymbol,
             productId: selectedItem.id,
+            barcode: selectedItem.barcode || null, // Add barcode field
             reason: reason || null,
             // Dostosuj format zaliczki do backendu
             advancePayment: advance ? advance.amount : 0,
@@ -638,6 +639,7 @@ const fetchSales = async () => {
             transfer_from: user.symbol,
             transfer_to: 'Wymiana',
             productId: selectedItem.id,
+            barcode: selectedItem.barcode || null, // Add barcode field
             reason: `Wymiana - ${toSymbol}`, // Zapisz punkt wymiany w reason
             advancePayment: 0,
             advancePaymentCurrency: 'PLN',
