@@ -39,6 +39,7 @@ const Remanent = () => {
   const [remanentPriceList, setRemanentPriceList] = useState(null);
   const [lastScannedCode, setLastScannedCode] = useState('');
   const [scanningEnabled, setScanningEnabled] = useState(true);
+  const [recentlyScannedCodes, setRecentlyScannedCodes] = useState(new Map()); // Map z czasem ostatniego skanu
   
   // Comparison modal states
   const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
@@ -216,21 +217,42 @@ const Remanent = () => {
             });
           }
 
-          // Count unique scanned items (group by barcode)
-          const scannedGroups = {};
+          // Grupuj zeskanowane produkty według kodu i policz ilości
+          const scannedByBarcode = {};
           filteredRemanentData.forEach(item => {
-            scannedGroups[item.code] = true;
+            const code = item.code;
+            if (!scannedByBarcode[code]) {
+              scannedByBarcode[code] = 0;
+            }
+            scannedByBarcode[code]++;
           });
-          const uniqueScanned = Object.keys(scannedGroups).length;
+          
+          // Grupuj oczekiwane produkty według kodu i policz ilości
+          const expectedByBarcode = {};
+          expectedItems.forEach(item => {
+            const code = item.barcode;
+            if (!expectedByBarcode[code]) {
+              expectedByBarcode[code] = 0;
+            }
+            expectedByBarcode[code]++;
+          });
+          
+          // Policz ile produktów zostało w pełni zeskanowanych (min z expected i scanned dla każdego kodu)
+          let fullyScannedCount = 0;
+          Object.keys(expectedByBarcode).forEach(barcode => {
+            const expectedCount = expectedByBarcode[barcode];
+            const scannedCount = scannedByBarcode[barcode] || 0;
+            fullyScannedCount += Math.min(expectedCount, scannedCount);
+          });
           
           const totalExpected = expectedItems.length;
           const totalScanned = filteredRemanentData.length;
-          const percentage = totalExpected > 0 ? Math.round((uniqueScanned / totalExpected) * 100) : 0;
+          const percentage = totalExpected > 0 ? Math.round((fullyScannedCount / totalExpected) * 100) : 0;
           
           setScanProgress({
             totalExpected,
             totalScanned,
-            uniqueScanned,
+            uniqueScanned: fullyScannedCount, // Zmieniono nazwę ale to teraz ilość w pełni zeskanowanych
             percentage
           });
         }
@@ -370,10 +392,29 @@ const Remanent = () => {
   };
 
   const handleScan = async ({ data, type }) => {
-    // Prevent multiple scans of the same code within 2 seconds (protection against accidental double scan)
-    if (!scanningEnabled || data === lastScannedCode) {
+    // Sprawdź czy ten sam kod był skanowany w ciągu ostatnich 2 sekund
+    const now = Date.now();
+    const lastScanTime = recentlyScannedCodes.get(data);
+    
+    if (!scanningEnabled || (lastScanTime && (now - lastScanTime) < 2000)) {
+      // Skanowanie wyłączone LUB ten sam kod w ciągu 2 sekund - ignoruj
       return;
     }
+    
+    // Zapisz czas tego skanu
+    setRecentlyScannedCodes(prev => {
+      const newMap = new Map(prev);
+      newMap.set(data, now);
+      
+      // Wyczyść stare wpisy (starsze niż 5 sekund)
+      for (const [code, time] of newMap.entries()) {
+        if (now - time > 5000) {
+          newMap.delete(code);
+        }
+      }
+      
+      return newMap;
+    });
 
     // Disable scanning temporarily
     setScanningEnabled(false);
@@ -682,72 +723,81 @@ const Remanent = () => {
         const extraItems = []; // Produkty w remanencie, ale nie w stanie
         
         // Grupuj zeskanowane produkty według kodu i policz ilości
-        const remanentGroups = {};
+        const remanentByBarcode = {};
         filteredRemanentData.forEach(remanentItem => {
           const code = remanentItem.code;
-          if (!remanentGroups[code]) {
-            // Wydobądź rozmiar z nazwy (ostatnia część po spacjach, np. "Amanda ZŁOTY 3XL" -> "3XL")
-            const nameParts = remanentItem.name.trim().split(' ');
-            const extractedSize = nameParts[nameParts.length - 1];
-            // Usuń rozmiar z nazwy (zostaw tylko "Amanda ZŁOTY")
-            const nameWithoutSize = nameParts.slice(0, -1).join(' ');
-            
-            remanentGroups[code] = {
-              name: nameWithoutSize || remanentItem.name, // Nazwa bez rozmiaru
-              size: remanentItem.size || extractedSize || 'Nieznany',
-              code: code,
-              price: remanentItem.value,
-              count: 0
-            };
+          if (!remanentByBarcode[code]) {
+            remanentByBarcode[code] = [];
           }
-          remanentGroups[code].count++;
+          remanentByBarcode[code].push(remanentItem);
+        });
+        
+        // Grupuj produkty ze stanu według kodu
+        const stateByBarcode = {};
+        currentState.forEach(stateItem => {
+          const code = stateItem.barcode;
+          if (!stateByBarcode[code]) {
+            stateByBarcode[code] = [];
+          }
+          stateByBarcode[code].push(stateItem);
         });
 
         // Sprawdź co brakuje lub jest w nadwyżce
-        currentState.forEach(stateItem => {
-          const code = stateItem.barcode;
-          const remanentGroup = remanentGroups[code];
+        Object.keys(stateByBarcode).forEach(barcode => {
+          const stateItems = stateByBarcode[barcode];
+          const remanentItems = remanentByBarcode[barcode] || [];
           
-          if (!remanentGroup) {
+          const expectedCount = stateItems.length;
+          const actualCount = remanentItems.length;
+          
+          if (actualCount === 0) {
             // Brak całkowity - jest w stanie, ale nie zeskanowany
             missingItems.push({
-              name: stateItem.fullName,
-              size: stateItem.size,
-              code: stateItem.barcode,
-              price: stateItem.price,
-              expectedCount: 1,
+              name: stateItems[0].fullName,
+              size: stateItems[0].size,
+              code: barcode,
+              price: stateItems[0].price,
+              expectedCount: expectedCount,
               actualCount: 0
             });
-          } else if (remanentGroup.count > 1) {
+          } else if (actualCount < expectedCount) {
+            // Częściowy brak - zeskanowano mniej niż powinno być
+            missingItems.push({
+              name: stateItems[0].fullName,
+              size: stateItems[0].size,
+              code: barcode,
+              price: stateItems[0].price,
+              expectedCount: expectedCount,
+              actualCount: actualCount,
+              missingCount: expectedCount - actualCount
+            });
+          } else if (actualCount > expectedCount) {
             // Nadwyżka - zeskanowano więcej niż powinno być
             extraItems.push({
-              name: remanentGroup.name,
-              size: remanentGroup.size,
-              code: code,
-              price: remanentGroup.price,
-              expectedCount: 1,
-              actualCount: remanentGroup.count,
-              excessCount: remanentGroup.count - 1
+              name: remanentItems[0].name,
+              size: remanentItems[0].size,
+              code: barcode,
+              price: remanentItems[0].value,
+              expectedCount: expectedCount,
+              actualCount: actualCount,
+              excessCount: actualCount - expectedCount
             });
           }
-          // Jeśli remanentGroup.count === 1, to jest OK (nie dodajemy do żadnej listy)
+          // Jeśli actualCount === expectedCount, to jest OK (nie dodajemy do żadnej listy)
         });
         
         // Sprawdź produkty zeskanowane, których nie ma w stanie
-        Object.values(remanentGroups).forEach(remanentGroup => {
-          const existsInState = currentState.find(stateItem => 
-            stateItem.barcode === remanentGroup.code
-          );
-          
-          if (!existsInState) {
+        Object.keys(remanentByBarcode).forEach(barcode => {
+          if (!stateByBarcode[barcode]) {
+            const remanentItems = remanentByBarcode[barcode];
             extraItems.push({
-              name: remanentGroup.name,
-              size: remanentGroup.size,
-              code: remanentGroup.code,
-              price: remanentGroup.price,
+              name: remanentItems[0].name,
+              size: remanentItems[0].size,
+              code: barcode,
+              price: remanentItems[0].value,
               expectedCount: 0,
-              actualCount: remanentGroup.count,
-              excessCount: remanentGroup.count
+              actualCount: remanentItems.length,
+              excessCount: remanentItems.length
             });
           }
         });
@@ -1162,24 +1212,6 @@ const Remanent = () => {
           <Text style={styles.detailLabel}>Punkt sprzedaży:</Text>
           <Text style={styles.detailValue}>{user?.sellingPoint || user?.location || user?.symbol || 'Nieznany punkt'}</Text>
         </View>
-      </View>
-
-      <View style={styles.itemActions}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => handleItemAction(item, 'edit')}
-        >
-          <Ionicons name="create-outline" size={20} color="#0d6efd" />
-          <Text style={styles.actionText}>Edytuj</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => handleItemAction(item, 'inventory')}
-        >
-          <Ionicons name="list-outline" size={20} color="#28a745" />
-          <Text style={styles.actionText}>Inwentarz</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
