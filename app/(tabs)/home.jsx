@@ -2464,7 +2464,13 @@ const Home = () => {
                             },
                           ]}
                         >
-                          {index + 1}. {item.fullName} {item.size} - Przepisano do: {item.transfer_to}
+                          {index + 1}. {item.fullName} {item.size} - {
+                            item.transfer_to === 'Wymiana' 
+                              ? (item.reason?.startsWith('Wymiana - ') 
+                                  ? `Wymiana w punkcie ${item.reason.replace('Wymiana - ', '')}` 
+                                  : `Wymiana${item.reason ? ` w punkcie ${item.reason}` : ''}`)
+                              : `Przepisano do: ${item.transfer_to}`
+                          }
                           {item.reason && (item.transfer_to?.toLowerCase() === 'dom' || item.transfer_to?.toLowerCase() === 'd') && (
                             <Text style={{ fontSize: 11, color: "#fbbf24" }}>
                               {' '}({item.reason.length > 15 ? item.reason.substring(0, 15) + '...' : item.reason})

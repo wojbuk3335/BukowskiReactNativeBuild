@@ -638,7 +638,7 @@ const fetchSales = async () => {
             transfer_from: user.symbol,
             transfer_to: 'Wymiana',
             productId: selectedItem.id,
-            reason: "Wymiana",
+            reason: `Wymiana - ${toSymbol}`, // Zapisz punkt wymiany w reason
             advancePayment: 0,
             advancePaymentCurrency: 'PLN',
         };
