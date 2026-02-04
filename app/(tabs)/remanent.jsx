@@ -370,7 +370,7 @@ const Remanent = () => {
   };
 
   const handleScan = async ({ data, type }) => {
-    // Prevent multiple scans of the same code
+    // Prevent multiple scans of the same code within 2 seconds (protection against accidental double scan)
     if (!scanningEnabled || data === lastScannedCode) {
       return;
     }
@@ -379,13 +379,17 @@ const Remanent = () => {
     setScanningEnabled(false);
     setLastScannedCode(data);
     
-    // Check if jacket already scanned
+    // Clear lastScannedCode after 2 seconds to allow scanning the same jacket again later
+    setTimeout(() => {
+      setLastScannedCode('');
+    }, 2000);
+    
+    // Check if jacket already scanned in current session
     const alreadyScanned = scannedJackets.find(jacket => jacket.code === data);
     if (alreadyScanned) {
       // Quick re-enable for duplicate (no alert needed)
       setTimeout(() => {
         setScanningEnabled(true);
-        setLastScannedCode('');
       }, 800);
       return;
     }
@@ -430,7 +434,6 @@ const Remanent = () => {
       // Re-enable scanning
       setTimeout(() => {
         setScanningEnabled(true);
-        setLastScannedCode('');
       }, 800);
       return;
     }
@@ -448,7 +451,6 @@ const Remanent = () => {
     // Re-enable scanning after short delay
     setTimeout(() => {
       setScanningEnabled(true);
-      setLastScannedCode('');
     }, 800);
   };
 
