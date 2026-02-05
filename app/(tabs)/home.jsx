@@ -2641,13 +2641,23 @@ const Home = () => {
                   // const today = '2025-08-11'; // TEST: Simulate tomorrow (dzień później)
                   const today = new Date().toISOString().split('T')[0]; // NORMAL: Real today
                   
-                  // Calculate total sales by currency
-                  const salesTotals = {};
+                  // Calculate total CASH sales by currency (gotówka)
+                  const cashTotals = {};
                   filteredData.forEach(item => {
-                    [...(item.cash || []), ...(item.card || [])]
+                    (item.cash || [])
                       .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
                       .forEach(({ price, currency }) => {
-                        salesTotals[currency] = (salesTotals[currency] || 0) + parseFloat(price);
+                        cashTotals[currency] = (cashTotals[currency] || 0) + parseFloat(price);
+                      });
+                  });
+                  
+                  // Calculate total CARD sales by currency (karta)
+                  const cardTotals = {};
+                  filteredData.forEach(item => {
+                    (item.card || [])
+                      .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
+                      .forEach(({ price, currency }) => {
+                        cardTotals[currency] = (cardTotals[currency] || 0) + parseFloat(price);
                       });
                   });
                   
@@ -2669,19 +2679,27 @@ const Home = () => {
                       operationsTotals[currency] = (operationsTotals[currency] || 0) + item.amount;
                     });
                   
-                  // Calculate final totals by currency
+                  // Calculate final totals by currency (CASH + advances + operations)
                   const allCurrencies = new Set([
-                    ...Object.keys(salesTotals),
+                    ...Object.keys(cashTotals),
+                    ...Object.keys(cardTotals),
                     ...Object.keys(advancesTotals),
                     ...Object.keys(operationsTotals)
                   ]);
                   
-                  const finalTotals = {};
+                  const finalCashTotals = {};
+                  const finalCardTotals = {};
                   allCurrencies.forEach(currency => {
-                    const sales = salesTotals[currency] || 0;
+                    const cash = cashTotals[currency] || 0;
+                    const card = cardTotals[currency] || 0;
                     const advances = advancesTotals[currency] || 0;
                     const operations = operationsTotals[currency] || 0;
-                    finalTotals[currency] = sales + advances + operations;
+                    
+                    // Gotówka w kasie = płatności gotówką + zaliczki + operacje finansowe
+                    finalCashTotals[currency] = cash + advances + operations;
+                    
+                    // Płatności kartą = tylko płatności kartą (zamknięcie terminala)
+                    finalCardTotals[currency] = card;
                   });
                   
                   return allCurrencies.size > 0 && (
@@ -2705,16 +2723,40 @@ const Home = () => {
                         🏦 ZAMKNIĘCIE DNIA
                       </Text>
                       
-                      {/* Sales */}
+                      {/* Cash Sales */}
                       <View style={{ marginBottom: 12 }}>
                         <Text style={{ fontSize: 14, color: "#10b981", fontWeight: "bold", marginBottom: 4 }}>
-                          📈 UTARG (Sprzedaż):
+                          💵 SPRZEDAŻ GOTÓWKĄ:
                         </Text>
-                        {Object.entries(salesTotals).map(([currency, total]) => (
-                          <Text key={`sales-${currency}`} style={{ fontSize: 13, color: "#d1fae5", marginLeft: 16 }}>
-                            +{total.toFixed(2)} {currency}
+                        {Object.entries(cashTotals).length > 0 ? (
+                          Object.entries(cashTotals).map(([currency, total]) => (
+                            <Text key={`cash-${currency}`} style={{ fontSize: 13, color: "#d1fae5", marginLeft: 16 }}>
+                              +{total.toFixed(2)} {currency}
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={{ fontSize: 13, color: "#9ca3af", marginLeft: 16, fontStyle: "italic" }}>
+                            Brak płatności gotówką
                           </Text>
-                        ))}
+                        )}
+                      </View>
+                      
+                      {/* Card Sales */}
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 14, color: "#3b82f6", fontWeight: "bold", marginBottom: 4 }}>
+                          💳 SPRZEDAŻ KARTĄ:
+                        </Text>
+                        {Object.entries(cardTotals).length > 0 ? (
+                          Object.entries(cardTotals).map(([currency, total]) => (
+                            <Text key={`card-${currency}`} style={{ fontSize: 13, color: "#dbeafe", marginLeft: 16 }}>
+                              +{total.toFixed(2)} {currency}
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={{ fontSize: 13, color: "#9ca3af", marginLeft: 16, fontStyle: "italic" }}>
+                            Brak płatności kartą
+                          </Text>
+                        )}
                       </View>
                       
                       {/* Advances */}
@@ -2749,36 +2791,42 @@ const Home = () => {
                         </View>
                       )}
                       
-                      {/* Final Total */}
+                      {/* Final Cash Total */}
                       <View style={{ 
                         marginTop: 16, 
                         paddingTop: 12, 
                         borderTopWidth: 1, 
-                        borderTopColor: "#fbbf24" 
+                        borderTopColor: "#10b981" 
                       }}>
                         <Text style={{ 
                           fontSize: 15, 
-                          color: "#fbbf24", 
+                          color: "#10b981", 
                           fontWeight: "bold", 
                           marginBottom: 8,
                           textAlign: "center" 
                         }}>
-                          💳 KWOTA DO ROZLICZENIA:
+                          💵 GOTÓWKA W KASIE:
                         </Text>
-                        {Object.entries(finalTotals).map(([currency, total]) => (
-                          <Text 
-                            key={`final-${currency}`} 
-                            style={{ 
-                              fontSize: 16, 
-                              color: total >= 0 ? "#10b981" : "#ef4444", 
-                              fontWeight: "bold",
-                              textAlign: "center",
-                              marginBottom: 2
-                            }}
-                          >
-                            {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
+                        {Object.entries(finalCashTotals).length > 0 ? (
+                          Object.entries(finalCashTotals).map(([currency, total]) => (
+                            <Text 
+                              key={`final-cash-${currency}`} 
+                              style={{ 
+                                fontSize: 16, 
+                                color: total >= 0 ? "#10b981" : "#ef4444", 
+                                fontWeight: "bold",
+                                textAlign: "center",
+                                marginBottom: 2
+                              }}
+                            >
+                              {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", fontStyle: "italic" }}>
+                            0.00 PLN
                           </Text>
-                        ))}
+                        )}
                         <Text style={{ 
                           fontSize: 11, 
                           color: "#9ca3af", 
@@ -2786,7 +2834,54 @@ const Home = () => {
                           marginTop: 8,
                           fontStyle: "italic" 
                         }}>
-                          Kwota jaką powinieneś mieć w kasie na koniec dnia
+                          Kwota gotówki którą powinieneś mieć w kasie
+                        </Text>
+                      </View>
+                      
+                      {/* Final Card Total */}
+                      <View style={{ 
+                        marginTop: 16, 
+                        paddingTop: 12, 
+                        borderTopWidth: 1, 
+                        borderTopColor: "#3b82f6" 
+                      }}>
+                        <Text style={{ 
+                          fontSize: 15, 
+                          color: "#3b82f6", 
+                          fontWeight: "bold", 
+                          marginBottom: 8,
+                          textAlign: "center" 
+                        }}>
+                          💳 ZAMKNIĘCIE TERMINALA:
+                        </Text>
+                        {Object.entries(finalCardTotals).length > 0 ? (
+                          Object.entries(finalCardTotals).map(([currency, total]) => (
+                            <Text 
+                              key={`final-card-${currency}`} 
+                              style={{ 
+                                fontSize: 16, 
+                                color: total >= 0 ? "#3b82f6" : "#ef4444", 
+                                fontWeight: "bold",
+                                textAlign: "center",
+                                marginBottom: 2
+                              }}
+                            >
+                              {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", fontStyle: "italic" }}>
+                            0.00 PLN
+                          </Text>
+                        )}
+                        <Text style={{ 
+                          fontSize: 11, 
+                          color: "#9ca3af", 
+                          textAlign: "center",
+                          marginTop: 8,
+                          fontStyle: "italic" 
+                        }}>
+                          Kwota płatności kartą (terminal na koniec dnia)
                         </Text>
                       </View>
                     </View>
