@@ -11,6 +11,7 @@ class TokenService {
         this.autoLogoutTimer = null; // Timer for automatic logout
         this.onAutoLogout = null; // Callback for automatic logout
         this.isLoggingOut = false; // Flag to indicate logout in progress
+        this.isInitializing = true; // Flag for first app launch
     }
 
     // Get tokens from SecureStore
@@ -29,8 +30,7 @@ class TokenService {
     async setTokens(accessToken, refreshToken) {
         try {
             // Reset logout flag when setting new tokens (user is logging in)
-            this.isLoggingOut = false;
-            
+            this.isLoggingOut = false;            this.isInitializing = false;            
             if (accessToken) {
                 await SecureStore.setItemAsync('BukowskiAccessToken', accessToken);
                 
@@ -155,7 +155,10 @@ class TokenService {
             await this.clearTokens();
             this.isRefreshingToken = false;
             const error = new Error('No refresh token available');
-            await AuthErrorHandler.handleAuthError(error, 'Token Refresh');
+            // Only handle auth error if we're not on initial app load (silent fail for first launch)
+            if (!this.isLoggingOut && !this.isInitializing) {
+                await AuthErrorHandler.handleAuthError(error, 'Token Refresh', false);
+            }
             throw error;
         }
 
@@ -207,8 +210,8 @@ class TokenService {
         
         if (!accessToken) {
             const error = new Error('No access token available');
-            // Don't handle auth error during logout process to avoid unnecessary redirects
-            if (!this.isLoggingOut) {
+            // Don't handle auth error during logout process OR on first app launch
+            if (!this.isLoggingOut && !this.isInitializing) {
                 await AuthErrorHandler.handleAuthError(error, 'Get Access Token');
             }
             throw error;
@@ -241,10 +244,17 @@ class TokenService {
                 'Content-Type': 'application/json'
             };
         } catch (error) {
-            // Only log errors in non-test environment and not during logout process
-            if (typeof jest === 'undefined' && error.message !== 'No access token available') {
+            // Only log errors if:
+            // 1. Not in test environment
+            // 2. Not during logout process
+            // 3. Error is not about missing tokens (first app launch)
+            const isMissingTokenError = error.message === 'No access token available' || 
+                                       error.message === 'No refresh token available';
+            
+            if (typeof jest === 'undefined' && !this.isLoggingOut && !isMissingTokenError) {
                 Logger.error('getAuthHeaders error:', error);
             }
+            
             // Return headers without authorization if token is not available
             return {
                 'Content-Type': 'application/json'

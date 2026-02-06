@@ -46,7 +46,7 @@ class AuthErrorHandler {
     }
     
     // Handle authentication errors with automatic redirect
-    static async handleAuthError(error, context = 'Unknown') {
+    static async handleAuthError(error, context = 'Unknown', silent = false) {
         // Skip if we're in the middle of logging out - it's expected
         if (this.tokenService?.isLoggingOut) {
             return;
@@ -61,8 +61,8 @@ class AuthErrorHandler {
         this.isRedirecting = true;
         this.lastRedirectTime = now;
         
-        // Log only in development
-        if (__DEV__) {
+        // Log only in development and not in silent mode
+        if (__DEV__ && !silent) {
             Logger.debug(`🔄 Auth error detected in ${context}:`, error?.message || error);
         }
         
@@ -75,7 +75,7 @@ class AuthErrorHandler {
             // Redirect to login page
             router.replace("/(auth)/sign-in");
             
-            if (__DEV__) {
+            if (__DEV__ && !silent) {
                 Logger.debug('✅ User redirected to login page');
             }
         } catch (redirectError) {

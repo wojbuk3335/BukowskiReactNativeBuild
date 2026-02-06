@@ -9,6 +9,7 @@ import CustomButton from "../../components/CustomButton";
 import FormField from "../../components/FormField";
 import { GlobalStateContext } from "../../context/GlobalState";
 import Logger from "../../services/logger"; // Import logger service
+import tokenService from "../../services/tokenService"; // Import token service
 import bukowskiLogo from "./bukowski.png"; // Import the image
 
 const SignIn = () => {
@@ -28,6 +29,7 @@ const SignIn = () => {
         if (userData) {
           const parsedUser = JSON.parse(userData);
           setUser(parsedUser); // Restore user data to global state
+          tokenService.isInitializing = false; // User has logged in before
           
           // Redirect based on user role
           if (parsedUser.role === 'admin') {
@@ -36,9 +38,12 @@ const SignIn = () => {
             router.replace("/home");
           }
         } else {
+          // No user data found - definitely first launch
+          tokenService.isInitializing = false;
         }
       } catch (error) {
         Logger.error("Failed to retrieve user data from storage:", error);
+        tokenService.isInitializing = false;
       }
     };
 
