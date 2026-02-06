@@ -39,9 +39,8 @@ const TabIcon = ({ icon, color, name, focused, customIcon }) => {
   );
 };
 
-const TabLayout = () => {
+const AdminTabLayout = () => {
   const { user } = useContext(GlobalStateContext);
-  const isParzygnat = user?.symbol === 'P';
   const insets = useSafeAreaInsets();
 
   return (
@@ -51,7 +50,7 @@ const TabLayout = () => {
       <Tabs
         options={{ headerShown: false }}
         screenOptions={{
-          tabBarActiveTintColor: "#0d6efd",
+          tabBarActiveTintColor: "#dc3545", // Red for admin
           tabBarInactiveTintColor: "#CDCDE0",
           tabBarShowLabel: false,
           tabBarStyle: {
@@ -66,15 +65,15 @@ const TabLayout = () => {
         }}
       >
         <Tabs.Screen
-          name="home"
+          name="dashboard"
           options={{
-            title: "Home",
+            title: "Dashboard",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                icon={icons.home}
+                customIcon="grid"
                 color={color}
-                name="Sprzedaż"
+                name="Dashboard"
                 focused={focused}
               />
             ),
@@ -82,30 +81,15 @@ const TabLayout = () => {
         />
 
         <Tabs.Screen
-          name="writeoff"
+          name="users"
           options={{
-            title: "Stan",
+            title: "Użytkownicy",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                customIcon="arrow-forward-circle"
+                customIcon="people"
                 color={color}
-                name="Stan"
-                focused={focused}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="search"
-          options={{
-            title: "Search",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                icon={icons.bookmark}
-                color={color}
-                name="Szukaj"
+                name="Użytkownicy"
                 focused={focused}
               />
             ),
@@ -113,15 +97,15 @@ const TabLayout = () => {
         />
 
         <Tabs.Screen
-          name="create"
+          name="reports"
           options={{
-            title: "Create",
+            title: "Raporty",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                icon={icons.plus}
+                customIcon="bar-chart"
                 color={color}
-                name="Dodaj"
+                name="Raporty"
                 focused={focused}
               />
             ),
@@ -129,16 +113,15 @@ const TabLayout = () => {
         />
 
         <Tabs.Screen
-          name="cudzych"
+          name="settings"
           options={{
-            title: "Cudzich",
+            title: "Ustawienia",
             headerShown: false,
-            href: isParzygnat ? "/cudzych" : null,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                icon={icons.book}
+                customIcon="settings"
                 color={color}
-                name="Cudzich"
+                name="Ustawienia"
                 focused={focused}
               />
             ),
@@ -148,36 +131,19 @@ const TabLayout = () => {
         <Tabs.Screen
           name="profile"
           options={{
-            title: "Zamówienia",
+            title: "Profil",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                icon={icons.profile}
+                customIcon="person"
                 color={color}
-                name="Zamów"
-                focused={focused}
-              />
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="remanent"
-          options={{
-            title: "Remanent",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                customIcon={focused ? "archive" : "archive-outline"}
-                color={color}
-                name="Remanent"
+                name="Profil"
                 focused={focused}
               />
             ),
           }}
         />
       </Tabs>
-
       <StatusBar backgroundColor="black" style="light" />
     </>
   );
@@ -187,24 +153,16 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: "center",
     justifyContent: "center",
-    width: 46,
-    paddingTop: 0,
-    height: 56,
     gap: 2,
+    paddingTop: 0,
     marginBottom: 20,
   },
   icon: {
     width: 22,
     height: 22,
-    marginBottom: 4,
   },
   tabText: {
-    fontSize: 9,
-    textAlign: "center",
-    minHeight: 12,
-    lineHeight: 12,
-    flexWrap: 'nowrap',
-    numberOfLines: 1,
+    fontSize: 10,
   },
   tabTextFocused: {
     fontWeight: "600",
@@ -214,4 +172,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default TabLayout;
+export default AdminTabLayout;

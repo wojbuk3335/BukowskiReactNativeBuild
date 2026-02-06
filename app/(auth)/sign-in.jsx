@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useNavigation } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useContext, useEffect, useState } from "react";
-import { Dimensions, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import CustomButton from "../../components/CustomButton";
@@ -17,6 +17,7 @@ const SignIn = () => {
     password: "",
   });
   const [error, setError] = useState("");
+  const [isAdminPanel, setIsAdminPanel] = useState(false);
   const navigation = useNavigation();
   const { setUser, bukowski_login, isLoading, user } = useContext(GlobalStateContext); // Access global state
 
@@ -25,8 +26,15 @@ const SignIn = () => {
       try {
         const userData = await AsyncStorage.getItem("user");
         if (userData) {
-          setUser(JSON.parse(userData)); // Restore user data to global state
-          router.replace("/home"); // Redirect to home screen
+          const parsedUser = JSON.parse(userData);
+          setUser(parsedUser); // Restore user data to global state
+          
+          // Redirect based on user role
+          if (parsedUser.role === 'admin') {
+            router.replace("/(admin-tabs)/dashboard");
+          } else {
+            router.replace("/home");
+          }
         } else {
         }
       } catch (error) {
@@ -40,10 +48,31 @@ const SignIn = () => {
   const submit = async () => {
     try {
       setError(""); // Clear any previous errors
-      const response = await bukowski_login(form.email, form.password, navigation);
+      const response = await bukowski_login(form.email, form.password, navigation, isAdminPanel);
+      
+      // Check if user role matches the selected panel
+      if (isAdminPanel && response.role !== 'admin') {
+        setError("To konto nie ma uprawnień administratora");
+        await AsyncStorage.removeItem("user");
+        setUser(null);
+        return;
+      }
+      
+      if (!isAdminPanel && response.role === 'admin') {
+        setError("Konto administratora nie może zalogować się do panelu użytkownika");
+        await AsyncStorage.removeItem("user");
+        setUser(null);
+        return;
+      }
+      
       setUser(response); // Update global state with user data
       
-      router.replace("/home") // Redirect to home screen
+      // Redirect to appropriate panel based on role
+      if (response.role === 'admin') {
+        router.replace("/(admin-tabs)/dashboard"); // Admin panel
+      } else {
+        router.replace("/home"); // User panel
+      }
     } catch (error) {
       setError("Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
     }
@@ -95,6 +124,21 @@ const SignIn = () => {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          <TouchableOpacity 
+            onPress={() => setIsAdminPanel(!isAdminPanel)}
+            style={styles.switchPanel}
+          >
+            <Text style={styles.switchPanelText}>
+              {isAdminPanel ? "Przejdź do panelu użytkownika" : "Przejdź do panelu administratora"}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.panelInfo}>
+            <Text style={styles.panelInfoText}>
+              {isAdminPanel ? "PANEL ADMINISTRACYJNY" : "PANEL UŻYTKOWNIKA"}
+            </Text>
+          </View>
             
           <Image
             source={bukowskiLogo} // Use the imported image
@@ -141,6 +185,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     fontWeight: "500",
+  },
+  switchPanel: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  switchPanelText: {
+    color: "#3b82f6",
+    fontSize: 14,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  panelInfo: {
+    marginTop: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  panelInfoText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 });
 

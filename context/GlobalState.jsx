@@ -154,7 +154,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchGoods = async () => {
         try {
-            const response = await fetchWithTimeout(getApiUrl("/excel/stock/get-all-goods"));
+            const response = await fetchWithTimeout(getApiUrl("/excel/goods/get-all-goods"));
             
             if (!response || !response.ok) {
                 setGoods([]); // Set fallback immediately
@@ -162,8 +162,8 @@ export const GlobalStateProvider = ({ children }) => {
             }
             const data = await response.json();
             
-            // Extract goods array from the response object (using 'stocks' key for compatibility)
-            const goodsArray = Array.isArray(data?.stocks) ? data.stocks : [];
+            // Extract goods array from the response object
+            const goodsArray = Array.isArray(data?.goods) ? data.goods : [];
             setGoods(goodsArray); // Set the fetched goods into state
             return goodsArray; // Return fetched goods as array
         } catch (error) {
@@ -241,10 +241,13 @@ export const GlobalStateProvider = ({ children }) => {
         }
     };
 
-    const bukowski_login = async (email, password, navigation) => {
+    const bukowski_login = async (email, password, navigation, isAdminPanel = false) => {
         setIsLoading(true); // Set loading to true
         try {
-            const response = await fetch(getApiUrl("/user/login"), {
+            // Use different endpoint based on panel selection
+            const endpoint = isAdminPanel ? "/user/admin-login" : "/user/login";
+            
+            const response = await fetch(getApiUrl(endpoint), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -402,6 +405,7 @@ export const GlobalStateProvider = ({ children }) => {
         <GlobalStateContext.Provider value={{
             user,
             isLoggedIn,
+            setIsLoggedIn, // Provide setIsLoggedIn
             isLoading,
             stateData,
             sizes, // Provide sizes in the global state

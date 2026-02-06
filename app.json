@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bukowski.inventory11.mobile2025",
+      "bundleIdentifier": "com.bukowski.inventory12.mobile2025",
       "buildNumber": "8",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory11.app2025"
+      "package": "com.bukowski.inventory12.app2025"
     },
     "web": {
       "bundler": "metro",
