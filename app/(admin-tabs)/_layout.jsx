@@ -67,13 +67,13 @@ const AdminTabLayout = () => {
         <Tabs.Screen
           name="dashboard"
           options={{
-            title: "Dashboard",
+            title: "Sprawdź",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 customIcon="grid"
                 color={color}
-                name="Dashboard"
+                name="Sprawdź"
                 focused={focused}
               />
             ),
@@ -153,16 +153,24 @@ const styles = StyleSheet.create({
   tabIconContainer: {
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
+    width: 46,
     paddingTop: 0,
+    height: 56,
+    gap: 2,
     marginBottom: 20,
   },
   icon: {
     width: 22,
     height: 22,
+    marginBottom: 4,
   },
   tabText: {
-    fontSize: 10,
+    fontSize: 9,
+    textAlign: "center",
+    minHeight: 12,
+    lineHeight: 12,
+    flexWrap: "nowrap",
+    numberOfLines: 1,
   },
   tabTextFocused: {
     fontWeight: "600",

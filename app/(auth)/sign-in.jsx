@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router, useNavigation } from "expo-router";
+import { router, useNavigation, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useContext, useEffect, useState } from "react";
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -13,6 +13,7 @@ import tokenService from "../../services/tokenService"; // Import token service
 import bukowskiLogo from "./bukowski.png"; // Import the image
 
 const SignIn = () => {
+  const params = useLocalSearchParams();
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -20,35 +21,38 @@ const SignIn = () => {
   const [error, setError] = useState("");
   const [isAdminPanel, setIsAdminPanel] = useState(false);
   const navigation = useNavigation();
-  const { setUser, bukowski_login, isLoading, user } = useContext(GlobalStateContext); // Access global state
+  const { setUser, bukowski_login, isLoading, user } = useContext(GlobalStateContext);
 
-  useEffect(() => {
-    const checkUserInStorage = async () => {
-      try {
-        const userData = await AsyncStorage.getItem("user");
-        if (userData) {
-          const parsedUser = JSON.parse(userData);
-          setUser(parsedUser); // Restore user data to global state
-          tokenService.isInitializing = false; // User has logged in before
-          
-          // Redirect based on user role
-          if (parsedUser.role === 'admin') {
-            router.replace("/(admin-tabs)/dashboard");
-          } else {
-            router.replace("/home");
-          }
-        } else {
-          // No user data found - definitely first launch
-          tokenService.isInitializing = false;
+  // Usunięto automatyczne przekierowanie przy wejściu - użytkownik musi wybrać panel
+
+  const handlePanelSwitch = async () => {
+    const newIsAdminPanel = !isAdminPanel;
+    setIsAdminPanel(newIsAdminPanel);
+    
+    // Sprawdź czy użytkownik jest już zalogowany i czy pasuje do panelu
+    try {
+      const userData = await AsyncStorage.getItem("user");
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        
+        // Jeśli przełącza na panel admina i jest adminem - automatycznie zaloguj
+        if (newIsAdminPanel && parsedUser.role === 'admin') {
+          setUser(parsedUser);
+          router.replace("/(admin-tabs)/dashboard");
+          return;
         }
-      } catch (error) {
-        Logger.error("Failed to retrieve user data from storage:", error);
-        tokenService.isInitializing = false;
+        
+        // Jeśli przełącza na panel użytkownika i jest userem - automatycznie zaloguj
+        if (!newIsAdminPanel && parsedUser.role !== 'admin') {
+          setUser(parsedUser);
+          router.replace("/home");
+          return;
+        }
       }
-    };
-
-    checkUserInStorage();
-  }, []);
+    } catch (error) {
+      Logger.error("Failed to check user for panel switch:", error);
+    }
+  };
 
   const submit = async () => {
     try {
@@ -131,7 +135,7 @@ const SignIn = () => {
           ) : null}
 
           <TouchableOpacity 
-            onPress={() => setIsAdminPanel(!isAdminPanel)}
+            onPress={handlePanelSwitch}
             style={styles.switchPanel}
           >
             <Text style={styles.switchPanelText}>

@@ -17,7 +17,7 @@ const Welcome = () => {
             style={styles.logo}
           />
           <CustomButton
-            title="Logowanie"
+            title="Zaloguj się"
             handlePress={() => router.push("/(auth)/sign-in")}
             containerStyles={styles.button}
           />

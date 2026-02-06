@@ -1,134 +1,774 @@
-import { router } from "expo-router";
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
-
+import { Picker } from "@react-native-picker/picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { Ionicons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { GlobalStateContext } from "../../context/GlobalState";
+import tokenService from "../../services/tokenService";
+import { getApiUrl } from "../../config/api";
 import Logger from "../../services/logger";
 
 const Dashboard = () => {
-  const { user, fetchState, stateData, users, fetchUsers } = useContext(GlobalStateContext);
-  const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    totalUsers: 0,
-    todaySales: 0,
-    totalValue: 0,
+  const { user, users, fetchUsers } = useContext(GlobalStateContext);
+  
+  // Selection states
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  
+  // Data states
+  const [expectedJackets, setExpectedJackets] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [totalExpected, setTotalExpected] = useState(0);
+  const [verificationStarted, setVerificationStarted] = useState(false);
+  
+  // Scanner states
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scannedJackets, setScannedJackets] = useState([]);
+  const [scanningEnabled, setScanningEnabled] = useState(true);
+  const [recentlyScannedCodes, setRecentlyScannedCodes] = useState(new Map());
+  const [lastScannedCode, setLastScannedCode] = useState("");
+  const [facing, setFacing] = useState("back");
+  const [pendingScan, setPendingScan] = useState(null);
+  
+  // Progress states
+  const [scanProgress, setScanProgress] = useState({
+    totalExpected: 0,
+    totalScanned: 0,
+    percentage: 0,
   });
+  
+  // Comparison modal states
+  const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
+  const [comparisonResults, setComparisonResults] = useState(null);
 
   useEffect(() => {
-    loadData();
+    if (users.length === 0) {
+      fetchUsers();
+    }
   }, []);
 
   useEffect(() => {
-    if (stateData && users) {
-      calculateStats();
+    if (expectedJackets.length > 0) {
+      calculateProgress();
     }
-  }, [stateData, users]);
+  }, [scannedJackets, expectedJackets]);
 
-  const loadData = async () => {
+  const startVerification = async () => {
+    if (!selectedUserId || !selectedDate) {
+      Alert.alert("Uwaga", "Wybierz najpierw użytkownika i datę");
+      return;
+    }
+
     try {
-      await Promise.all([fetchState(), fetchUsers()]);
+      setLoading(true);
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      const url = getApiUrl(`/verification/jackets/${selectedUserId}/${dateStr}`);
+      
+      const response = await tokenService.authenticatedFetch(url);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setExpectedJackets(data.data.jackets || []);
+        setTotalExpected(data.data.totalJackets || 0);
+        setVerificationStarted(true);
+        setScannedJackets([]);
+        
+        if (data.data.totalJackets === 0) {
+          Alert.alert("Informacja", "Brak kurtek do weryfikacji dla wybranego użytkownika i daty");
+        }
+      } else {
+        Alert.alert("Błąd", "Nie udało się pobrać danych");
+        setExpectedJackets([]);
+        setTotalExpected(0);
+      }
     } catch (error) {
-      Logger.error("Error loading dashboard data:", error);
+      Logger.error("Error fetching jackets:", error);
+      Alert.alert("Błąd", "Wystąpił błąd podczas pobierania danych");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const calculateStats = () => {
-    const totalProducts = stateData?.length || 0;
-    const totalUsers = users?.length || 0;
-    const totalValue = stateData?.reduce((sum, item) => sum + (item.purchasePrice || 0), 0) || 0;
+  const calculateProgress = () => {
+    const scannedBarcodes = {};
+    scannedJackets.forEach((jacket) => {
+      const code = jacket.barcode || jacket.code;
+      if (!scannedBarcodes[code]) {
+        scannedBarcodes[code] = 0;
+      }
+      scannedBarcodes[code]++;
+    });
 
-    setStats({
-      totalProducts,
-      totalUsers,
-      todaySales: 0, // To be implemented
-      totalValue,
+    const expectedBarcodes = {};
+    expectedJackets.forEach((jacket) => {
+      const code = jacket.barcode;
+      if (!expectedBarcodes[code]) {
+        expectedBarcodes[code] = 0;
+      }
+      expectedBarcodes[code]++;
+    });
+
+    let matchedCount = 0;
+    Object.keys(expectedBarcodes).forEach((barcode) => {
+      const expected = expectedBarcodes[barcode];
+      const scanned = scannedBarcodes[barcode] || 0;
+      matchedCount += Math.min(expected, scanned);
+    });
+
+    const percentage =
+      totalExpected > 0 ? Math.round((matchedCount / totalExpected) * 100) : 0;
+
+    setScanProgress({
+      totalExpected,
+      totalScanned: scannedJackets.length,
+      percentage,
     });
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+  const openQRScanner = async () => {
+    if (!selectedUserId || !selectedDate) {
+      Alert.alert("Uwaga", "Wybierz najpierw użytkownika i datę");
+      return;
+    }
+
+    if (totalExpected === 0) {
+      Alert.alert("Uwaga", "Brak kurtek do zweryfikowania dla wybranego użytkownika i daty");
+      return;
+    }
+
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert("Błąd", "Brak uprawnień do kamery");
+        return;
+      }
+    }
+
+    setScannedJackets([]);
+    setScannerVisible(true);
+    setScanningEnabled(true);
+    setLastScannedCode("");
+    setRecentlyScannedCodes(new Map());
   };
+
+  const handleScan = ({ data }) => {
+    // Jeśli jest już oczekujący skan, nie pozwalaj na kolejny
+    if (pendingScan) {
+      return;
+    }
+
+    const now = Date.now();
+    const lastScanTime = recentlyScannedCodes.get(data);
+
+    // Blokada na 3 sekundy dla tego samego kodu
+    if (!scanningEnabled || (lastScanTime && now - lastScanTime < 3000)) {
+      return;
+    }
+
+    setLastScannedCode(data);
+    setRecentlyScannedCodes((prev) => new Map(prev).set(data, now));
+
+    // Wyłącz skanowanie dopóki nie zostanie zatwierdzony skan
+    setScanningEnabled(false);
+
+    const jacket = expectedJackets.find((j) => j.barcode === data);
+
+    if (jacket) {
+      // Przechowaj skan do zatwierdzenia
+      setPendingScan({
+        ...jacket,
+        scannedAt: new Date().toISOString(),
+        status: "correct",
+      });
+    } else {
+      // Jacket not in expected list - nadmiarowy
+      setPendingScan({
+        barcode: data,
+        code: data,
+        fullName: "Nieznany produkt",
+        scannedAt: new Date().toISOString(),
+        status: "unexpected",
+      });
+    }
+  };
+
+  const closeScanner = () => {
+    setScannerVisible(false);
+    setLastScannedCode("");
+  };
+
+  const checkVerification = () => {
+    try {
+      const missingItems = [];
+      const extraItems = [];
+
+      // Grupuj oczekiwane kurtki według kodu
+      const expectedByBarcode = {};
+      expectedJackets.forEach((jacket) => {
+        const code = jacket.barcode;
+        if (!expectedByBarcode[code]) {
+          expectedByBarcode[code] = [];
+        }
+        expectedByBarcode[code].push(jacket);
+      });
+
+      // Grupuj zeskanowane kurtki według kodu
+      const scannedByBarcode = {};
+      scannedJackets.forEach((jacket) => {
+        const code = jacket.barcode || jacket.code;
+        if (!scannedByBarcode[code]) {
+          scannedByBarcode[code] = [];
+        }
+        scannedByBarcode[code].push(jacket);
+      });
+
+      // Sprawdź czego brakuje
+      Object.keys(expectedByBarcode).forEach((barcode) => {
+        const expectedItems = expectedByBarcode[barcode];
+        const scannedItems = scannedByBarcode[barcode] || [];
+
+        const expectedCount = expectedItems.length;
+        const actualCount = scannedItems.length;
+
+        if (actualCount === 0) {
+          missingItems.push({
+            name: expectedItems[0].fullName || expectedItems[0].barcode,
+            size: expectedItems[0].size,
+            code: barcode,
+            expectedCount: expectedCount,
+            actualCount: 0,
+          });
+        } else if (actualCount < expectedCount) {
+          missingItems.push({
+            name: expectedItems[0].fullName || expectedItems[0].barcode,
+            size: expectedItems[0].size,
+            code: barcode,
+            expectedCount: expectedCount,
+            actualCount: actualCount,
+            missingCount: expectedCount - actualCount,
+          });
+        } else if (actualCount > expectedCount) {
+          extraItems.push({
+            name: scannedItems[0].fullName || scannedItems[0].barcode,
+            size: scannedItems[0].size,
+            code: barcode,
+            expectedCount: expectedCount,
+            actualCount: actualCount,
+            excessCount: actualCount - expectedCount,
+          });
+        }
+      });
+
+      // Sprawdź nadwyżki (zeskanowane ale nie oczekiwane)
+      Object.keys(scannedByBarcode).forEach((barcode) => {
+        if (!expectedByBarcode[barcode]) {
+          const scannedItems = scannedByBarcode[barcode];
+          extraItems.push({
+            name: scannedItems[0].fullName || scannedItems[0].barcode,
+            size: scannedItems[0].size,
+            code: barcode,
+            expectedCount: 0,
+            actualCount: scannedItems.length,
+            excessCount: scannedItems.length,
+          });
+        }
+      });
+
+      setComparisonResults({
+        currentStateCount: totalExpected,
+        remanentCount: scannedJackets.length,
+        missingItems: missingItems,
+        extraItems: extraItems,
+      });
+      setComparisonModalVisible(true);
+    } catch (error) {
+      Logger.error("Error checking verification:", error);
+      Alert.alert("Błąd", "Wystąpił błąd podczas sprawdzania");
+    }
+  };
+
+  const clearScannedJackets = () => {
+    Alert.alert(
+      "Potwierdź",
+      "Czy na pewno chcesz wyczyścić listę zeskanowanych kurtek?",
+      [
+        { text: "Anuluj", style: "cancel" },
+        {
+          text: "Wyczyść",
+          onPress: () => {
+            setScannedJackets([]);
+            setLastScannedCode("");
+            setRecentlyScannedCodes(new Map());
+          },
+        },
+      ]
+    );
+  };
+
+  const renderScannedJacket = ({ item }) => (
+    <View
+      style={[
+        styles.jacketItem,
+        item.status === "unexpected" && styles.jacketItemError,
+      ]}
+    >
+      <View style={styles.jacketInfo}>
+        <Text style={styles.jacketName}>{item.fullName || item.barcode}</Text>
+        <Text style={styles.jacketCode}>
+          {item.barcode || item.code} | {item.size || "-"}
+        </Text>
+      </View>
+      {item.status === "unexpected" && (
+        <Ionicons name="alert-circle" size={24} color="#dc3545" />
+      )}
+      {item.status === "correct" && (
+        <Ionicons name="checkmark-circle" size={24} color="#198754" />
+      )}
+    </View>
+  );
+
+  const filteredUsers = users.filter((u) => 
+    u.role !== "admin" && 
+    u.role !== "magazyn" && 
+    u.username !== "Cudzich" &&
+    u.email !== "admin2@bukowski.com" &&
+    u.email !== "cudzich@wp.pl"
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+      <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
-          <Text style={styles.title}>Panel Administratora</Text>
-          <Text style={styles.subtitle}>Witaj, {user?.email}</Text>
+          <Text style={styles.title}>Sprawdź Kurtki</Text>
+          <Text style={styles.subtitle}>
+            Weryfikacja kurtek dobranych w systemie
+          </Text>
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, styles.statCardPrimary]}>
-            <Ionicons name="cube-outline" size={32} color="#fff" />
-            <Text style={styles.statValue}>{stats.totalProducts}</Text>
-            <Text style={styles.statLabel}>Produkty w stanie</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardSuccess]}>
-            <Ionicons name="people-outline" size={32} color="#fff" />
-            <Text style={styles.statValue}>{stats.totalUsers}</Text>
-            <Text style={styles.statLabel}>Użytkownicy</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardWarning]}>
-            <Ionicons name="cart-outline" size={32} color="#fff" />
-            <Text style={styles.statValue}>{stats.todaySales}</Text>
-            <Text style={styles.statLabel}>Sprzedaż dzisiaj</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardDanger]}>
-            <Ionicons name="cash-outline" size={32} color="#fff" />
-            <Text style={styles.statValue}>{stats.totalValue.toFixed(2)} zł</Text>
-            <Text style={styles.statLabel}>Wartość stanu</Text>
-          </View>
-        </View>
-
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>Szybkie akcje</Text>
-          
+        {/* User Selection */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Wybierz użytkownika:</Text>
           <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/(admin-tabs)/users")}
+            style={styles.userSelectButton}
+            onPress={() => setShowUserModal(true)}
           >
-            <Ionicons name="person-add" size={24} color="#0d6efd" />
-            <Text style={styles.actionButtonText}>Zarządzaj użytkownikami</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/(admin-tabs)/reports")}
-          >
-            <Ionicons name="document-text" size={24} color="#0d6efd" />
-            <Text style={styles.actionButtonText}>Zobacz raporty</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/(admin-tabs)/settings")}
-          >
-            <Ionicons name="settings" size={24} color="#0d6efd" />
-            <Text style={styles.actionButtonText}>Ustawienia systemu</Text>
+            <Text style={styles.userSelectButtonText}>
+              {selectedUserId 
+                ? filteredUsers.find(u => u._id === selectedUserId)?.username || 
+                  filteredUsers.find(u => u._id === selectedUserId)?.email || 
+                  "Użytkownik"
+                : "Wybierz użytkownika..."}
+            </Text>
+            <Ionicons name="people" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {/* Date Selection */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Wybierz datę:</Text>
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateButtonText}>
+              {selectedDate.toLocaleDateString("pl-PL")}
+            </Text>
+            <Ionicons name="calendar" size={24} color="#fff" />
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display="default"
+              onChange={(event, date) => {
+                setShowDatePicker(false);
+                if (date) {
+                  setSelectedDate(date);
+                  // Reset weryfikacji przy zmianie daty
+                  setVerificationStarted(false);
+                  setExpectedJackets([]);
+                  setTotalExpected(0);
+                  setScannedJackets([]);
+                  setComparisonResults(null);
+                }
+              }}
+            />
+          )}
+        </View>
+
+        {/* Expected Count */}
+        {!verificationStarted ? (
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={startVerification}
+            disabled={!selectedUserId || !selectedDate || loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="play-circle" size={32} color="#fff" />
+                <Text style={styles.startButtonText}>Rozpocznij weryfikację</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <>
+            <View style={styles.countSection}>
+              <Text style={styles.countLabel}>Liczba kurtek do sprawdzenia:</Text>
+              <Text style={styles.countValue}>{totalExpected}</Text>
+            </View>
+
+            {/* Expected Jackets List */}
+            {expectedJackets.length > 0 && (
+              <View style={styles.expectedSection}>
+                <Text style={styles.expectedTitle}>Oczekiwane kurtki ({totalExpected})</Text>
+                <ScrollView style={styles.expectedList} nestedScrollEnabled>
+                  {expectedJackets.map((jacket, index) => (
+                    <View key={`expected-${index}`} style={styles.expectedItem}>
+                      <Text style={styles.expectedName}>{jacket.fullName || jacket.barcode}</Text>
+                      <Text style={styles.expectedCode}>{jacket.barcode} | {jacket.size}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Progress */}
+            {totalExpected > 0 && (
+              <View style={styles.progressSection}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>Postęp skanowania</Text>
+                  <Text style={styles.progressPercentage}>{scanProgress.percentage}%</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${scanProgress.percentage}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressText}>
+                  Zeskanowano: {scanProgress.totalScanned} / {scanProgress.totalExpected}
+                </Text>
+              </View>
+            )}
+
+            {/* Scanner Button */}
+            {totalExpected > 0 && (
+              <TouchableOpacity style={styles.scanButton} onPress={openQRScanner}>
+                <Ionicons name="qr-code-outline" size={32} color="#fff" />
+                <Text style={styles.scanButtonText}>Skanuj Kurtki</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Check Button */}
+            {scannedJackets.length > 0 && (
+              <TouchableOpacity style={styles.checkButton} onPress={checkVerification}>
+                <Ionicons name="checkmark-done-circle" size={32} color="#fff" />
+                <Text style={styles.checkButtonText}>Sprawdź zgodność</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Scanned Jackets List */}
+            {scannedJackets.length > 0 && (
+              <View style={styles.scannedSection}>
+                <View style={styles.scannedHeader}>
+                  <Text style={styles.scannedTitle}>
+                    Zeskanowane ({scannedJackets.length})
+                  </Text>
+                  <TouchableOpacity onPress={clearScannedJackets}>
+                    <Text style={styles.clearButton}>Wyczyść</Text>
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={scannedJackets}
+                  renderItem={renderScannedJacket}
+                  keyExtractor={(item, index) => `${item.barcode || item.code}-${index}`}
+                  scrollEnabled={false}
+                />
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
+
+      {/* QR Scanner Modal */}
+      <Modal visible={scannerVisible} animationType="slide" onRequestClose={closeScanner}>
+        <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+          <View style={styles.scannerHeader}>
+            <TouchableOpacity onPress={closeScanner} style={styles.closeButton}>
+              <Ionicons name="close" size={28} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.scannerTitle}>Skanuj kody kurtek</Text>
+            <TouchableOpacity
+              onPress={() => setFacing(facing === "back" ? "front" : "back")}
+              style={styles.cameraFlipButton}
+            >
+              <Ionicons name="camera-reverse" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.scannerCameraContainer}>
+            <CameraView
+              style={styles.camera}
+              facing={facing}
+              barcodeScannerSettings={{
+                barcodeTypes: ["qr", "ean13", "ean8", "upc_a", "upc_e", "code39", "code128"],
+              }}
+              onBarcodeScanned={scanningEnabled ? handleScan : undefined}
+            >
+              {/* Scanner overlay */}
+              <View style={styles.overlay}>
+                <View
+                  style={[
+                    styles.scanArea,
+                    { borderColor: scanningEnabled ? "#dc3545" : "#6c757d" },
+                  ]}
+                />
+                {pendingScan && (
+                  <View style={styles.pendingScanOverlay}>
+                    <Text style={styles.pendingScanText}>
+                      Zeskanowano: {pendingScan.fullName || pendingScan.barcode}
+                    </Text>
+                    <Text style={styles.pendingScanSubtext}>
+                      Zatwierdź skan, aby kontynuować
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </CameraView>
+          </View>
+
+          {/* Scanned jackets list */}
+          {scannedJackets.length > 0 && (
+            <View style={styles.scannedListContainer}>
+              <Text style={styles.scannedListTitle}>
+                Zeskanowane kurtki ({scannedJackets.length} / {totalExpected})
+              </Text>
+              <FlatList
+                data={scannedJackets}
+                horizontal
+                keyExtractor={(item, index) => `${item.barcode || item.code}-${index}`}
+                renderItem={({ item, index }) => (
+                  <View style={styles.scannedJacket}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setScannedJackets(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      style={styles.removeJacketButton}
+                    >
+                      <Ionicons name="close" size={16} color="white" />
+                    </TouchableOpacity>
+                    <Text style={styles.jacketName} numberOfLines={2}>
+                      {item.fullName || item.name || "Nieznany"}
+                    </Text>
+                    <Text style={styles.jacketCode}>{item.barcode || item.code}</Text>
+                    <Text style={styles.jacketTime}>
+                      {new Date(item.scannedAt).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                )}
+                showsHorizontalScrollIndicator={false}
+              />
+            </View>
+          )}
+
+          {/* Action buttons */}
+          <View style={styles.scannerFooter}>
+            {pendingScan && (
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  onPress={() => {
+                    // Dodaj kurtkę do listy
+                    setScannedJackets((prev) => [...prev, pendingScan]);
+                    // Wyczyść pending i włącz skanowanie
+                    setPendingScan(null);
+                    setScanningEnabled(true);
+                  }}
+                  style={styles.confirmScanButton}
+                >
+                  <Ionicons name="checkmark-circle" size={24} color="white" />
+                  <Text style={styles.confirmScanButtonText}>
+                    Zatwierdź skan
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => {
+                    closeScanner();
+                    setTimeout(() => checkVerification(), 100);
+                  }}
+                  style={styles.confirmButton}
+                >
+                  <Ionicons name="document-text" size={24} color="white" />
+                  <Text style={styles.confirmButtonText}>
+                    Sprawdź zgodność
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Comparison Modal */}
+      <Modal visible={comparisonModalVisible} animationType="slide" transparent>
+        <View style={styles.comparisonModalContainer}>
+          <View style={styles.comparisonModal}>
+            <View style={styles.comparisonHeader}>
+              <Text style={styles.comparisonTitle}>Wynik weryfikacji</Text>
+              <TouchableOpacity onPress={() => setComparisonModalVisible(false)}>
+                <Ionicons name="close" size={32} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.comparisonContent}>
+              <View style={styles.comparisonSummary}>
+                <Text style={styles.summaryText}>
+                  Oczekiwano: {comparisonResults?.currentStateCount || 0}
+                </Text>
+                <Text style={styles.summaryText}>
+                  Zeskanowano: {comparisonResults?.remanentCount || 0}
+                </Text>
+              </View>
+
+              {comparisonResults?.missingItems?.length > 0 && (
+                <View style={styles.comparisonSection}>
+                  <Text style={styles.comparisonSectionTitle}>
+                    ❌ Brakujące ({comparisonResults.missingItems.length})
+                  </Text>
+                  {comparisonResults.missingItems.map((item, index) => (
+                    <View key={`missing-${index}`} style={styles.comparisonItem}>
+                      <View style={styles.comparisonItemInfo}>
+                        <Text style={styles.comparisonItemName}>{item.name}</Text>
+                        <Text style={styles.comparisonItemDetails}>
+                          {item.code} | {item.size}
+                        </Text>
+                        <Text style={styles.comparisonItemCount}>
+                          Oczekiwano: {item.expectedCount}, Zeskanowano: {item.actualCount}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {comparisonResults?.extraItems?.length > 0 && (
+                <View style={styles.comparisonSection}>
+                  <Text style={styles.comparisonSectionTitle}>
+                    ➕ Nadwyżki ({comparisonResults.extraItems.length})
+                  </Text>
+                  {comparisonResults.extraItems.map((item, index) => (
+                    <View key={`extra-${index}`} style={styles.comparisonItem}>
+                      <View style={styles.comparisonItemInfo}>
+                        <Text style={styles.comparisonItemName}>{item.name}</Text>
+                        <Text style={styles.comparisonItemDetails}>
+                          {item.code} | {item.size}
+                        </Text>
+                        <Text style={styles.comparisonItemCount}>
+                          Oczekiwano: {item.expectedCount}, Zeskanowano: {item.actualCount}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {comparisonResults?.missingItems?.length === 0 &&
+                comparisonResults?.extraItems?.length === 0 && (
+                  <View style={styles.successContainer}>
+                    <Ionicons name="checkmark-circle" size={64} color="#198754" />
+                    <Text style={styles.successText}>
+                      Weryfikacja zakończona pomyślnie!
+                    </Text>
+                    <Text style={styles.successSubtext}>
+                      Wszystkie kurtki się zgadzają
+                    </Text>
+                  </View>
+                )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.closeModalButton}
+              onPress={() => setComparisonModalVisible(false)}
+            >
+              <Text style={styles.closeModalButtonText}>Zamknij</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* User Selection Modal */}
+      <Modal visible={showUserModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.userModal}>
+            <View style={styles.userModalHeader}>
+              <Text style={styles.userModalTitle}>Wybierz użytkownika</Text>
+              <TouchableOpacity onPress={() => setShowUserModal(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.userList}>
+              {filteredUsers.map((u) => (
+                <TouchableOpacity
+                  key={u._id}
+                  style={[
+                    styles.userItem,
+                    selectedUserId === u._id && styles.userItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedUserId(u._id);
+                    setShowUserModal(false);
+                    // Reset weryfikacji przy zmianie użytkownika
+                    setVerificationStarted(false);
+                    setExpectedJackets([]);
+                    setTotalExpected(0);
+                    setScannedJackets([]);
+                    setComparisonResults(null);
+                  }}
+                >
+                  <View style={styles.userItemContent}>
+                    <Ionicons 
+                      name="person-circle" 
+                      size={40} 
+                      color={selectedUserId === u._id ? "#0d6efd" : "#6c757d"} 
+                    />
+                    <View style={styles.userItemText}>
+                      <Text style={styles.userItemName}>
+                        {u.username || u.email}
+                      </Text>
+                      <Text style={styles.userItemDetails}>
+                        {u.symbol || u.sellingPoint}
+                      </Text>
+                    </View>
+                  </View>
+                  {selectedUserId === u._id && (
+                    <Ionicons name="checkmark-circle" size={24} color="#0d6efd" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -136,72 +776,219 @@ const Dashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#161622",
+    backgroundColor: "#000000",
   },
-  scrollContent: {
-    padding: 16,
+  scrollView: {
+    flex: 1,
   },
   header: {
-    marginBottom: 24,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#232533",
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
     color: "#fff",
-    marginBottom: 4,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#CDCDE0",
   },
-  statsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 24,
+  section: {
+    padding: 20,
   },
-  statCard: {
-    width: "48%",
+  label: {
+    fontSize: 16,
+    color: "#fff",
+    marginBottom: 12,
+    fontWeight: "600",
+  },
+  userSelectButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#1E1E2D",
     padding: 16,
     borderRadius: 12,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#232533",
+  },
+  userSelectButtonText: {
+    color: "#fff",
+    fontSize: 16,
+  },
+  dateButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: "#1E1E2D",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#232533",
   },
-  statCardPrimary: {
-    backgroundColor: "#0d6efd",
+  dateButtonText: {
+    color: "#fff",
+    fontSize: 16,
   },
-  statCardSuccess: {
+  startButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#198754",
+    padding: 20,
+    margin: 20,
+    borderRadius: 12,
+    gap: 12,
   },
-  statCardWarning: {
-    backgroundColor: "#ffc107",
-  },
-  statCardDanger: {
-    backgroundColor: "#dc3545",
-  },
-  statValue: {
-    fontSize: 24,
+  startButtonText: {
+    color: "#fff",
+    fontSize: 18,
     fontWeight: "bold",
-    color: "#fff",
-    marginTop: 8,
   },
-  statLabel: {
-    fontSize: 12,
+  expectedSection: {
+    padding: 20,
+    maxHeight: 300,
+  },
+  expectedTitle: {
     color: "#fff",
-    marginTop: 4,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  expectedList: {
+    maxHeight: 250,
+  },
+  expectedItem: {
+    backgroundColor: "#1E1E2D",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#232533",
+  },
+  expectedName: {
+    color: "#fff",
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  expectedCode: {
+    color: "#CDCDE0",
+    fontSize: 12,
+  },
+  countSection: {
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#1E1E2D",
+    marginHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#232533",
+  },
+  countLabel: {
+    color: "#CDCDE0",
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  countValue: {
+    color: "#dc3545",
+    fontSize: 48,
+    fontWeight: "bold",
+  },
+  progressSection: {
+    padding: 20,
+    marginHorizontal: 20,
+    backgroundColor: "#1E1E2D",
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  progressTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  progressPercentage: {
+    color: "#dc3545",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  progressBar: {
+    height: 12,
+    backgroundColor: "#232533",
+    borderRadius: 6,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#dc3545",
+    borderRadius: 6,
+  },
+  progressText: {
+    color: "#CDCDE0",
+    fontSize: 14,
     textAlign: "center",
   },
-  quickActions: {
-    marginTop: 8,
+  scanButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dc3545",
+    padding: 20,
+    margin: 20,
+    borderRadius: 12,
+    gap: 12,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+  scanButtonText: {
     color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  checkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#198754",
+    padding: 20,
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 12,
+    gap: 12,
+  },
+  checkButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  scannedSection: {
+    padding: 20,
+  },
+  scannedHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
-  actionButton: {
+  scannedTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  clearButton: {
+    color: "#dc3545",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  jacketItem: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#1E1E2D",
     padding: 16,
@@ -210,10 +997,372 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#232533",
   },
-  actionButtonText: {
-    fontSize: 16,
+  jacketItemError: {
+    borderColor: "#dc3545",
+    borderWidth: 2,
+  },
+  jacketInfo: {
+    flex: 1,
+  },
+  jacketName: {
     color: "#fff",
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  jacketCode: {
+    color: "#CDCDE0",
+    fontSize: 14,
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  scannerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: "#000",
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraFlipButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerCameraContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  camera: {
+    flex: 1,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  scanArea: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  pendingScanOverlay: {
+    position: 'absolute',
+    bottom: -80,
+    backgroundColor: 'rgba(13, 110, 253, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  pendingScanText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  pendingScanSubtext: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  scannedListContainer: {
+    backgroundColor: '#1E1E2D',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#232533',
+    maxHeight: 140,
+  },
+  scannedListTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  scannedJacket: {
+    backgroundColor: '#232533',
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+    minWidth: 120,
+    position: 'relative',
+  },
+  removeJacketButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#dc3545',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  jacketTime: {
+    color: '#CDCDE0',
+    fontSize: 12,
+  },
+  scannerFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#232533',
+    backgroundColor: '#000',
+  },
+  scannerProgressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  scannerInfo: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scannerProgress: {
+    color: '#dc3545',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+  },
+  confirmScanButton: {
+    backgroundColor: '#0d6efd',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+    flex: 1,
+    minWidth: 140,
+  },
+  confirmScanButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  confirmButton: {
+    backgroundColor: '#28a745',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+    flex: 1,
+    minWidth: 140,
+  },
+  confirmButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  scannerTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  userModal: {
+    backgroundColor: "#161622",
+    width: "90%",
+    maxHeight: "70%",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  userModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#1E1E2D",
+    borderBottomWidth: 1,
+    borderBottomColor: "#232533",
+  },
+  userModalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  userList: {
+    maxHeight: 400,
+  },
+  userItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#232533",
+  },
+  userItemSelected: {
+    backgroundColor: "#1E1E2D",
+  },
+  userItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  userItemText: {
     marginLeft: 12,
+    flex: 1,
+  },
+  userItemName: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  userItemDetails: {
+    color: "#CDCDE0",
+    fontSize: 14,
+  },
+  comparisonModalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  comparisonModal: {
+    backgroundColor: "#161622",
+    width: "90%",
+    maxHeight: "80%",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  comparisonHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#1E1E2D",
+    borderBottomWidth: 1,
+    borderBottomColor: "#232533",
+  },
+  comparisonTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  comparisonContent: {
+    padding: 20,
+  },
+  comparisonSummary: {
+    backgroundColor: "#1E1E2D",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  summaryText: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  comparisonSection: {
+    marginBottom: 20,
+  },
+  comparisonSectionTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  comparisonItem: {
+    backgroundColor: "#1E1E2D",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#232533",
+  },
+  comparisonItemInfo: {
+    flex: 1,
+  },
+  comparisonItemName: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  comparisonItemDetails: {
+    color: "#CDCDE0",
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  comparisonItemCount: {
+    color: "#ffc107",
+    fontSize: 12,
+  },
+  successContainer: {
+    alignItems: "center",
+    padding: 40,
+  },
+  successText: {
+    color: "#198754",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginTop: 16,
+  },
+  successSubtext: {
+    color: "#CDCDE0",
+    fontSize: 14,
+    marginTop: 8,
+  },
+  closeModalButton: {
+    backgroundColor: "#dc3545",
+    padding: 16,
+    alignItems: "center",
+    margin: 20,
+    borderRadius: 12,
+  },
+  closeModalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  scannerFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 20,
+    backgroundColor: "#000",
+  },
+  scannerInfo: {
+    color: "#fff",
+    fontSize: 16,
+  },
+  scannerProgress: {
+    color: "#dc3545",
+    fontSize: 18,
+    fontWeight: "bold",
   },
 });
 
