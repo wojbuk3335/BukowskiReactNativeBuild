@@ -33,7 +33,20 @@ const RootLayout = () => {
   // Configure Android navigation bar
   useEffect(() => {
     if (Platform.OS === 'android') {
-      NavigationBar.setBackgroundColorAsync('#000000');
+      const configureNavigationBar = async () => {
+        try {
+          // Set navigation bar background to black
+          await NavigationBar.setBackgroundColorAsync('#000000');
+          // Set button color to light
+          await NavigationBar.setButtonStyleAsync('light');
+          // Make navigation bar translucent
+          await NavigationBar.setBehaviorAsync('overlay-swipe');
+        } catch (error) {
+          console.warn('NavigationBar configuration failed:', error);
+        }
+      };
+      
+      configureNavigationBar();
     }
   }, []);
 

@@ -45,8 +45,8 @@ const TabLayout = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <>
-      {/* Add a View to set the status bar background color */}
+    <View style={{ flex: 1, backgroundColor: "black" }}>
+      {/* Status bar spacer */}
       <View style={{ height: 32, backgroundColor: "black" }} />
       <Tabs
         options={{ headerShown: false }}
@@ -58,10 +58,13 @@ const TabLayout = () => {
             backgroundColor: "black",
             borderTopWidth: 1,
             borderTopColor: "#232533",
-            height: 90 + insets.bottom,
-            paddingBottom: 10 + insets.bottom,
+            height: Math.max(90, 70 + insets.bottom),
+            paddingBottom: Math.max(10, insets.bottom),
             paddingTop: 15,
             paddingHorizontal: 4,
+            position: 'absolute',
+            bottom: 0,
+            width: '100%',
           },
         }}
       >
@@ -179,7 +182,7 @@ const TabLayout = () => {
       </Tabs>
 
       <StatusBar backgroundColor="black" style="light" />
-    </>
+    </View>
   );
 };
 
