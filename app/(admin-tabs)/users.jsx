@@ -14,6 +14,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { GlobalStateContext } from "../../context/GlobalState";
 import tokenService from "../../services/tokenService";
 import { getApiUrl } from "../../config/api";
+import LogoutButton from "../../components/LogoutButton";
 
 const Users = () => {
   const { users, fetchUsers } = useContext(GlobalStateContext);
@@ -194,6 +195,7 @@ const Users = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
       <FlatList
         data={items}
         renderItem={renderItem}

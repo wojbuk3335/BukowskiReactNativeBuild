@@ -1,0 +1,217 @@
+import React from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { router } from "expo-router";
+import LogoutButton from "../../components/LogoutButton";
+
+const Various = () => {
+  const menuItems = [
+    {
+      id: "products",
+      title: "Lista produktów",
+      subtitle: "Zarządzaj produktami w systemie",
+      icon: "pricetags",
+      route: "/products-list",
+      color: "#0D6EFD",
+    },
+    {
+      id: "sales",
+      title: "Podgląd sprzedaży",
+      subtitle: "Zobacz sprzedaż z dowolnego dnia",
+      icon: "receipt",
+      route: "/sales-view",
+      color: "#10B981",
+    },
+    {
+      id: "stock",
+      title: "Tabela asortymentu",
+      subtitle: "Zarządzaj asortymentem produktów",
+      icon: "cube",
+      route: "/stock-list",
+      color: "#F59E0B",
+    },
+    {
+      id: "colors",
+      title: "Lista kolorów",
+      subtitle: "Zarządzaj kolorami produktów",
+      icon: "color-palette",
+      route: "/colors-list",
+      color: "#8B5CF6",
+    },
+    {
+      id: "sizes",
+      title: "Lista rozmiarów",
+      subtitle: "Zarządzaj rozmiarami produktów",
+      icon: "resize",
+      route: "/sizes-list",
+      color: "#06B6D4",
+    },
+    {
+      id: "localizations",
+      title: "Lista lokalizacji",
+      subtitle: "Zarządzaj lokalizacjami produktów",
+      icon: "location",
+      route: "/localizations-list",
+      color: "#EF4444",
+    },
+    {
+      id: "bags",
+      title: "Tabela torebek",
+      subtitle: "Zarządzaj torebkami (1000-9999)",
+      icon: "bag-handle",
+      route: "/bags-list",
+      color: "#EC4899",
+    },
+    {
+      id: "wallets",
+      title: "Tabela portfeli",
+      subtitle: "Zarządzaj portfelami (100-999)",
+      icon: "wallet",
+      route: "/wallets-list",
+      color: "#A855F7",
+    },
+    {
+      id: "remaining-products",
+      title: "Pozostały asortyment",
+      subtitle: "Zarządzaj pozostałymi produktami (10-99)",
+      icon: "grid",
+      route: "/remaining-products-list",
+      color: "#84CC16",
+    },
+    {
+      id: "employees",
+      title: "Tabela pracowników",
+      subtitle: "Zarządzaj pracownikami",
+      icon: "people",
+      route: "/employees-list",
+      color: "#3B82F6",
+    },
+    {
+      id: "manufacturers",
+      title: "Tabela grup",
+      subtitle: "Zarządzaj grupami producentów",
+      icon: "briefcase",
+      route: "/manufacturers-list",
+      color: "#8B5CF6",
+    },
+    // Tutaj będą kolejne funkcje
+  ];
+
+  const handleMenuPress = (route) => {
+    router.push(route);
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
+      <View style={styles.header}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="grid-outline" size={32} color="#fff" />
+        </View>
+        <Text style={styles.title}>Różne</Text>
+        <Text style={styles.subtitle}>
+          Dodatkowe funkcje i narzędzia
+        </Text>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {menuItems.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.menuItem}
+            onPress={() => handleMenuPress(item.route)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: `${item.color}20` }]}>
+              <Ionicons name={item.icon} size={28} color={item.color} />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.menuTitle}>{item.title}</Text>
+              <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#64748B" />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  header: {
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#000000",
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B",
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#0D6EFD",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#94A3B8",
+    textAlign: "center",
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#000000",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+  },
+  menuIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  menuText: {
+    flex: 1,
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  menuSubtitle: {
+    fontSize: 13,
+    color: "#94A3B8",
+  },
+});
+
+export default Various;

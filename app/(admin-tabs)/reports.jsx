@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import LogoutButton from "../../components/LogoutButton";
 
 const Reports = () => {
   const reportTypes = [
@@ -50,6 +51,7 @@ const Reports = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.title}>Raporty</Text>

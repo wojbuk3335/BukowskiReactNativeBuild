@@ -97,6 +97,22 @@ const AdminTabLayout = () => {
         />
 
         <Tabs.Screen
+          name="various"
+          options={{
+            title: "Różne",
+            headerShown: false,
+            tabBarIcon: ({ color, focused }) => (
+              <TabIcon
+                customIcon="grid-outline"
+                color={color}
+                name="Różne"
+                focused={focused}
+              />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
           name="reports"
           options={{
             title: "Raporty",

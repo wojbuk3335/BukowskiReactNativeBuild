@@ -174,32 +174,13 @@ export const GlobalStateProvider = ({ children }) => {
 
     const fetchUsers = async () => {
         try {
-            if (__DEV__) {
-                Logger.debug('📥 Fetching users from:', getApiUrl("/user"));
-            }
-            
             const response = await fetchWithTimeout(getApiUrl("/user"));
             
-            if (__DEV__) {
-                Logger.debug('📥 Users response status:', response?.status);
-            }
-            
             if (!response || !response.ok) {
-                if (__DEV__) {
-                    Logger.error('❌ Failed to fetch users:', response?.status, response?.statusText);
-                }
                 setUsers([]); // Set fallback immediately
                 return []; // Return empty array instead of throwing
             }
             const data = await response.json();
-            
-            if (__DEV__) {
-                Logger.debug('📥 Users data received:', {
-                    isArray: Array.isArray(data),
-                    hasUsersProperty: !!data?.users,
-                    count: Array.isArray(data) ? data.length : data?.users?.length
-                });
-            }
             
             // Extract users array from the response object
             // API może zwracać { users: [...] } lub bezpośrednio [...]
@@ -215,9 +196,6 @@ export const GlobalStateProvider = ({ children }) => {
             setUsers(usersArray); // Set the fetched users into state
             return usersArray; // Return fetched users as array
         } catch (error) {
-            if (__DEV__) {
-                Logger.error('❌ Error in fetchUsers:', error);
-            }
             setUsers([]); // Fallback to an empty array in case of error
             return []; // Return empty array instead of throwing
         }
@@ -288,38 +266,12 @@ export const GlobalStateProvider = ({ children }) => {
 
             const data = await response.json();
             
-            // 🔍 DEBUG: Log received tokens
-            if (__DEV__) {
-                console.log('🔑 Login successful - received data:', {
-                    hasToken: !!data.token,
-                    hasAccessToken: !!data.accessToken,
-                    hasRefreshToken: !!data.refreshToken,
-                    email: data.email,
-                    role: data.role
-                });
-            }
-            
             // Store tokens using tokenService
             if (data.token || data.accessToken) {
                 const accessToken = data.accessToken || data.token;
                 const refreshToken = data.refreshToken;
                 
-                if (__DEV__) {
-                    console.log('🔑 Storing tokens:', {
-                        accessToken: accessToken ? '✅ Yes' : '❌ No',
-                        refreshToken: refreshToken ? '✅ Yes' : '❌ No'
-                    });
-                }
-                
                 await tokenService.setTokens(accessToken, refreshToken);
-                
-                if (__DEV__) {
-                    console.log('✅ Tokens stored successfully');
-                }
-            } else {
-                if (__DEV__) {
-                    console.error('❌ No tokens received from backend!');
-                }
             }
             
             // Wait a bit to ensure AsyncStorage write is completed

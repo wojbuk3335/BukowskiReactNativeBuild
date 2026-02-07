@@ -19,6 +19,7 @@ import { GlobalStateContext } from "../../context/GlobalState";
 import tokenService from "../../services/tokenService";
 import { getApiUrl } from "../../config/api";
 import Logger from "../../services/logger";
+import LogoutButton from "../../components/LogoutButton";
 
 const Dashboard = () => {
   const { user, users, fetchUsers } = useContext(GlobalStateContext);
@@ -392,6 +393,7 @@ const Dashboard = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Sprawdź Kurtki</Text>
@@ -581,7 +583,7 @@ const Dashboard = () => {
                 <View
                   style={[
                     styles.scanArea,
-                    { borderColor: scanningEnabled ? "#dc3545" : "#6c757d" },
+                    { borderColor: scanningEnabled ? "#0D6EFD" : "#6c757d" },
                   ]}
                 />
                 {pendingScan && (
@@ -1053,7 +1055,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dc3545",
+    backgroundColor: "#0D6EFD",
     padding: 20,
     margin: 20,
     borderRadius: 12,
@@ -1068,7 +1070,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#198754",
+    backgroundColor: "#0D6EFD",
     padding: 20,
     margin: 20,
     marginTop: 0,

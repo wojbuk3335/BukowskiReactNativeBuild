@@ -234,6 +234,23 @@ const Home = () => {
   const updateItem = async () => {
     try {
       if (editData?._id) {
+        // Validate that at least one price (cash or card) is provided
+        const hasCashPrice = cashPriceCurrencyPairs.some(({ price }) => {
+          const numPrice = parseFloat(price);
+          return !isNaN(numPrice) && numPrice > 0;
+        });
+        
+        const hasCardPrice = cardPriceCurrencyPairs.some(({ price }) => {
+          const numPrice = parseFloat(price);
+          return !isNaN(numPrice) && numPrice > 0;
+        });
+        
+        if (!hasCashPrice && !hasCardPrice) {
+          setErrorMessage("Musisz podać przynajmniej jedną cenę (gotówka lub karta). Nie można zapisać produktu bez ceny.");
+          setErrorModalVisible(true);
+          return;
+        }
+
         const updatedData = {
           ...editData,
           cash: cashPriceCurrencyPairs.map(({ price, currency }) => ({ price: parseFloat(price) || 0, currency })),
@@ -2180,19 +2197,24 @@ const Home = () => {
                 ]}
               >
                 {index + 1}. {item.fullName || 'Unknown'} {item.size || ''} ({item.from || ''}){item.source === 'Cudzich' ? '(Cudzich)' : ''}{" "}
-                {[...(item.cash || []), ...(item.card || [])]
-                  .filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0)
-                  .map(({ price, currency }, idx, arr) => (
+                {(() => {
+                  const filteredCash = (item.cash || []).filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0);
+                  const filteredCard = (item.card || []).filter(({ price }) => price !== undefined && price !== null && price !== "" && price !== 0);
+                  const allPayments = [...filteredCash, ...filteredCard];
+                  const cashCount = filteredCash.length;
+                  
+                  return allPayments.map(({ price, currency }, idx) => (
                     <Text
                       key={`payment-${idx}`}
                       style={{
-                        color: idx < (item.cash?.length || 0) ? "white" : "red",
+                        color: idx < cashCount ? "white" : "red",
                       }}
                     >
                       {price} {currency}
-                      {idx < arr.length - 1 ? "  " : ""}
+                      {idx < allPayments.length - 1 ? "  " : ""}
                     </Text>
-                  ))}
+                  ));
+                })()}
                 {isItemInPanKazek(item) && (
                   <Text style={{ color: '#28a745', fontSize: 16, marginLeft: 5 }}>●</Text>
                 )}

@@ -14,6 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { GlobalStateContext } from "../../context/GlobalState";
 import Logger from "../../services/logger";
+import LogoutButton from "../../components/LogoutButton";
 
 const Profile = () => {
   const { user, setUser, setIsLoggedIn } = useContext(GlobalStateContext);
@@ -48,6 +49,7 @@ const Profile = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <LogoutButton position="top-right" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>

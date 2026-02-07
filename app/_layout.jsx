@@ -44,7 +44,17 @@ const RootLayout = () => {
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(admin-tabs)" options={{ headerShown: false }} />
-
+          <Stack.Screen name="products-list" options={{ headerShown: false }} />
+          <Stack.Screen name="sales-view" options={{ headerShown: false }} />
+          <Stack.Screen name="stock-list" options={{ headerShown: false }} />
+          <Stack.Screen name="colors-list" options={{ headerShown: false }} />
+          <Stack.Screen name="sizes-list" options={{ headerShown: false }} />
+          <Stack.Screen name="localizations-list" options={{ headerShown: false }} />
+          <Stack.Screen name="bags-list" options={{ headerShown: false }} />
+          <Stack.Screen name="wallets-list" options={{ headerShown: false }} />
+          <Stack.Screen name="remaining-products-list" options={{ headerShown: false }} />
+          <Stack.Screen name="employees-list" options={{ headerShown: false }} />
+          <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
         </Stack>
       </GlobalStateProvider>
     </SafeAreaProvider>
