@@ -3,6 +3,8 @@ import { SplashScreen, Stack } from 'expo-router';
 import React, { useEffect } from 'react';
 import "react-native-url-polyfill/auto";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
+import * as NavigationBar from 'expo-navigation-bar';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
 
 SplashScreen.preventAutoHideAsync();
@@ -27,6 +29,13 @@ const RootLayout = () => {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, error]);
+
+  // Configure Android navigation bar
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setBackgroundColorAsync('#000000');
+    }
+  }, []);
 
   // Patch global fetch to provide safer JSON parsing with better diagnostics
   useEffect(() => {
