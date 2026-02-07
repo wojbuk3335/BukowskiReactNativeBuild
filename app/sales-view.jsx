@@ -76,7 +76,13 @@ const SalesView = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setSales(data);
+        // Sort by timestamp from earliest to latest
+        const sortedData = data.sort((a, b) => {
+          const timeA = new Date(a.timestamp).getTime();
+          const timeB = new Date(b.timestamp).getTime();
+          return timeA - timeB; // Ascending order (earliest first)
+        });
+        setSales(sortedData);
       } else {
         setSales([]);
       }
