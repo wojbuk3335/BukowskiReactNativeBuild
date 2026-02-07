@@ -377,7 +377,7 @@ const Dashboard = () => {
         <Ionicons name="alert-circle" size={24} color="#dc3545" />
       )}
       {item.status === "correct" && (
-        <Ionicons name="checkmark-circle" size={24} color="#198754" />
+        <Ionicons name="checkmark-circle" size={24} color="#0D6EFD" />
       )}
     </View>
   );
@@ -748,7 +748,7 @@ const Dashboard = () => {
               {comparisonResults?.missingItems?.length === 0 &&
                 comparisonResults?.extraItems?.length === 0 && (
                   <View style={styles.successContainer}>
-                    <Ionicons name="checkmark-circle" size={64} color="#198754" />
+                    <Ionicons name="checkmark-circle" size={64} color="#0D6EFD" />
                     <Text style={styles.successText}>
                       Weryfikacja zakończona pomyślnie!
                     </Text>
@@ -950,7 +950,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#198754",
+    backgroundColor: "#0D6EFD",
     padding: 20,
     margin: 20,
     borderRadius: 12,

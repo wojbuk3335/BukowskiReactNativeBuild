@@ -83,13 +83,13 @@ const AdminTabLayout = () => {
         <Tabs.Screen
           name="users"
           options={{
-            title: "Użytkownicy",
+            title: "Dobierz",
             headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
-                customIcon="people"
+                customIcon="shirt"
                 color={color}
-                name="Użytkownicy"
+                name="Dobierz"
                 focused={focused}
               />
             ),
