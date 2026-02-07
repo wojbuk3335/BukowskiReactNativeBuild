@@ -919,15 +919,7 @@ const Home = () => {
       
       if (response.ok) {
         const result = await response.json();
-        setSuccessMessage(
-          `Prowizje zostały przeliczone:\n\n` +
-          `📅 Data: ${result.date}\n` +
-          `🗑️ Usunięto starych: ${result.deletedCommissions}\n` +
-          `➕ Dodano nowych: ${result.addedCommissions}\n` +
-          `💰 Łączna kwota: ${result.totalAmount} PLN\n` +
-          `📦 Sprzedaży: ${result.salesProcessed}\n` +
-          `👥 Pracowników: ${result.activeEmployees}`
-        );
+        setSuccessMessage("Sukces! Prowizje zostały przeliczone.");
         setSuccessModalVisible(true);
       } else {
         const errorData = await response.json();
@@ -1219,6 +1211,9 @@ const Home = () => {
         setSuccessModalVisible(true);
         closeWorkHoursModal(); // Użyj funkcji pomocniczej do zamknięcia
         fetchTodaysWorkHours(); // Refresh today's work hours
+        
+        // 🔄 AUTOMATICALLY RECALCULATE COMMISSIONS after work hours update
+        await recalculateCommissions();
       } else {
         const errorData = await response.json();
         Logger.error('❌ Error saving work hours:', errorData);
