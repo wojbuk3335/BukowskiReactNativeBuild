@@ -55,6 +55,13 @@ const Dashboard = () => {
   // Comparison modal states
   const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
   const [comparisonResults, setComparisonResults] = useState(null);
+  
+  // Info modal state
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [infoModalMessage, setInfoModalMessage] = useState("");
+  
+  // Confirm clear modal state
+  const [confirmClearModalVisible, setConfirmClearModalVisible] = useState(false);
 
   useEffect(() => {
     if (users.length === 0) {
@@ -83,21 +90,23 @@ const Dashboard = () => {
       
       if (response.ok) {
         const data = await response.json();
+        
         setExpectedJackets(data.data.jackets || []);
         setTotalExpected(data.data.totalJackets || 0);
         setVerificationStarted(true);
         setScannedJackets([]);
         
         if (data.data.totalJackets === 0) {
-          Alert.alert("Informacja", "Brak kurtek do weryfikacji dla wybranego użytkownika i daty");
+          setInfoModalMessage("Brak kurtek do weryfikacji dla wybranego użytkownika i daty");
+          setInfoModalVisible(true);
         }
       } else {
+        const errorText = await response.text();
         Alert.alert("Błąd", "Nie udało się pobrać danych");
         setExpectedJackets([]);
         setTotalExpected(0);
       }
     } catch (error) {
-      Logger.error("Error fetching jackets:", error);
       Alert.alert("Błąd", "Wystąpił błąd podczas pobierania danych");
     } finally {
       setLoading(false);
@@ -159,11 +168,11 @@ const Dashboard = () => {
       }
     }
 
-    setScannedJackets([]);
     setScannerVisible(true);
     setScanningEnabled(true);
     setLastScannedCode("");
     setRecentlyScannedCodes(new Map());
+    setPendingScan(null); // Reset pending scan when opening scanner
   };
 
   const handleScan = ({ data }) => {
@@ -210,6 +219,8 @@ const Dashboard = () => {
   const closeScanner = () => {
     setScannerVisible(false);
     setLastScannedCode("");
+    setPendingScan(null); // Reset pending scan
+    setScanningEnabled(true); // Re-enable scanning
   };
 
   const checkVerification = () => {
@@ -297,27 +308,12 @@ const Dashboard = () => {
       });
       setComparisonModalVisible(true);
     } catch (error) {
-      Logger.error("Error checking verification:", error);
       Alert.alert("Błąd", "Wystąpił błąd podczas sprawdzania");
     }
   };
 
   const clearScannedJackets = () => {
-    Alert.alert(
-      "Potwierdź",
-      "Czy na pewno chcesz wyczyścić listę zeskanowanych kurtek?",
-      [
-        { text: "Anuluj", style: "cancel" },
-        {
-          text: "Wyczyść",
-          onPress: () => {
-            setScannedJackets([]);
-            setLastScannedCode("");
-            setRecentlyScannedCodes(new Map());
-          },
-        },
-      ]
-    );
+    setConfirmClearModalVisible(true);
   };
 
   const renderScannedJacket = ({ item }) => (
@@ -441,8 +437,10 @@ const Dashboard = () => {
                 <ScrollView style={styles.expectedList} nestedScrollEnabled>
                   {expectedJackets.map((jacket, index) => (
                     <View key={`expected-${index}`} style={styles.expectedItem}>
-                      <Text style={styles.expectedName}>{jacket.fullName || jacket.barcode}</Text>
-                      <Text style={styles.expectedCode}>{jacket.barcode} | {jacket.size}</Text>
+                      <Text style={styles.expectedName}>
+                        {jacket.fullName || jacket.barcode} {jacket.size}
+                      </Text>
+                      <Text style={styles.expectedCode}>{jacket.barcode}</Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -545,7 +543,7 @@ const Dashboard = () => {
                 {pendingScan && (
                   <View style={styles.pendingScanOverlay}>
                     <Text style={styles.pendingScanText}>
-                      Zeskanowano: {pendingScan.fullName || pendingScan.barcode}
+                      Zeskanowano: {pendingScan.fullName || pendingScan.barcode} {pendingScan.size}
                     </Text>
                     <Text style={styles.pendingScanSubtext}>
                       Zatwierdź skan, aby kontynuować
@@ -559,9 +557,19 @@ const Dashboard = () => {
           {/* Scanned jackets list */}
           {scannedJackets.length > 0 && (
             <View style={styles.scannedListContainer}>
-              <Text style={styles.scannedListTitle}>
-                Zeskanowane kurtki ({scannedJackets.length} / {totalExpected})
-              </Text>
+              <View style={styles.scannedListHeader}>
+                <Text style={styles.scannedListTitle}>
+                  Zeskanowane kurtki ({scannedJackets.length} / {totalExpected})
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setConfirmClearModalVisible(true);
+                  }}
+                  style={styles.clearListButtonSmall}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#ff4444" />
+                </TouchableOpacity>
+              </View>
               <FlatList
                 data={scannedJackets}
                 horizontal
@@ -577,7 +585,7 @@ const Dashboard = () => {
                       <Ionicons name="close" size={16} color="white" />
                     </TouchableOpacity>
                     <Text style={styles.jacketName} numberOfLines={2}>
-                      {item.fullName || item.name || "Nieznany"}
+                      {item.fullName || item.name || "Nieznany"} {item.size}
                     </Text>
                     <Text style={styles.jacketCode}>{item.barcode || item.code}</Text>
                     <Text style={styles.jacketTime}>
@@ -592,12 +600,12 @@ const Dashboard = () => {
 
           {/* Action buttons */}
           <View style={styles.scannerFooter}>
-            {pendingScan && (
-              <View style={styles.actionButtonsRow}>
+            <View style={styles.actionButtonsRow}>
+              {pendingScan && (
                 <TouchableOpacity
                   onPress={() => {
-                    // Dodaj kurtkę do listy
-                    setScannedJackets((prev) => [...prev, pendingScan]);
+                    // Dodaj kurtkę na początek listy
+                    setScannedJackets((prev) => [pendingScan, ...prev]);
                     // Wyczyść pending i włącz skanowanie
                     setPendingScan(null);
                     setScanningEnabled(true);
@@ -609,7 +617,9 @@ const Dashboard = () => {
                     Zatwierdź skan
                   </Text>
                 </TouchableOpacity>
-                
+              )}
+              
+              {(pendingScan || scannedJackets.length > 0) && (
                 <TouchableOpacity
                   onPress={() => {
                     closeScanner();
@@ -622,8 +632,8 @@ const Dashboard = () => {
                     Sprawdź zgodność
                   </Text>
                 </TouchableOpacity>
-              </View>
-            )}
+              )}
+            </View>
           </View>
         </SafeAreaView>
       </Modal>
@@ -766,6 +776,65 @@ const Dashboard = () => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Info Modal */}
+      <Modal visible={infoModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.infoModal}>
+            <View style={styles.infoModalHeader}>
+              <Ionicons name="information-circle" size={48} color="#ffc107" />
+            </View>
+            <View style={styles.infoModalContent}>
+              <Text style={styles.infoModalTitle}>Informacja</Text>
+              <Text style={styles.infoModalMessage}>{infoModalMessage}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.infoModalButton}
+              onPress={() => setInfoModalVisible(false)}
+            >
+              <Text style={styles.infoModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Clear Modal */}
+      <Modal visible={confirmClearModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmModalHeader}>
+              <Ionicons name="warning" size={48} color="#ff4444" />
+            </View>
+            <View style={styles.confirmModalContent}>
+              <Text style={styles.confirmModalTitle}>Wyczyść listę</Text>
+              <Text style={styles.confirmModalMessage}>
+                Czy na pewno chcesz usunąć wszystkie zeskanowane kurtki?
+              </Text>
+            </View>
+            <View style={styles.confirmModalButtons}>
+              <TouchableOpacity
+                style={styles.confirmModalCancelButton}
+                onPress={() => setConfirmClearModalVisible(false)}
+              >
+                <Text style={styles.confirmModalCancelButtonText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmModalConfirmButton}
+                onPress={() => {
+                  setScannedJackets([]);
+                  setPendingScan(null);
+                  setScanningEnabled(true);
+                  setLastScannedCode("");
+                  setRecentlyScannedCodes(new Map());
+                  setConfirmClearModalVisible(false);
+                }}
+              >
+                <Text style={styles.confirmModalConfirmButtonText}>Wyczyść</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1088,11 +1157,26 @@ const styles = StyleSheet.create({
     borderTopColor: '#232533',
     maxHeight: 140,
   },
+  scannedListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   scannedListTitle: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  clearListButtonSmall: {
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ff4444',
   },
   scannedJacket: {
     backgroundColor: '#232533',
@@ -1213,6 +1297,116 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 20,
     fontWeight: "bold",
+  },
+  infoModal: {
+    backgroundColor: "#161622",
+    width: "85%",
+    borderRadius: 20,
+    overflow: "hidden",
+    alignItems: "center",
+    paddingBottom: 20,
+  },
+  infoModalHeader: {
+    backgroundColor: "#1E1E2D",
+    width: "100%",
+    paddingVertical: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoModalContent: {
+    padding: 24,
+    alignItems: "center",
+  },
+  infoModalTitle: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  infoModalMessage: {
+    color: "#aaa",
+    fontSize: 16,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  infoModalButton: {
+    backgroundColor: "#0d6efd",
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  infoModalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmModal: {
+    backgroundColor: "#161622",
+    width: "85%",
+    borderRadius: 20,
+    overflow: "hidden",
+    alignItems: "center",
+    paddingBottom: 20,
+  },
+  confirmModalHeader: {
+    backgroundColor: "#1E1E2D",
+    width: "100%",
+    paddingVertical: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmModalContent: {
+    padding: 24,
+    alignItems: "center",
+  },
+  confirmModalTitle: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  confirmModalMessage: {
+    color: "#aaa",
+    fontSize: 16,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  confirmModalButtons: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 20,
+  },
+  confirmModalCancelButton: {
+    backgroundColor: "#2a2a3e",
+    paddingHorizontal: 30,
+    paddingVertical: 14,
+    borderRadius: 12,
+    flex: 1,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#444",
+  },
+  confirmModalCancelButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmModalConfirmButton: {
+    backgroundColor: "#ff4444",
+    paddingHorizontal: 30,
+    paddingVertical: 14,
+    borderRadius: 12,
+    flex: 1,
+    alignItems: "center",
+  },
+  confirmModalConfirmButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   userList: {
     maxHeight: 400,

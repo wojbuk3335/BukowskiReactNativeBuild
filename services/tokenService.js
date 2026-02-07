@@ -12,6 +12,34 @@ class TokenService {
         this.onAutoLogout = null; // Callback for automatic logout
         this.isLoggingOut = false; // Flag to indicate logout in progress
         this.isInitializing = true; // Flag for first app launch
+        this.isInitialized = false; // Flag to track if init was called
+    }
+
+    // Initialize token service - should be called on app start
+    async initialize() {
+        if (this.isInitialized) return;
+        
+        try {
+            const { accessToken, refreshToken } = await this.getTokens();
+            
+            // If we have access token but no refresh token, clear everything
+            // This can happen if user upgraded from old app version
+            if (accessToken && !refreshToken) {
+                await this.clearTokens();
+            }
+            
+            // If we have both tokens, verify they're valid
+            if (accessToken && refreshToken) {
+                const isExpired = this.isTokenExpiring(accessToken, 0);
+                if (!isExpired) {
+                    this.isInitializing = false; // User is logged in
+                }
+            }
+            
+            this.isInitialized = true;
+        } catch (error) {
+            Logger.error('Error initializing TokenService:', error);
+        }
     }
 
     // Get tokens from SecureStore
@@ -30,7 +58,9 @@ class TokenService {
     async setTokens(accessToken, refreshToken) {
         try {
             // Reset logout flag when setting new tokens (user is logging in)
-            this.isLoggingOut = false;            this.isInitializing = false;            
+            this.isLoggingOut = false;            
+            this.isInitializing = false;
+            
             if (accessToken) {
                 await SecureStore.setItemAsync('BukowskiAccessToken', accessToken);
                 
@@ -171,7 +201,10 @@ class TokenService {
         } catch (error) {
             this.isRefreshingToken = false;
             await this.clearTokens();
-            await AuthErrorHandler.handleAuthError(error, 'Token Refresh');
+            // Only handle auth error if not initializing or logging out
+            if (!this.isLoggingOut && !this.isInitializing) {
+                await AuthErrorHandler.handleAuthError(error, 'Token Refresh');
+            }
             throw error;
         }
     }
@@ -227,7 +260,10 @@ class TokenService {
             } catch (error) {
                 // Refresh failed, clear tokens
                 await this.clearTokens();
-                await AuthErrorHandler.handleAuthError(error, 'Token Validation');
+                // Only handle auth error if not initializing or logging out
+                if (!this.isLoggingOut && !this.isInitializing) {
+                    await AuthErrorHandler.handleAuthError(error, 'Token Validation');
+                }
                 throw error;
             }
         }
@@ -287,14 +323,7 @@ class TokenService {
 
             // If we get 401, try to refresh token and retry once
             if (response.status === 401 && !options._retry && !this.isLoggingOut) {
-                // Handle auth response error
-                const wasHandled = await AuthErrorHandler.handleResponseError(response, 'Authenticated Fetch');
-                if (wasHandled) {
-                    const error = new Error(`Authentication failed: ${response.status}`);
-                    error.isAuthError = true; // Mark as auth error
-                    throw error;
-                }
-                
+                // Don't handle error yet - first try to refresh token
                 try {
                     const newToken = await this.refreshAccessToken();
                     if (newToken) {
@@ -311,14 +340,25 @@ class TokenService {
                         });
                     }
                 } catch (refreshError) {
-                    // Refresh failed, clear tokens
+                    if (__DEV__) {
+                        Logger.error('❌ Token refresh failed:', refreshError);
+                    }
+                    
+                    // Refresh failed, NOW handle auth error and clear tokens
                     if (!this.isLoggingOut) {
                         await this.clearTokens();
-                        await AuthErrorHandler.handleAuthError(refreshError, 'Fetch Retry');
+                        await AuthErrorHandler.handleAuthError(refreshError, 'Token Refresh Failed');
                     }
                     refreshError.isAuthError = true; // Mark as auth error
                     throw refreshError;
                 }
+                
+                // If we got here, refresh didn't work but didn't throw
+                // Handle as auth error now
+                const error = new Error(`Authentication failed: ${response.status}`);
+                await AuthErrorHandler.handleAuthError(error, 'Authentication Failed');
+                error.isAuthError = true;
+                throw error;
             }
             
             // If 401 during logout, throw silent auth error
@@ -405,21 +445,6 @@ class TokenService {
                 const expiryTime = payload.exp * 1000; // Convert to ms
                 const now = Date.now();
                 const timeLeft = expiryTime - now;
-
-                // Only log when less than 1 hour left to avoid spam
-                if (timeLeft < 3600000) { // Less than 1 hour
-                    const hours = Math.floor(timeLeft / 3600000);
-                    const minutes = Math.floor((timeLeft % 3600000) / 60000);
-                    const seconds = Math.floor((timeLeft % 60000) / 1000);
-                    
-                    if (hours > 0) {
-                        Logger.debug(`Time left: ${hours}h ${minutes}m`);
-                    } else if (minutes > 0) {
-                        Logger.debug(`Time left: ${minutes}m ${seconds}s`);
-                    } else {
-                        Logger.debug(`Time left: ${seconds}s`);
-                    }
-                }
 
                 if (timeLeft <= 0) {
                     await this.performAutoLogout();

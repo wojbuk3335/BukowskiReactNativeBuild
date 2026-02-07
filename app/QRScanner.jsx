@@ -775,7 +775,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     setModalVisible(false);
     setScanned(false); // Reset stanu skanowania po submit
     
-    // Reset pickup state
+    // Reset all form state
+    setBarcode("");
+    setModalMessage("");
+    setSelectedOption("");
+    setCashPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+    setCardPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
     setIsPickup(false);
     setAdvanceAmount("");
     setSelectedAdvance(null);
@@ -816,6 +821,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
               }}
               onPress={() => {
                 setScanned(false);
+                setBarcode("");
+                setModalMessage("");
+                setSelectedOption("");
+                setCashPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                setCardPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                setIsPickup(false);
+                setAdvanceAmount("");
+                setSelectedAdvance(null);
+                setCurrentProductName("");
+                setCurrentProductSize("");
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Skanuj ponownie</Text>
@@ -834,6 +849,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                   onPress={() => {
                     setModalVisible(false);
                     setScanned(false); // Reset stanu skanowania gdy zamykamy modal
+                    setBarcode("");
+                    setModalMessage("");
+                    setSelectedOption("");
+                    setCashPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                    setCardPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                    setIsPickup(false);
+                    setAdvanceAmount("");
+                    setSelectedAdvance(null);
+                    setCurrentProductName("");
+                    setCurrentProductSize("");
                   }}
                 >
                   <Text style={styles.closeButtonText}>X</Text>
@@ -1155,6 +1180,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                     onPress={() => {
                       setModalVisible(false);
                       setScanned(false); // Reset stanu skanowania
+                      setBarcode("");
+                      setModalMessage("");
+                      setSelectedOption("");
+                      setCashPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                      setCardPriceCurrencyPairs([{ price: "", currency: "PLN" }]);
+                      setIsPickup(false);
+                      setAdvanceAmount("");
+                      setSelectedAdvance(null);
+                      setCurrentProductName("");
+                      setCurrentProductSize("");
                     }}
                   >
                     <Text style={styles.buttonText}>Anuluj</Text>

@@ -29,11 +29,21 @@ const SignIn = () => {
     const newIsAdminPanel = !isAdminPanel;
     setIsAdminPanel(newIsAdminPanel);
     
-    // Sprawdź czy użytkownik jest już zalogowany i czy pasuje do panelu
+    // Sprawdź czy użytkownik ma ważne tokeny przed automatycznym logowaniem
     try {
       const userData = await AsyncStorage.getItem("user");
       if (userData) {
         const parsedUser = JSON.parse(userData);
+        
+        // Sprawdź czy użytkownik ma ważne tokeny
+        const isAuthenticated = await tokenService.isAuthenticated();
+        
+        if (!isAuthenticated) {
+          // Brak ważnych tokenów - wyczyść dane użytkownika i wymagaj ponownego logowania
+          Logger.debug("No valid tokens found - clearing user data");
+          await AsyncStorage.removeItem("user");
+          return;
+        }
         
         // Jeśli przełącza na panel admina i jest adminem - automatycznie zaloguj
         if (newIsAdminPanel && parsedUser.role === 'admin') {
