@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  Alert,
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,6 +25,8 @@ const Users = () => {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [userSymbol, setUserSymbol] = useState("");
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [infoMessage, setInfoMessage] = useState("");
 
   // Filter out admin users
   const filteredUsers = users.filter((u) => !u.isAdmin);
@@ -38,7 +39,8 @@ const Users = () => {
 
   const fetchItemsToPick = async () => {
     if (!selectedUserId) {
-      Alert.alert("Uwaga", "Wybierz najpierw użytkownika");
+      setInfoMessage("Wybierz najpierw użytkownika");
+      setShowInfoModal(true);
       return;
     }
 
@@ -55,15 +57,18 @@ const Users = () => {
         setUserSymbol(data.userSymbol || "");
         
         if (data.count === 0) {
-          Alert.alert("Info", "Brak kurtek do dobrania dla wybranego użytkownika i daty");
+          setInfoMessage("Brak kurtek do dobrania dla wybranego użytkownika i daty");
+          setShowInfoModal(true);
         }
       } else {
-        Alert.alert("Błąd", "Nie udało się pobrać danych");
+        setInfoMessage("Nie udało się pobrać danych");
+        setShowInfoModal(true);
         setItems([]);
       }
     } catch (error) {
       console.error("Error fetching items to pick:", error);
-      Alert.alert("Błąd", "Wystąpił błąd podczas pobierania danych");
+      setInfoMessage("Wystąpił błąd podczas pobierania danych");
+      setShowInfoModal(true);
     } finally {
       setLoading(false);
     }
@@ -259,6 +264,30 @@ const Users = () => {
                 </TouchableOpacity>
               )}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Info Modal */}
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalIconContainer}>
+              <Ionicons name="information-circle" size={64} color="#0D6EFD" />
+            </View>
+            <Text style={styles.infoModalTitle}>Informacja</Text>
+            <Text style={styles.infoModalMessage}>{infoMessage}</Text>
+            <TouchableOpacity
+              style={styles.infoModalButton}
+              onPress={() => setShowInfoModal(false)}
+            >
+              <Text style={styles.infoModalButtonText}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -477,6 +506,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#94A3B8",
     marginTop: 2,
+  },
+  infoModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  infoModalContent: {
+    backgroundColor: "#1E293B",
+    borderRadius: 20,
+    padding: 30,
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  infoModalIconContainer: {
+    marginBottom: 20,
+  },
+  infoModalTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 12,
+  },
+  infoModalMessage: {
+    fontSize: 16,
+    color: "#94A3B8",
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  infoModalButton: {
+    backgroundColor: "#0D6EFD",
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minWidth: 120,
+  },
+  infoModalButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    textAlign: "center",
   },
 });
 
