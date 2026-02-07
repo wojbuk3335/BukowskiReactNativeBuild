@@ -101,6 +101,22 @@ const Various = () => {
       route: "/manufacturers-list",
       color: "#8B5CF6",
     },
+    {
+      id: "subcategories",
+      title: "Tabela podkategorii",
+      subtitle: "Zarządzaj podkategoriami produktów",
+      icon: "file-tray-stacked",
+      route: "/subcategories-menu",
+      color: "#F97316",
+    },
+    {
+      id: "payroll",
+      title: "Wypłaty",
+      subtitle: "Rozliczenia miesięczne pracowników",
+      icon: "cash",
+      route: "/payroll",
+      color: "#22C55E",
+    },
     // Tutaj będą kolejne funkcje
   ];
 

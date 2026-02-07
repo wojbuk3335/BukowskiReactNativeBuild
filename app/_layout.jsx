@@ -28,6 +28,38 @@ const RootLayout = () => {
     }
   }, [fontsLoaded, error]);
 
+  // Patch global fetch to provide safer JSON parsing with better diagnostics
+  useEffect(() => {
+    const originalFetch = global.fetch;
+    global.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      // Clone response so we can inspect raw body if JSON parsing fails
+      const clone = response.clone?.() ?? response;
+      const originalJson = response.json.bind(response);
+      response.json = async () => {
+        try {
+          return await originalJson();
+        } catch (e) {
+          try {
+            const text = await clone.text();
+            // Log a short preview to help locate the issue
+            console.warn("JSON parse failed. Preview:", text.slice(0, 200));
+            // Minimal auto-fix: escape lone backslashes not part of valid JSON escapes
+            const fixed = text.replace(/\\(?!["\\\/bfnrtu])/g, "\\\\");
+            return JSON.parse(fixed);
+          } catch {
+            // Re-throw original error if we cannot recover
+            throw e;
+          }
+        }
+      };
+      return response;
+    };
+    return () => {
+      global.fetch = originalFetch;
+    };
+  }, []);
+
   if (!fontsLoaded) {
     return null;
   }
@@ -55,6 +87,7 @@ const RootLayout = () => {
           <Stack.Screen name="remaining-products-list" options={{ headerShown: false }} />
           <Stack.Screen name="employees-list" options={{ headerShown: false }} />
           <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
+          <Stack.Screen name="payroll" options={{ headerShown: false }} />
         </Stack>
       </GlobalStateProvider>
     </SafeAreaProvider>

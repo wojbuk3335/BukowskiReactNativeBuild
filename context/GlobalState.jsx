@@ -318,7 +318,7 @@ export const GlobalStateProvider = ({ children }) => {
             tokenService.stopAutoLogoutMonitoring();
             
             // Clear tokens using tokenService
-            await tokenService.logout();
+            await tokenService.logout({ suppressFlagReset: true });
             
             setUser(null); // Clear user state
             setIsLoggedIn(false); // Set login status to false

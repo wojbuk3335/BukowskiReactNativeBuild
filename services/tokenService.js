@@ -1,6 +1,6 @@
 // Token Management Service for React Native Mobile App
 import * as SecureStore from 'expo-secure-store';
-import { getApiUrl } from '../config/api';
+import { getApiUrl, API_CONFIG } from '../config/api';
 import AuthErrorHandler from '../utils/authErrorHandler';
 import Logger from './logger';
 
@@ -184,6 +184,10 @@ class TokenService {
         if (!refreshToken) {
             await this.clearTokens();
             this.isRefreshingToken = false;
+            // During logout, silently skip refresh attempts
+            if (this.isLoggingOut) {
+                return null;
+            }
             const error = new Error('No refresh token available');
             // Only handle auth error if we're not on initial app load (silent fail for first launch)
             if (!this.isLoggingOut && !this.isInitializing) {
@@ -315,11 +319,22 @@ class TokenService {
                 ...options.headers
             };
 
-            // Make the request
-            const response = await fetch(url, {
-                ...options,
-                headers
-            });
+            // Setup timeout with AbortController
+            const controller = new AbortController();
+            const timeoutMs = (API_CONFIG?.TIMEOUT ?? 10000);
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            // Make the request with timeout
+            let response;
+            try {
+                response = await fetch(url, {
+                    ...options,
+                    headers,
+                    signal: controller.signal
+                });
+            } finally {
+                clearTimeout(timeoutId);
+            }
 
             // If we get 401, try to refresh token and retry once
             if (response.status === 401 && !options._retry && !this.isLoggingOut) {
@@ -332,12 +347,19 @@ class TokenService {
                             ...headers,
                             'Authorization': `Bearer ${newToken}`
                         };
-                        
-                        return await fetch(url, {
-                            ...options,
-                            headers: newHeaders,
-                            _retry: true // Prevent infinite retry loop
-                        });
+                        // Retry with fresh timeout controller
+                        const retryController = new AbortController();
+                        const retryTimeoutId = setTimeout(() => retryController.abort(), timeoutMs);
+                        try {
+                            return await fetch(url, {
+                                ...options,
+                                headers: newHeaders,
+                                signal: retryController.signal,
+                                _retry: true // Prevent infinite retry loop
+                            });
+                        } finally {
+                            clearTimeout(retryTimeoutId);
+                        }
                     }
                 } catch (refreshError) {
                     if (__DEV__) {
@@ -371,6 +393,10 @@ class TokenService {
 
             return response;
         } catch (error) {
+            // Convert abort errors to a friendly message
+            if (error?.name === 'AbortError') {
+                error.message = 'Żądanie przekroczyło limit czasu połączenia';
+            }
             // Handle auth errors with automatic redirect (but not during logout)
             const wasHandled = !this.isLoggingOut ? await AuthErrorHandler.handleFetchError(error, 'Authenticated Fetch') : true;
             
@@ -393,8 +419,9 @@ class TokenService {
     }
 
     // Manual logout
-    async logout() {
+    async logout(options = {}) {
         this.isLoggingOut = true; // Set logout flag
+        const suppressFlagReset = options.suppressFlagReset === true;
         
         const { refreshToken } = await this.getTokens();
         
@@ -416,7 +443,9 @@ class TokenService {
 
         await this.clearTokens();
         this.clearAutoLogoutTimer(); // Clear timer on manual logout
-        this.isLoggingOut = false; // Clear logout flag
+        if (!suppressFlagReset) {
+            this.isLoggingOut = false; // Clear logout flag
+        }
     }
 
     // 🧪 AUTO-LOGOUT: Set callback for automatic logout
