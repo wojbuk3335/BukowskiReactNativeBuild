@@ -10,7 +10,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,6 +23,7 @@ import LogoutButton from "../../components/LogoutButton";
 
 const Dashboard = () => {
   const { user, users, fetchUsers } = useContext(GlobalStateContext);
+  const insets = useSafeAreaInsets(); // Get safe area insets
   
   // Selection states
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -392,7 +393,11 @@ const Dashboard = () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: "#000000",
+      paddingBottom: Math.max(20, insets.bottom + 20)
+    }}>
       <LogoutButton position="top-right" />
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>

@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import LogoutButton from "../../components/LogoutButton";
 
 const Settings = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const [notifications, setNotifications] = useState(true);
   const [autoBackup, setAutoBackup] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
@@ -43,7 +44,11 @@ const Settings = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: "#000000",
+      paddingBottom: Math.max(20, insets.bottom + 20)
+    }}>
       <LogoutButton position="top-right" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>

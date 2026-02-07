@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { GlobalStateContext } from "../../context/GlobalState";
@@ -17,6 +17,7 @@ import { getApiUrl } from "../../config/api";
 import LogoutButton from "../../components/LogoutButton";
 
 const Users = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { users, fetchUsers } = useContext(GlobalStateContext);
   
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -194,7 +195,11 @@ const Users = () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: "#000000",
+      paddingBottom: Math.max(20, insets.bottom + 20)
+    }}>
       <LogoutButton position="top-right" />
       <FlatList
         data={items}

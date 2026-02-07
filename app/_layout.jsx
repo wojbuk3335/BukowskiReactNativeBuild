@@ -30,19 +30,17 @@ const RootLayout = () => {
     }
   }, [fontsLoaded, error]);
 
-  // Configure Android navigation bar
+  // Configure Android navigation bar  
   useEffect(() => {
     if (Platform.OS === 'android') {
       const configureNavigationBar = async () => {
         try {
-          // Set navigation bar background to black
+          // Set navigation bar background to black (this should work)
           await NavigationBar.setBackgroundColorAsync('#000000');
-          // Set button color to light
-          await NavigationBar.setButtonStyleAsync('light');
-          // Make navigation bar translucent
-          await NavigationBar.setBehaviorAsync('overlay-swipe');
+          console.log('✅ Navigation bar background set to black');
         } catch (error) {
-          console.warn('NavigationBar configuration failed:', error);
+          console.warn('Navigation bar configuration failed:', error.message);
+          // Silently fail - edge-to-edge mode handles this automatically
         }
       };
       

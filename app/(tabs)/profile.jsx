@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View, ScrollView, ActivityIndicator, TextInput, FlatList, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, ScrollView, ActivityIndicator, TextInput, FlatList, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { GlobalStateContext } from '../../context/GlobalState';
 import tokenService from '../../services/tokenService';
@@ -8,6 +9,7 @@ import { getApiUrl } from '../../config/api';
 import LogoutButton from '../../components/LogoutButton';
 
 const Profile = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { logout, user } = useContext(GlobalStateContext); // Access logout function
   
   // States for order form
@@ -615,7 +617,7 @@ const Profile = () => {
 
   return (
     <>
-      <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+      <SafeAreaView style={{ backgroundColor: "#000", flex: 1, paddingBottom: Math.max(20, insets.bottom + 20) }}>
         <LogoutButton position="top-right" />
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

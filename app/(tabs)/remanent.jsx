@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   RefreshControl,
@@ -12,6 +11,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ import { getApiUrl } from '../../config/api';
 import LogoutButton from '../../components/LogoutButton';
 
 const Remanent = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { user, sizes, colors, stocks, stateData, fetchSizes, fetchColors, fetchStock } = useContext(GlobalStateContext);
   const [remanentData, setRemanentData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1241,7 +1242,7 @@ const Remanent = () => {
   // Loading state
   if (loading) {
     return (
-      <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+      <SafeAreaView style={{ backgroundColor: "#000", flex: 1, paddingBottom: Math.max(20, insets.bottom + 20) }}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0d6efd" />
           <Text style={styles.loadingText}>Ładowanie remanentów...</Text>
@@ -1251,7 +1252,7 @@ const Remanent = () => {
   }
 
   return (
-    <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+    <SafeAreaView style={{ backgroundColor: "#000", flex: 1, paddingBottom: Math.max(20, insets.bottom + 20) }}>
       <LogoutButton position="top-right" />
       <View style={styles.header}>
         <View style={styles.headerContent}>

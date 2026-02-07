@@ -14,7 +14,7 @@ import {
   KeyboardAvoidingView
 } from 'react-native';
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from "@react-navigation/native";
 import { GlobalStateContext } from '../../context/GlobalState';
 
@@ -24,6 +24,7 @@ import Logger from '../../services/logger'; // Import logger service
 import LogoutButton from '../../components/LogoutButton';
 
 const Cudzych = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { 
     user, 
     goods, 
@@ -1026,7 +1027,11 @@ const Cudzych = () => {
   // Access control check
   if (user?.symbol !== 'P') {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={{
+        flex: 1,
+        backgroundColor: "#000000",
+        paddingBottom: Math.max(20, insets.bottom + 20)
+      }}>
         <View style={styles.content}>
           <Text style={styles.text}>Brak dostępu do tej sekcji</Text>
         </View>
@@ -1035,7 +1040,11 @@ const Cudzych = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: "#000000",
+      paddingBottom: Math.max(20, insets.bottom + 20)
+    }}>
       <LogoutButton position="top-right" />
       <ScrollView 
         style={styles.scrollView}

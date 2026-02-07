@@ -1,9 +1,9 @@
 import { useFocusEffect } from '@react-navigation/native'; // Import useFocusEffect
 import React, { useContext, useEffect, useState } from 'react';
 import { Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'; // Import SafeAreaView for safe area handling
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Import AsyncStorage
-import { getApiUrl } from "../../config/api"; // Import API configuration
+import { getApiUrl, API_CONFIG } from "../../config/api"; // Import API configuration
 import { GlobalStateContext } from "../../context/GlobalState"; // Import global state context
 import tokenService from '../../services/tokenService';
 import CurrencyService from '../../services/currencyService';
@@ -13,6 +13,7 @@ import { CameraView, useCameraPermissions } from "expo-camera"; // Import camera
 
 const Home = () => {
   const { user, logout } = React.useContext(GlobalStateContext); // Access global state and logout function
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const { stateData, users, fetchUsers, goods, fetchGoods, fetchState, sizes, colors, stocks, fetchSizes, fetchColors, fetchStock, filteredData: contextFilteredData, transferredItems: contextTransferredItems, deductionsData: contextDeductionsData } = useContext(GlobalStateContext); // Access state data, users, goods, sizes, colors, stocks and their fetch functions from global context
   const [salesData, setSalesData] = useState([]); // State to store API data
   const [filteredData, setFilteredData] = useState([]); // State to store filtered data
@@ -901,7 +902,21 @@ const Home = () => {
   // Commission recalculation function
   const recalculateCommissions = async () => {
     try {
+      const apiBase = API_CONFIG.BASE_URL;
+      const endpoint = '/sales-assignments/recalculate-commissions';
+      const fullUrl = `${apiBase}${endpoint}`;
+      
       Logger.debug('🔄 Przeliczam prowizje...');
+      Logger.debug('📡 Production API URL:', fullUrl);
+      Logger.debug('🏢 Selling Point:', user?.sellingPoint);
+      Logger.debug('📅 Date:', new Date().toISOString().split('T')[0]);
+      
+      const requestBody = {
+        sellingPoint: user?.sellingPoint,
+        date: new Date().toISOString().split('T')[0] // Today's date
+      };
+      
+      Logger.debug('📤 Request body:', requestBody);
       
       const response = await tokenService.authenticatedFetch(
         getApiUrl('/sales-assignments/recalculate-commissions'),
@@ -910,25 +925,45 @@ const Home = () => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            sellingPoint: user?.sellingPoint,
-            date: new Date().toISOString().split('T')[0] // Today's date
-          })
+          body: JSON.stringify(requestBody)
         }
       );
       
+      Logger.debug('📥 Response status:', response?.status);
+      Logger.debug('📥 Response ok:', response?.ok);
+      
       if (response.ok) {
         const result = await response.json();
+        Logger.debug('✅ Commission recalculation success:', result);
         setSuccessMessage("Sukces! Prowizje zostały przeliczone.");
         setSuccessModalVisible(true);
       } else {
-        const errorData = await response.json();
-        setErrorMessage(errorData.message || "Nie udało się przeliczyć prowizji.");
+        const errorText = await response.text();
+        Logger.error('❌ Commission recalculation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        
+        let errorMessage = "Nie udało się przeliczyć prowizji.";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          // Use text response if JSON parsing fails
+          errorMessage = errorText || errorMessage;
+        }
+        
+        setErrorMessage(`Błąd przeliczania prowizji (${response.status}): ${errorMessage}`);
         setErrorModalVisible(true);
       }
     } catch (error) {
-      Logger.error("Error recalculating commissions:", error);
-      setErrorMessage("Wystąpił błąd podczas przeliczania prowizji.");
+      Logger.error("❌ CRITICAL Error recalculating commissions:", {
+        message: error.message,
+        stack: error.stack,
+        url: API_CONFIG.BASE_URL
+      });
+      setErrorMessage(`Błąd połączenia z serwerem prowizji: ${error.message}`);
       setErrorModalVisible(true);
     }
   };
@@ -2171,7 +2206,7 @@ const Home = () => {
 
   return (
     <>
-      <SafeAreaView style={{ backgroundColor: "#000", flex: 1 }}>
+      <SafeAreaView style={{ backgroundColor: "#000", flex: 1, paddingBottom: Math.max(20, insets.bottom + 20) }}>
         <LogoutButton position="top-right" />
         <FlatList
           testID="home-flatlist"
@@ -2360,6 +2395,23 @@ const Home = () => {
                   >
                     <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
                       Dodaj sprzedawców
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    testID="recalculate-commissions-button"
+                    style={{
+                      backgroundColor: '#f59e0b',
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                    }}
+                    onPress={() => recalculateCommissions()}
+                  >
+                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                      Przelicz prowizje
                     </Text>
                   </TouchableOpacity>
                 </View>
