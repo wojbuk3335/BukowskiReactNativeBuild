@@ -180,6 +180,16 @@ const Dashboard = () => {
     if (pendingScan) {
       return;
     }
+    
+    // WAŻNE: Jeśli nie ma listy oczekiwanych kurtek, nie skanuj
+    if (!expectedJackets || expectedJackets.length === 0) {
+      Alert.alert(
+        "Brak listy weryfikacji", 
+        "Najpierw pobierz listę kurtek do weryfikacji, klikając 'Rozpocznij weryfikację'"
+      );
+      closeScanner();
+      return;
+    }
 
     const now = Date.now();
     const lastScanTime = recentlyScannedCodes.get(data);
@@ -194,21 +204,55 @@ const Dashboard = () => {
 
     // Wyłącz skanowanie dopóki nie zostanie zatwierdzony skan
     setScanningEnabled(false);
-
+    
     const jacket = expectedJackets.find((j) => j.barcode === data);
 
     if (jacket) {
-      // Przechowaj skan do zatwierdzenia
+      // Przechowuj skan do zatwierdzenia
       setPendingScan({
         ...jacket,
         scannedAt: new Date().toISOString(),
         status: "correct",
       });
     } else {
-      // Jacket not in expected list - nadmiarowy
+      // Product not in expected list - check what it actually is
+      fetchProductByBarcode(data);
+    }
+  };
+  
+  const fetchProductByBarcode = async (barcode) => {
+    try {
+      const url = getApiUrl(`/verification/barcode/${barcode}`);
+      const response = await tokenService.authenticatedFetch(url);
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Nadmiarowy produkt, ale znamy jego nazwę
+        setPendingScan({
+          barcode: barcode,
+          code: barcode,
+          fullName: data.data.fullName,
+          size: data.data.size,
+          scannedAt: new Date().toISOString(),
+          status: "unexpected",
+          sellingPoint: data.data.sellingPoint,
+        });
+      } else {
+        // Kompletnie nieznany produkt
+        setPendingScan({
+          barcode: barcode,
+          code: barcode,
+          fullName: "Nieznany produkt",
+          scannedAt: new Date().toISOString(),
+          status: "unexpected",
+        });
+      }
+    } catch (error) {
+      // W przypadku błędu, pokaż jako nieznany
       setPendingScan({
-        barcode: data,
-        code: data,
+        barcode: barcode,
+        code: barcode,
         fullName: "Nieznany produkt",
         scannedAt: new Date().toISOString(),
         status: "unexpected",
