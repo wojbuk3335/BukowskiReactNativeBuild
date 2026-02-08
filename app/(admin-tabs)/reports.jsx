@@ -5,9 +5,11 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { router } from "expo-router";
 import LogoutButton from "../../components/LogoutButton";
 
 const Reports = () => {
@@ -57,61 +59,42 @@ const Reports = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Raporty</Text>
-          <Text style={styles.subtitle}>Wybierz rodzaj raportu</Text>
+      <View style={styles.header}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="bar-chart" size={32} color="#fff" />
         </View>
+        <Text style={styles.title}>Raporty</Text>
+        <Text style={styles.subtitle}>Wybierz rodzaj raportu</Text>
+      </View>
 
-        <View style={styles.reportsContainer}>
-          {reportTypes.map((report) => (
-            <TouchableOpacity
-              key={report.id}
-              style={styles.reportCard}
-              onPress={() => {
-                // TODO: Navigate to report details
-              }}
-            >
-              <View
-                style={[
-                  styles.reportIcon,
-                  { backgroundColor: report.color },
-                ]}
-              >
-                <Ionicons name={report.icon} size={32} color="#fff" />
-              </View>
-              <View style={styles.reportInfo}>
-                <Text style={styles.reportTitle}>{report.title}</Text>
-                <Text style={styles.reportDescription}>
-                  {report.description}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={24} color="#CDCDE0" />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.quickStats}>
-          <Text style={styles.sectionTitle}>Szybkie statystyki</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>-</Text>
-              <Text style={styles.statLabel}>Dziś sprzedaż</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {reportTypes.map((report) => (
+          <TouchableOpacity
+            key={report.id}
+            style={styles.reportCard}
+            onPress={() => {
+              if (report.id === 1) {
+                // Raport sprzedaży
+                router.push('/sales-report');
+              } else {
+                // TODO: Implement other reports
+                Alert.alert('Wkrótce', `Raport "${report.title}" będzie wkrótce dostępny`);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.reportIcon, { backgroundColor: `${report.color}20` }]}>
+              <Ionicons name={report.icon} size={28} color={report.color} />
             </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>-</Text>
-              <Text style={styles.statLabel}>Ten tydzień</Text>
+            <View style={styles.reportInfo}>
+              <Text style={styles.reportTitle}>{report.title}</Text>
+              <Text style={styles.reportDescription}>
+                {report.description}
+              </Text>
             </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>-</Text>
-              <Text style={styles.statLabel}>Ten miesiąc</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>-</Text>
-              <Text style={styles.statLabel}>Łącznie</Text>
-            </View>
-          </View>
-        </View>
+            <Ionicons name="chevron-forward" size={24} color="#64748B" />
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -120,13 +103,24 @@ const Reports = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#161622",
-  },
-  scrollContent: {
-    padding: 16,
+    backgroundColor: "#000000",
   },
   header: {
-    marginBottom: 24,
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#000000",
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B",
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#dc3545",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
   },
   title: {
     fontSize: 28,
@@ -135,21 +129,23 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    color: "#CDCDE0",
+    fontSize: 14,
+    color: "#94A3B8",
+    textAlign: "center",
   },
-  reportsContainer: {
-    marginBottom: 24,
+  content: {
+    flex: 1,
+    padding: 20,
   },
   reportCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1E1E2D",
-    borderRadius: 12,
+    backgroundColor: "#000000",
     padding: 16,
+    borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#232533",
+    borderColor: "#1E293B",
   },
   reportIcon: {
     width: 56,
@@ -169,43 +165,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   reportDescription: {
-    fontSize: 14,
-    color: "#CDCDE0",
-  },
-  quickStats: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  statItem: {
-    width: "48%",
-    backgroundColor: "#1E1E2D",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#232533",
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#0d6efd",
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#CDCDE0",
-    textAlign: "center",
+    fontSize: 13,
+    color: "#94A3B8",
   },
 });
 
