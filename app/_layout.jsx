@@ -37,7 +37,6 @@ const RootLayout = () => {
         try {
           // Set navigation bar background to black (this should work)
           await NavigationBar.setBackgroundColorAsync('#000000');
-          console.log('✅ Navigation bar background set to black');
         } catch (error) {
           console.warn('Navigation bar configuration failed:', error.message);
           // Silently fail - edge-to-edge mode handles this automatically

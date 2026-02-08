@@ -578,8 +578,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   // Funkcja do wyszukiwania zaliczek na podstawie nazwy produktu i rozmiaru
   const searchAdvances = async (productName, size) => {
     try {
-      Logger.debug(`🔍 Szukam zaliczek dla: ${productName}, rozmiar: ${size}`);
-      
       const response = await tokenService.authenticatedFetch(
         getApiUrl(`/financial-operations/search/advances?productName=${encodeURIComponent(productName)}&size=${encodeURIComponent(size)}`),
         {
@@ -592,7 +590,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       }
       
       const advances = await response.json();
-      Logger.debug(`✅ Znaleziono ${advances.length} zaliczek`);
       
       setAvailableAdvances(advances);
       
@@ -656,8 +653,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   };
 
   const handleSubmit = async () => {
-    Logger.debug('🔵 handleSubmit wywołane!');
-    
     const matchedItems = stateData?.filter(item => item.barcode === barcode);
     
     let fullName, size, symbol;
