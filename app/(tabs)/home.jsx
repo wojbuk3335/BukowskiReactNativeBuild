@@ -256,6 +256,7 @@ const Home = () => {
           ...editData,
           cash: cashPriceCurrencyPairs.map(({ price, currency }) => ({ price: parseFloat(price) || 0, currency })),
           card: cardPriceCurrencyPairs.map(({ price, currency }) => ({ price: parseFloat(price) || 0, currency })),
+          isPickup: editData.isPickup || false, // Dodaj pole isPickup
         };
 
         const response = await tokenService.authenticatedFetch(
@@ -2245,6 +2246,9 @@ const Home = () => {
                     </Text>
                   ));
                 })()}
+                {item.isPickup && (
+                  <Text style={{ color: 'red', fontSize: 12, fontWeight: 'bold', marginLeft: 5 }}>ODBIÓR</Text>
+                )}
                 {isItemInPanKazek(item) && (
                   <Text style={{ color: '#28a745', fontSize: 16, marginLeft: 5 }}>●</Text>
                 )}
@@ -3190,6 +3194,39 @@ const Home = () => {
                     <Text style={{ color: "white", fontSize: 16 }}>Dodaj parę</Text>
                   </Pressable>
                 </View>
+
+                {/* Checkbox Odbiór */}
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 20,
+                    marginBottom: 10,
+                    padding: 10,
+                    borderWidth: 1,
+                    borderColor: 'white',
+                    borderRadius: 5,
+                    backgroundColor: editData?.isPickup ? 'rgb(13, 110, 253)' : 'transparent',
+                  }}
+                  onPress={() => {
+                    setEditData((prev) => ({ ...prev, isPickup: !prev?.isPickup }));
+                  }}
+                >
+                  <View style={{
+                    width: 24,
+                    height: 24,
+                    borderWidth: 2,
+                    borderColor: 'white',
+                    borderRadius: 4,
+                    marginRight: 10,
+                    backgroundColor: editData?.isPickup ? 'rgb(13, 110, 253)' : 'transparent',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {editData?.isPickup && <Text style={{ color: 'white', fontSize: 16 }}>✓</Text>}
+                  </View>
+                  <Text style={{ color: 'white', fontSize: 16 }}>Odbiór (dopłata do zaliczki)</Text>
+                </TouchableOpacity>
 
                 {/* Przyciski identyczne z QRScanner */}
                 <View style={{
