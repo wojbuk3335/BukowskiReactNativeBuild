@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
@@ -18,6 +18,7 @@ import tokenService from "../services/tokenService";
 import { getApiUrl } from "../config/api";
 
 const RemainingProductsList = () => {
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -437,7 +438,7 @@ const RemainingProductsList = () => {
             data={filteredProducts}
             renderItem={renderProduct}
             keyExtractor={(item) => item._id}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
             showsVerticalScrollIndicator={false}
           />
         </>

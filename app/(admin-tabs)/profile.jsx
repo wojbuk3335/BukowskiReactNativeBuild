@@ -55,7 +55,7 @@ const Profile = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
             <Ionicons name="person-circle" size={80} color="#dc3545" />

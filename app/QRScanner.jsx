@@ -2,11 +2,13 @@ import axios from "axios"; // Import axios for HTTP requests
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiUrl } from "../config/api";
 import tokenService from "../services/tokenService"; // Import tokenService
 import Logger from "../services/logger"; // Import logger service
 
 const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, getFilteredSellingPoints, isActive }) => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const [facing, setFacing] = useState("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -842,7 +844,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       {modalVisible && (
         <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView contentContainerStyle={styles.scrollViewContent}>
+            <ScrollView contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
               <View style={[styles.modalContent, { flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
                 <Pressable
                   style={styles.closeButton}

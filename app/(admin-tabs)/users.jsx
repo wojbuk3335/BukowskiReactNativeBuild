@@ -216,7 +216,7 @@ const Users = () => {
             </View>
           ) : null
         }
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
         showsVerticalScrollIndicator={false}
       />
 

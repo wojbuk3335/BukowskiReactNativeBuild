@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   StyleSheet,
   View,
@@ -20,6 +20,7 @@ import { getApiUrl } from "../config/api";
 const FILTERS_KEY = "payrollFilters";
 
 const Payroll = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -419,7 +420,7 @@ const Payroll = () => {
         <View style={styles.backButton} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>System wypłat pracowników</Text>
           <Text style={styles.sectionSubtitle}>

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -17,6 +17,7 @@ import tokenService from "../services/tokenService";
 import { getApiUrl } from "../config/api";
 
 const SalesView = () => {
+  const insets = useSafeAreaInsets();
   const [sales, setSales] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -279,7 +280,7 @@ const SalesView = () => {
           data={sales}
           renderItem={renderSaleItem}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
           showsVerticalScrollIndicator={false}
         />
       )}

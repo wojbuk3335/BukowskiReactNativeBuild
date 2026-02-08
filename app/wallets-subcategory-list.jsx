@@ -11,7 +11,7 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, Stack } from "expo-router";
@@ -19,6 +19,7 @@ import tokenService from "../services/tokenService";
 import { getApiUrl } from "../config/api";
 
 const WalletsSubcategoryList = () => {
+  const insets = useSafeAreaInsets();
   const [subcategories, setSubcategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -260,7 +261,7 @@ const WalletsSubcategoryList = () => {
         data={filteredSubcategories}
         renderItem={renderItem}
         keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={64} color="#64748B" />

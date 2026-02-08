@@ -1,6 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl } from "../../config/api";
 import { GlobalStateContext } from "../../context/GlobalState";
@@ -10,6 +11,7 @@ import AuthFix from "../../components/AuthFix";
 import LogoutButton from "../../components/LogoutButton";
 
 const WriteOff = () => {
+    const insets = useSafeAreaInsets(); // Get safe area insets
     const { 
         user, 
         stateData, 
@@ -1004,7 +1006,7 @@ const fetchSales = async () => {
                                 </Text>
                             </View>
                         }
-                        contentContainerStyle={{ paddingHorizontal: 0 }}
+                        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Math.max(120, insets.bottom + 120) }}
                         data={filteredData}
                         keyExtractor={(item) => item.id}
                         onRefresh={() => fetchAllRequiredData(true)} // true = to jest refresh action

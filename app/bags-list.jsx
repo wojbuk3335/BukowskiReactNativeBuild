@@ -10,13 +10,14 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import tokenService from "../services/tokenService";
 import { getApiUrl } from "../config/api";
 
 const BagsList = () => {
+  const insets = useSafeAreaInsets();
   const [bags, setBags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -328,7 +329,7 @@ const BagsList = () => {
             data={filteredBags}
             renderItem={renderBag}
             keyExtractor={(item) => item._id}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
             showsVerticalScrollIndicator={false}
           />
         </>

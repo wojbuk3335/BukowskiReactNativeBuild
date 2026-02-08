@@ -1161,7 +1161,7 @@ const Cudzych = () => {
 
             <ScrollView 
               style={{ width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: Math.max(120, insets.bottom + 120) }}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
@@ -1461,7 +1461,7 @@ const Cudzych = () => {
 
             <ScrollView 
               style={{ width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: Math.max(120, insets.bottom + 120) }}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
@@ -1748,7 +1748,7 @@ const Cudzych = () => {
       {/* Scanned Product Modal - identical to QRScanner */}
       {scannedProductModalVisible && (
         <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
-          <ScrollView contentContainerStyle={qrStyles.scrollViewContent}>
+          <ScrollView contentContainerStyle={[qrStyles.scrollViewContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
             <View style={[qrStyles.modalContent, { flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
               <TouchableOpacity
                 style={qrStyles.closeButton}

@@ -12,7 +12,7 @@ import {
   ScrollView,
   Image,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import * as ImagePicker from 'expo-image-picker';
@@ -20,6 +20,7 @@ import tokenService from "../services/tokenService";
 import { getApiUrl, API_CONFIG } from "../config/api";
 
 const ProductsList = () => {
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -717,7 +718,7 @@ const ProductsList = () => {
             data={filteredProducts}
             renderItem={renderProduct}
             keyExtractor={(item) => item._id}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
             showsVerticalScrollIndicator={false}
           />
         </>

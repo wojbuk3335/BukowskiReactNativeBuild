@@ -50,7 +50,7 @@ const Settings = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Ustawienia</Text>
           <Text style={styles.subtitle}>Konfiguracja systemu</Text>

@@ -1,12 +1,14 @@
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useCallback, useContext, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlobalStateContext } from '../../context/GlobalState';
 import Logger from '../../services/logger'; // Import logger service
 import QRScannerSearch from '../QRScannerSearch';
 import LogoutButton from '../../components/LogoutButton';
 
 const SearchScreen = () => {
+  const insets = useSafeAreaInsets(); // Get safe area insets
   const [modalVisible, setModalVisible] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showSearchBar, setShowSearchBar] = useState(false);
@@ -127,7 +129,7 @@ const SearchScreen = () => {
         </View>
         <FlatList
           testID="search-flatlist"
-          contentContainerStyle={{ paddingHorizontal: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Math.max(120, insets.bottom + 120) }}
           data={filteredData}
           keyExtractor={item => item.id}
           onRefresh={handleRefresh} // Dodano funkcję odświeżania

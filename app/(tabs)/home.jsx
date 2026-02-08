@@ -2959,7 +2959,7 @@ const Home = () => {
               </View>
             );
           }}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: Math.max(120, insets.bottom + 120) }}
         />
         {/* Edit Modal - Identyczny z QRScanner */}
         <Modal
@@ -2970,7 +2970,7 @@ const Home = () => {
         >
           <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20 }}>
+              <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20, paddingBottom: Math.max(120, insets.bottom + 120) }}>
                 <View style={[{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
                   <Pressable
                     style={{
@@ -3446,7 +3446,7 @@ const Home = () => {
               
               <ScrollView 
                 style={{ width: '100%' }}
-                contentContainerStyle={{ paddingBottom: 20 }}
+                contentContainerStyle={{ paddingBottom: Math.max(120, insets.bottom + 120) }}
                 showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
               >
@@ -3826,7 +3826,7 @@ const Home = () => {
               
               <ScrollView 
                 style={{ width: '100%' }}
-                contentContainerStyle={{ paddingBottom: 20 }}
+                contentContainerStyle={{ paddingBottom: Math.max(120, insets.bottom + 120) }}
                 showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
               >

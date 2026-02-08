@@ -1327,7 +1327,7 @@ const Remanent = () => {
           data={filteredRemanentData}
           renderItem={renderRemanentItem}
           keyExtractor={(item, index) => item.id?.toString() || index.toString()}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
