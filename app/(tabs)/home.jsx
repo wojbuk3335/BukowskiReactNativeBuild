@@ -117,6 +117,10 @@ const Home = () => {
   const [employeeToRemove, setEmployeeToRemove] = useState(null); // Employee selected for removal
   const [workStartTime, setWorkStartTime] = useState("08:00"); // Start time for work
   const [workEndTime, setWorkEndTime] = useState("16:00"); // End time for work
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false); // Show start time picker
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false); // Show end time picker
+  const [tempHour, setTempHour] = useState(8);
+  const [tempMinute, setTempMinute] = useState(0);
   const [workNotes, setWorkNotes] = useState(""); // Notes for work hours
   const [todaysWorkHours, setTodaysWorkHours] = useState([]); // Today's recorded work hours
   
@@ -2239,6 +2243,7 @@ const Home = () => {
                       key={`payment-${idx}`}
                       style={{
                         color: idx < cashCount ? "white" : "red",
+                        marginRight: idx === allPayments.length - 1 ? 8 : 0,
                       }}
                     >
                       {price} {currency}
@@ -2247,7 +2252,7 @@ const Home = () => {
                   ));
                 })()}
                 {item.isPickup && (
-                  <Text style={{ color: 'red', fontSize: 12, fontWeight: 'bold', marginLeft: 5 }}>ODBIÓR</Text>
+                  <Text style={{ color: 'red', fontSize: 12, fontWeight: 'bold', marginLeft: 10 }}>(ODBIÓR)</Text>
                 )}
                 {isItemInPanKazek(item) && (
                   <Text style={{ color: '#28a745', fontSize: 16, marginLeft: 5 }}>●</Text>
@@ -2402,22 +2407,6 @@ const Home = () => {
                     </Text>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity
-                    testID="recalculate-commissions-button"
-                    style={{
-                      backgroundColor: '#f59e0b',
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: 'white',
-                    }}
-                    onPress={() => recalculateCommissions()}
-                  >
-                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                      Przelicz prowizje
-                    </Text>
-                  </TouchableOpacity>
                 </View>
                 
                 {/* Available funds display */}
@@ -5017,50 +5006,156 @@ const Home = () => {
               <View style={styles.workHoursTimeContainer}>
                 <View style={styles.workHoursTimeSection}>
                   <Text style={styles.workHoursTimeLabel}>Godzina rozpoczęcia:</Text>
-                  <View style={styles.workHoursTimePickerContainer}>
-                    <TextInput
-                      style={styles.workHoursTimeInput}
-                      value={workStartTime}
-                      onChangeText={(text) => {
-                        // Validate format HH:MM
-                        if (text.length <= 5) {
-                          // Auto-format: add colon after 2 digits
-                          if (text.length === 2 && !text.includes(':')) {
-                            text = text + ':';
-                          }
-                          setWorkStartTime(text);
-                        }
-                      }}
-                      placeholder="08:00"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="numeric"
-                      maxLength={5}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#000000',
+                      borderWidth: 1,
+                      borderColor: '#6b7280',
+                      borderRadius: 8,
+                      padding: 12,
+                      alignItems: 'center'
+                    }}
+                    onPress={() => {
+                      const [h, m] = workStartTime.split(':');
+                      setTempHour(parseInt(h));
+                      setTempMinute(parseInt(m));
+                      setShowStartTimePicker(true);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                      {workStartTime}
+                    </Text>
+                  </TouchableOpacity>
+                  {showStartTimePicker && (
+                    <Modal transparent visible={showStartTimePicker} animationType="fade">
+                      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }}>
+                        <View style={{ backgroundColor: '#000000', borderRadius: 12, padding: 20, width: 300, borderWidth: 1, borderColor: '#6b7280' }}>
+                          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>
+                            Wybierz godzinę rozpoczęcia
+                          </Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ alignItems: 'center' }}>
+                              <TouchableOpacity onPress={() => setTempHour((tempHour + 1) % 24)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▲</Text>
+                              </TouchableOpacity>
+                              <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', minWidth: 60, textAlign: 'center' }}>
+                                {tempHour.toString().padStart(2, '0')}
+                              </Text>
+                              <TouchableOpacity onPress={() => setTempHour((tempHour - 1 + 24) % 24)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▼</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', marginHorizontal: 10 }}>:</Text>
+                            <View style={{ alignItems: 'center' }}>
+                              <TouchableOpacity onPress={() => setTempMinute((tempMinute + 1) % 60)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▲</Text>
+                              </TouchableOpacity>
+                              <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', minWidth: 60, textAlign: 'center' }}>
+                                {tempMinute.toString().padStart(2, '0')}
+                              </Text>
+                              <TouchableOpacity onPress={() => setTempMinute((tempMinute - 1 + 60) % 60)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▼</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <TouchableOpacity
+                              onPress={() => setShowStartTimePicker(false)}
+                              style={{ backgroundColor: '#6b7280', padding: 12, borderRadius: 8, flex: 1, marginRight: 8 }}
+                            >
+                              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>Anuluj</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setWorkStartTime(`${tempHour.toString().padStart(2, '0')}:${tempMinute.toString().padStart(2, '0')}`);
+                                setShowStartTimePicker(false);
+                              }}
+                              style={{ backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8 }}
+                            >
+                              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>OK</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </Modal>
+                  )}
                 </View>
 
                 <View style={styles.workHoursTimeSection}>
                   <Text style={styles.workHoursTimeLabel}>Godzina zakończenia:</Text>
-                  <View style={styles.workHoursTimePickerContainer}>
-                    <TextInput
-                      style={styles.workHoursTimeInput}
-                      value={workEndTime}
-                      onChangeText={(text) => {
-                        // Validate format HH:MM
-                        if (text.length <= 5) {
-                          // Auto-format: add colon after 2 digits
-                          if (text.length === 2 && !text.includes(':')) {
-                            text = text + ':';
-                          }
-                          setWorkEndTime(text);
-                        }
-                      }}
-                      placeholder="16:00"
-                      placeholderTextColor="#9ca3af"
-                      keyboardType="numeric"
-                      maxLength={5}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#000000',
+                      borderWidth: 1,
+                      borderColor: '#6b7280',
+                      borderRadius: 8,
+                      padding: 12,
+                      alignItems: 'center'
+                    }}
+                    onPress={() => {
+                      const [h, m] = workEndTime.split(':');
+                      setTempHour(parseInt(h));
+                      setTempMinute(parseInt(m));
+                      setShowEndTimePicker(true);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                      {workEndTime}
+                    </Text>
+                  </TouchableOpacity>
+                  {showEndTimePicker && (
+                    <Modal transparent visible={showEndTimePicker} animationType="fade">
+                      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }}>
+                        <View style={{ backgroundColor: '#000000', borderRadius: 12, padding: 20, width: 300, borderWidth: 1, borderColor: '#6b7280' }}>
+                          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>
+                            Wybierz godzinę zakończenia
+                          </Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ alignItems: 'center' }}>
+                              <TouchableOpacity onPress={() => setTempHour((tempHour + 1) % 24)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▲</Text>
+                              </TouchableOpacity>
+                              <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', minWidth: 60, textAlign: 'center' }}>
+                                {tempHour.toString().padStart(2, '0')}
+                              </Text>
+                              <TouchableOpacity onPress={() => setTempHour((tempHour - 1 + 24) % 24)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▼</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', marginHorizontal: 10 }}>:</Text>
+                            <View style={{ alignItems: 'center' }}>
+                              <TouchableOpacity onPress={() => setTempMinute((tempMinute + 1) % 60)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▲</Text>
+                              </TouchableOpacity>
+                              <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold', minWidth: 60, textAlign: 'center' }}>
+                                {tempMinute.toString().padStart(2, '0')}
+                              </Text>
+                              <TouchableOpacity onPress={() => setTempMinute((tempMinute - 1 + 60) % 60)} style={{ padding: 10 }}>
+                                <Text style={{ color: 'white', fontSize: 24 }}>▼</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <TouchableOpacity
+                              onPress={() => setShowEndTimePicker(false)}
+                              style={{ backgroundColor: '#6b7280', padding: 12, borderRadius: 8, flex: 1, marginRight: 8 }}
+                            >
+                              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>Anuluj</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setWorkEndTime(`${tempHour.toString().padStart(2, '0')}:${tempMinute.toString().padStart(2, '0')}`);
+                                setShowEndTimePicker(false);
+                              }}
+                              style={{ backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8 }}
+                            >
+                              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>OK</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </Modal>
+                  )}
                 </View>
               </View>
 
