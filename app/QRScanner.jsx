@@ -628,8 +628,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   // Auto-recalculate commissions after sale
   const recalculateCommissions = async () => {
     try {
-      Logger.debug('Auto-przeliczam prowizje po sprzedazy...');
-      
       const requestBody = {
         sellingPoint: user?.sellingPoint,
         date: new Date().toISOString().split('T')[0]
@@ -648,7 +646,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       if (response.ok) {
         const result = await response.json();
-        Logger.debug('Prowizje przeliczone automatycznie:', result);
       } else {
         const errorText = await response.text();
         Logger.error('Nie udalo sie przeliczyc prowizji:', errorText);
@@ -749,11 +746,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       employeeName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unknown' : null // Add employee name
     };
 
-    Logger.debug('👤 User object:', user);
-    Logger.debug('👤 Employee ID (for WorkHours):', user?.employeeId);
-    Logger.debug('👤 User ID:', user?.userId);
-    Logger.debug('👤 User name:', user?.firstName, user?.lastName, 'Email:', user?.email);
-
     // Walidacja wymaganych pól
     if (!payload.fullName || !payload.size || !payload.from) {
       Logger.error('❌ Brakuje wymaganych pól:', {
@@ -765,15 +757,11 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       return;
     }
 
-    Logger.debug('📤 Wysyłanie sprzedaży:', payload);
-
     try {
       const response = await tokenService.authenticatedFetch(getApiUrl("/sales/save-sales"), {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-      
-      Logger.debug('📥 Response status:', response.status, response.ok);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -782,7 +770,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       }
       
       const responseData = await response.json();
-      Logger.debug('✅ Sprzedaż zapisana:', responseData);
       
       // Auto-recalculate commissions after successful sale
       await recalculateCommissions();
