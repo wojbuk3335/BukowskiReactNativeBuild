@@ -41,6 +41,7 @@ const Payroll = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [showMonthModal, setShowMonthModal] = useState(false);
@@ -707,7 +708,7 @@ const Payroll = () => {
         onRequestClose={() => setShowPaymentModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(40, insets.bottom + 20) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Rozlicz wypłatę</Text>
               <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
@@ -1322,6 +1323,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderColor: "#1E293B",
+    paddingBottom: 40,
   },
   modalContentLarge: {
     backgroundColor: "#0A0A0A",
@@ -1404,6 +1406,8 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: "row",
     padding: 20,
+    paddingBottom: 30,
+    marginBottom: 20,
     gap: 12,
   },
   modalButton: {
