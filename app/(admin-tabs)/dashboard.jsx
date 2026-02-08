@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -46,6 +46,8 @@ const Dashboard = () => {
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [facing, setFacing] = useState("back");
   const [pendingScan, setPendingScan] = useState(null);
+  const [showPendingUI, setShowPendingUI] = useState(false);
+  const isProcessingRef = useRef(false);
   
   // Progress states
   const [scanProgress, setScanProgress] = useState({
@@ -179,7 +181,7 @@ const Dashboard = () => {
 
   const handleScan = ({ data }) => {
     // Jeśli jest już oczekujący skan, nie pozwalaj na kolejny
-    if (pendingScan) {
+    if (isProcessingRef.current) {
       return;
     }
     
@@ -196,26 +198,27 @@ const Dashboard = () => {
     const now = Date.now();
     const lastScanTime = recentlyScannedCodes.get(data);
 
-    // Blokada na 3 sekundy dla tego samego kodu
-    if (!scanningEnabled || (lastScanTime && now - lastScanTime < 3000)) {
+    // Blokada na 5 sekund dla tego samego kodu
+    if (!scanningEnabled || (lastScanTime && now - lastScanTime < 5000)) {
       return;
     }
-
     setLastScannedCode(data);
     setRecentlyScannedCodes((prev) => new Map(prev).set(data, now));
 
     // Wyłącz skanowanie dopóki nie zostanie zatwierdzony skan
     setScanningEnabled(false);
+    isProcessingRef.current = true;
     
     const jacket = expectedJackets.find((j) => j.barcode === data);
 
     if (jacket) {
-      // Przechowuj skan do zatwierdzenia
+      // Pokaż do weryfikacji - NIE dodawaj jeszcze do listy
       setPendingScan({
         ...jacket,
         scannedAt: new Date().toISOString(),
         status: "correct",
       });
+      setShowPendingUI(true);
     } else {
       // Product not in expected list - check what it actually is
       fetchProductByBarcode(data);
@@ -230,7 +233,7 @@ const Dashboard = () => {
       if (response.ok) {
         const data = await response.json();
         
-        // Nadmiarowy produkt, ale znamy jego nazwę
+        // Nadmiarowy produkt - pokaż do weryfikacji
         setPendingScan({
           barcode: barcode,
           code: barcode,
@@ -240,6 +243,7 @@ const Dashboard = () => {
           status: "unexpected",
           sellingPoint: data.data.sellingPoint,
         });
+        setShowPendingUI(true);
       } else {
         // Kompletnie nieznany produkt
         setPendingScan({
@@ -249,9 +253,10 @@ const Dashboard = () => {
           scannedAt: new Date().toISOString(),
           status: "unexpected",
         });
+        setShowPendingUI(true);
       }
     } catch (error) {
-      // W przypadku błędu, pokaż jako nieznany
+      // W przypadku błędu
       setPendingScan({
         barcode: barcode,
         code: barcode,
@@ -259,6 +264,7 @@ const Dashboard = () => {
         scannedAt: new Date().toISOString(),
         status: "unexpected",
       });
+      setShowPendingUI(true);
     }
   };
 
@@ -266,7 +272,9 @@ const Dashboard = () => {
     setScannerVisible(false);
     setLastScannedCode("");
     setPendingScan(null); // Reset pending scan
+    setShowPendingUI(false);
     setScanningEnabled(true); // Re-enable scanning
+    isProcessingRef.current = false;
   };
 
   const checkVerification = () => {
@@ -591,7 +599,7 @@ const Dashboard = () => {
                     { borderColor: scanningEnabled ? "#0D6EFD" : "#6c757d" },
                   ]}
                 />
-                {pendingScan && (
+                {showPendingUI && pendingScan && (
                   <View style={styles.pendingScanOverlay}>
                     <Text style={styles.pendingScanText}>
                       Zeskanowano: {pendingScan.fullName || pendingScan.barcode} {pendingScan.size}
@@ -652,14 +660,24 @@ const Dashboard = () => {
           {/* Action buttons */}
           <View style={styles.scannerFooter}>
             <View style={styles.actionButtonsRow}>
-              {pendingScan && (
+              {showPendingUI && pendingScan && (
                 <TouchableOpacity
                   onPress={() => {
-                    // Dodaj kurtkę na początek listy
+                    // Dodaj do listy po zatwierdzeniu
                     setScannedJackets((prev) => [pendingScan, ...prev]);
-                    // Wyczyść pending i włącz skanowanie
+                    
+                    // Natychmiast ukryj UI i odblokuj przetwarzanie
+                    setShowPendingUI(false);
                     setPendingScan(null);
-                    setScanningEnabled(true);
+                    isProcessingRef.current = false;
+                    
+                    // Wyczyść lastScannedCode (NIE czyścimy mapy - zachowujemy blokadę 5s)
+                    setLastScannedCode("");
+                    
+                    // Włącz skanowanie ponownie
+                    setTimeout(() => {
+                      setScanningEnabled(true);
+                    }, 100);
                   }}
                   style={styles.confirmScanButton}
                 >
@@ -1183,12 +1201,15 @@ const styles = StyleSheet.create({
   },
   pendingScanOverlay: {
     position: 'absolute',
-    bottom: -80,
+    top: '50%',
+    left: 20,
+    right: 20,
     backgroundColor: 'rgba(13, 110, 253, 0.95)',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    transform: [{ translateY: -50 }],
   },
   pendingScanText: {
     color: 'white',

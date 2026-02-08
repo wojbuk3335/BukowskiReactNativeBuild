@@ -41,7 +41,6 @@ const Payroll = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const insets = useSafeAreaInsets();
 
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [showMonthModal, setShowMonthModal] = useState(false);
