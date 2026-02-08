@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getApiUrl } from "../config/api";
+import { getApiUrl, API_CONFIG } from "../config/api";
 import tokenService from "../services/tokenService"; // Import tokenService
 import Logger from "../services/logger"; // Import logger service
 
@@ -625,6 +625,39 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
   };
 
+  // Auto-recalculate commissions after sale
+  const recalculateCommissions = async () => {
+    try {
+      Logger.debug('Auto-przeliczam prowizje po sprzedazy...');
+      
+      const requestBody = {
+        sellingPoint: user?.sellingPoint,
+        date: new Date().toISOString().split('T')[0]
+      };
+      
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl('/sales-assignments/recalculate-commissions'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        }
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        Logger.debug('Prowizje przeliczone automatycznie:', result);
+      } else {
+        const errorText = await response.text();
+        Logger.error('Nie udalo sie przeliczyc prowizji:', errorText);
+      }
+    } catch (error) {
+      Logger.error('Blad podczas przeliczania prowizji:', error);
+    }
+  };
+
   const handleSubmit = async () => {
     Logger.debug('🔵 handleSubmit wywołane!');
     
@@ -750,6 +783,9 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       
       const responseData = await response.json();
       Logger.debug('✅ Sprzedaż zapisana:', responseData);
+      
+      // Auto-recalculate commissions after successful sale
+      await recalculateCommissions();
       
       // Show success modal instead of alert
       setSuccessMessage("Dane zostały zapisane pomyślnie!");
