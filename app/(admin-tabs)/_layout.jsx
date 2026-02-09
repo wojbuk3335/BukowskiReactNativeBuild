@@ -50,7 +50,7 @@ const AdminTabLayout = () => {
       <Tabs
         options={{ headerShown: false }}
         screenOptions={{
-          tabBarActiveTintColor: "#dc3545", // Red for admin
+          tabBarActiveTintColor: "rgb(0, 123, 255)",
           tabBarInactiveTintColor: "#CDCDE0",
           tabBarShowLabel: false,
           tabBarStyle: {
@@ -132,22 +132,6 @@ const AdminTabLayout = () => {
         />
 
         <Tabs.Screen
-          name="settings"
-          options={{
-            title: "Ustawienia",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                customIcon="settings"
-                color={color}
-                name="Ustawienia"
-                focused={focused}
-              />
-            ),
-          }}
-        />
-
-        <Tabs.Screen
           name="profile"
           options={{
             title: "Profil",
@@ -160,6 +144,13 @@ const AdminTabLayout = () => {
                 focused={focused}
               />
             ),
+          }}
+        />
+
+        <Tabs.Screen
+          name="settings"
+          options={{
+            href: null,
           }}
         />
       </Tabs>

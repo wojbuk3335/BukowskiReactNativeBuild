@@ -5,7 +5,12 @@ import "react-native-url-polyfill/auto";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
 import * as NavigationBar from 'expo-navigation-bar';
+import axios from 'axios';
+import { API_CONFIG } from '../config/api';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
+
+// Configure axios baseURL globally
+axios.defaults.baseURL = API_CONFIG.BASE_URL;
 
 SplashScreen.preventAutoHideAsync();
 

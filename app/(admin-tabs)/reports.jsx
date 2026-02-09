@@ -40,20 +40,27 @@ const Reports = () => {
     },
     {
       id: 3,
-      title: "Raport transferów",
-      description: "Historia wszystkich transferów",
+      title: "Raport przepływów magazynowych",
+      description: "Historia przepływów dla wybranego okresu",
       icon: "swap-horizontal",
-      color: "#ffc107",
+      color: "#10B981",
     },
     {
       id: 4,
+      title: "Raport transferów",
+      description: "Historia wszystkich transferów",
+      icon: "arrow-forward",
+      color: "#ffc107",
+    },
+    {
+      id: 5,
       title: "Raport finansowy",
       description: "Przychody, koszty i wynagrodzenia",
       icon: "cash",
       color: "#dc3545",
     },
     {
-      id: 5,
+      id: 6,
       title: "Raport aktywności użytkowników",
       description: "Godziny pracy i aktywność",
       icon: "time",
@@ -79,6 +86,7 @@ const Reports = () => {
       <ScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -94,6 +102,9 @@ const Reports = () => {
               } else if (report.id === 2) {
                 // Raport stanów magazynowych
                 router.push('/inventory-report');
+              } else if (report.id === 3) {
+                // Raport przepływów magazynowych
+                router.push('/movements-report');
               } else {
                 // TODO: Implement other reports
                 Alert.alert('Wkrótce', `Raport "${report.title}" będzie wkrótce dostępny`);
@@ -135,7 +146,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#dc3545",
+    backgroundColor: "rgb(0, 123, 255)",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,

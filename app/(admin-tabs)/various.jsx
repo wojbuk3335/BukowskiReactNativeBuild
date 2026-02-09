@@ -127,7 +127,22 @@ const Various = () => {
       route: "/payroll",
       color: "#22C55E",
     },
-    // Tutaj będą kolejne funkcje
+    {
+      id: "history",
+      title: "Historia",
+      subtitle: "Historia wszystkich operacji w systemie",
+      icon: "time-outline",
+      route: "/history",
+      color: "#6366F1",
+    },
+    {
+      id: "users-management",
+      title: "Zarządzanie użytkownikami",
+      subtitle: "Dodawaj, edytuj i usuwaj użytkowników",
+      icon: "people-circle",
+      route: "/users-management",
+      color: "#DC2626",
+    },
   ];
 
   const handleMenuPress = (route) => {
@@ -157,11 +172,15 @@ const Various = () => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        contentContainerStyle={{ paddingBottom: 120 }}
       >
-        {menuItems.map((item) => (
+        {menuItems.map((item, index) => (
           <TouchableOpacity
             key={item.id}
-            style={styles.menuItem}
+            style={[
+              styles.menuItem,
+              index === menuItems.length - 1 && styles.lastMenuItem
+            ]}
             onPress={() => handleMenuPress(item.route)}
             activeOpacity={0.7}
           >
@@ -226,6 +245,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#1E293B",
+  },
+  lastMenuItem: {
+    marginBottom: 20, // Większy margines dla ostatniego elementu
   },
   menuIcon: {
     width: 56,

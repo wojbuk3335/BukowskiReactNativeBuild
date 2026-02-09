@@ -352,6 +352,11 @@ const Remanent = () => {
   // Fetch remanent price list
   const fetchRemanentPriceList = async () => {
     try {
+      // Skip if logout in progress
+      if (tokenService.isLoggingOut) {
+        return;
+      }
+      
       const response = await tokenService.authenticatedFetch(getApiUrl('/cudzich/pricelist'));
       
       if (response.ok) {
@@ -361,7 +366,10 @@ const Remanent = () => {
         Logger.error('❌ Błąd pobierania cennika remanent:', response.status);
       }
     } catch (error) {
-      Logger.error('❌ Error fetching remanent price list:', error);
+      // Ignore logout errors
+      if (!error.message?.includes('logout in progress')) {
+        Logger.error('❌ Error fetching remanent price list:', error);
+      }
     }
   };
 

@@ -105,21 +105,12 @@ const Profile = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Zarządzanie kontem</Text>
 
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => router.push('/change-password')}
+          >
             <Ionicons name="key" size={24} color="#0d6efd" />
             <Text style={styles.actionText}>Zmień hasło</Text>
-            <Ionicons name="chevron-forward" size={24} color="#CDCDE0" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <Ionicons name="notifications" size={24} color="#0d6efd" />
-            <Text style={styles.actionText}>Ustawienia powiadomień</Text>
-            <Ionicons name="chevron-forward" size={24} color="#CDCDE0" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <Ionicons name="shield-checkmark" size={24} color="#0d6efd" />
-            <Text style={styles.actionText}>Bezpieczeństwo</Text>
             <Ionicons name="chevron-forward" size={24} color="#CDCDE0" />
           </TouchableOpacity>
         </View>
@@ -170,7 +161,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   roleBadge: {
-    backgroundColor: "#dc3545",
+    backgroundColor: 'rgb(0, 123, 255)',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -232,7 +223,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dc3545",
+    backgroundColor: "rgb(0, 123, 255)",
     borderRadius: 12,
     padding: 16,
     gap: 8,
