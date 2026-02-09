@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -14,6 +15,14 @@ import LogoutButton from "../../components/LogoutButton";
 
 const Reports = () => {
   const insets = useSafeAreaInsets(); // Get safe area insets
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    // Reports don't need to reload data, just simulate refresh
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
   const reportTypes = [
     {
       id: 1,
@@ -67,7 +76,13 @@ const Reports = () => {
         <Text style={styles.subtitle}>Wybierz rodzaj raportu</Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {reportTypes.map((report) => (
           <TouchableOpacity
             key={report.id}
@@ -76,6 +91,9 @@ const Reports = () => {
               if (report.id === 1) {
                 // Raport sprzedaży
                 router.push('/sales-report');
+              } else if (report.id === 2) {
+                // Raport stanów magazynowych
+                router.push('/inventory-report');
               } else {
                 // TODO: Implement other reports
                 Alert.alert('Wkrótce', `Raport "${report.title}" będzie wkrótce dostępny`);

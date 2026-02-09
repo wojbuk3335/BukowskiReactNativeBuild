@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -13,6 +14,14 @@ import LogoutButton from "../../components/LogoutButton";
 
 const Various = () => {
   const insets = useSafeAreaInsets(); // Get safe area insets
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    // Menu is static, just simulate refresh
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
   const menuItems = [
     {
       id: "products",
@@ -142,7 +151,13 @@ const Various = () => {
         </Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {menuItems.map((item) => (
           <TouchableOpacity
             key={item.id}

@@ -7,6 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -14,9 +15,16 @@ import LogoutButton from "../../components/LogoutButton";
 
 const Settings = () => {
   const insets = useSafeAreaInsets(); // Get safe area insets
+  const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [autoBackup, setAutoBackup] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    // Settings are local state, just simulate refresh
+    setTimeout(() => setRefreshing(false), 500);
+  };
 
   const handleClearCache = () => {
     Alert.alert(
@@ -50,7 +58,12 @@ const Settings = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
+      <ScrollView 
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Ustawienia</Text>
           <Text style={styles.subtitle}>Konfiguracja systemu</Text>

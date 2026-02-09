@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -19,6 +20,13 @@ import LogoutButton from "../../components/LogoutButton";
 const Profile = () => {
   const { user, setUser, setIsLoggedIn } = useContext(GlobalStateContext);
   const insets = useSafeAreaInsets(); // Get safe area insets
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    // Profile is static, just simulate refresh
+    setTimeout(() => setRefreshing(false), 500);
+  };
 
   const handleLogout = async () => {
     Alert.alert(
@@ -55,7 +63,12 @@ const Profile = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
+      <ScrollView 
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
             <Ionicons name="person-circle" size={80} color="#dc3545" />

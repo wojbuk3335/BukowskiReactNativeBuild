@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Picker } from "@react-native-picker/picker";
@@ -34,6 +35,7 @@ const Dashboard = () => {
   // Data states
   const [expectedJackets, setExpectedJackets] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [totalExpected, setTotalExpected] = useState(0);
   const [verificationStarted, setVerificationStarted] = useState(false);
   
@@ -78,6 +80,15 @@ const Dashboard = () => {
       calculateProgress();
     }
   }, [scannedJackets, expectedJackets]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchUsers();
+    if (verificationStarted && selectedUserId && selectedDate) {
+      await startVerification();
+    }
+    setRefreshing(false);
+  };
 
   const startVerification = async () => {
     if (!selectedUserId || !selectedDate) {
@@ -407,7 +418,12 @@ const Dashboard = () => {
       paddingBottom: Math.max(20, insets.bottom + 20)
     }}>
       <LogoutButton position="top-right" />
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Sprawdź Kurtki</Text>
           <Text style={styles.subtitle}>

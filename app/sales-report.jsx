@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -28,6 +29,7 @@ const SalesReport = () => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [salesData, setSalesData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,6 +133,13 @@ const SalesReport = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Pull to refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadSalesData();
+    setRefreshing(false);
   };
 
   // Filter data by date range
@@ -300,6 +309,9 @@ const SalesReport = () => {
           style={styles.content}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
         >
         {/* Quick Filters */}
         <View style={styles.section}>
