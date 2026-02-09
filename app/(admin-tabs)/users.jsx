@@ -297,13 +297,6 @@ const Users = () => {
             : (barcodeMatch && nameMatch && sizeMatch);
           
           if (isMatched) {
-            // Check if warehouse item already paired
-            const existingPair = matchedPairsArray.find(pair => 
-              pair.warehouseProduct._id === warehouseItem._id
-            );
-            
-            if (existingPair) continue;
-            
             matchedPairsArray.push({
               blueProduct: {
                 type: blueItem.type,
@@ -622,6 +615,45 @@ const Users = () => {
     setTransfers(prev => prev.filter(t => t._id !== item._id || !t.fromWarehouse));
     // Add back to warehouse items
     setWarehouseItems(prev => [...prev, item]);
+  };
+
+  const handleUnpairMatchedItem = (warehouseItem) => {
+    // Find the pair that contains this warehouse item
+    const matchedPair = matchedPairs.find(pair => 
+      pair && pair.warehouseProduct && pair.warehouseProduct._id === warehouseItem._id
+    );
+    
+    if (!matchedPair) {
+      Alert.alert("Błąd", "Nie znaleziono pary dla tego elementu");
+      return;
+    }
+    
+    // Remove from greyedWarehouseItems
+    setGreyedWarehouseItems(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(warehouseItem._id); // Remove orange element
+      
+      // If paired with blue item, remove blue from greyed too
+      if (matchedPair.blueProduct) {
+        newSet.delete(matchedPair.blueProduct.sourceId);
+      }
+      
+      return newSet;
+    });
+    
+    // Remove from matchedPairs
+    setMatchedPairs(prev => prev.filter(pair => 
+      pair && pair.warehouseProduct && pair.warehouseProduct._id !== warehouseItem._id
+    ));
+    
+    // Add warehouse item back to warehouseItems list
+    setWarehouseItems(prev => {
+      const exists = prev.some(item => item._id === warehouseItem._id);
+      if (exists) {
+        return prev;
+      }
+      return [...prev, warehouseItem];
+    });
   };
 
   const handleProcessItems = async () => {
@@ -1225,8 +1257,17 @@ const Users = () => {
             </Text>
           </View>
           
-          <View style={styles.matchedBadge}>
-            <Text style={styles.matchedBadgeText}>✓</Text>
+          <View style={styles.transferActions}>
+            <View style={styles.matchedBadge}>
+              <Text style={styles.matchedBadgeText}>✓</Text>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.returnButton}
+              onPress={() => handleUnpairMatchedItem(item)}
+            >
+              <Ionicons name="arrow-undo" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -1502,36 +1543,20 @@ const Users = () => {
                   </View>
                 ))}
                 
-                {/* Matched Warehouse Items (rendered AFTER all blue items) */}
-                {blueItems.map((item, index) => {
-                  return matchedPairs.map((pair, pairIndex) => {
-                    // Match by barcode, fullName and size (backend doesn't include ID)
-                    const blueBarcode = item.barcode || item.productId;
-                    const pairBarcode = pair.blueProduct?.barcode;
-                    const blueFullName = item.fullName?.fullName || item.fullName;
-                    const pairFullName = pair.blueProduct?.fullName;
-                    const blueSize = item.size?.Roz_Opis || item.size;
-                    const pairSize = pair.blueProduct?.size;
-                    
-                    const isMatch = blueBarcode === pairBarcode && 
-                                   blueFullName === pairFullName && 
-                                   blueSize === pairSize;
-                    
-                    if (isMatch) {
-                      const warehouseItem = pair.warehouseProduct;
-                      // Check if this warehouse item is already in transfers (manually moved)
-                      const alreadyInTransfers = transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
-                      
-                      if (!alreadyInTransfers) {
-                        return (
-                          <View key={`matched-warehouse-${warehouseItem._id}-${pairIndex}`}>
-                            {renderMatchedWarehouseItem({ item: warehouseItem, index: pairIndex })}
-                          </View>
-                        );
-                      }
-                    }
-                    return null;
-                  });
+                {/* Matched Warehouse Items (rendered AFTER all blue items) - ONE PER PAIR */}
+                {matchedPairs.map((pair, pairIndex) => {
+                  const warehouseItem = pair.warehouseProduct;
+                  // Check if this warehouse item is already in transfers (manually moved)
+                  const alreadyInTransfers = transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
+                  
+                  if (!alreadyInTransfers) {
+                    return (
+                      <View key={`matched-warehouse-${warehouseItem._id}-${pairIndex}`}>
+                        {renderMatchedWarehouseItem({ item: warehouseItem, index: pairIndex })}
+                      </View>
+                    );
+                  }
+                  return null;
                 })}
                 
                 {/* Yellow Transfer Items (incoming from other users) */}
@@ -1880,51 +1905,67 @@ const Users = () => {
       <Modal
         visible={showCorrectionsModal}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowCorrectionsModal(false)}
       >
         <View style={styles.confirmModalOverlay}>
-          <View style={[styles.confirmModalContent, { maxHeight: '80%' }]}>
+          <View style={[styles.confirmModalContent, { maxHeight: '85%', width: '90%' }]}>
             <View style={styles.confirmModalHeader}>
-              <Ionicons 
-                name={correctionsData?.success ? "warning" : "alert-circle"} 
-                size={64} 
-                color={correctionsData?.success ? "#f59e0b" : "#ef4444"} 
-              />
+              <View style={styles.correctionIconContainer}>
+                <Ionicons 
+                  name="warning" 
+                  size={48} 
+                  color="#f59e0b" 
+                />
+              </View>
               <Text style={styles.confirmModalTitle}>
-                {correctionsData?.title || 'Braki w stanie'}
+                Braki w stanie
               </Text>
               <Text style={styles.confirmModalMessage}>
-                Następujące elementy nie zostały znalezione w stanie i zostały przeniesione do korekt:
+                Następujące produkty nie zostały znalezione w stanie i zostały automatycznie przeniesione do korekt:
               </Text>
             </View>
             
-            <ScrollView style={{ maxHeight: 300, width: '100%', paddingHorizontal: 20 }}>
+            <ScrollView style={styles.correctionsScrollView}>
               {correctionsData?.items?.map((item, index) => (
                 <View key={index} style={styles.correctionItem}>
-                  <Text style={styles.correctionItemText}>
-                    {index + 1}. {item.fullName} ({item.size})
-                  </Text>
+                  <View style={styles.correctionItemHeader}>
+                    <Text style={styles.correctionItemNumber}>{index + 1}</Text>
+                    <View style={styles.correctionItemInfo}>
+                      <Text style={styles.correctionItemText}>
+                        {item.fullName}
+                      </Text>
+                      <Text style={styles.correctionItemSize}>
+                        Rozmiar: {item.size}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.correctionItemBarcode}>
-                    Kod: {item.barcode}
+                    {item.barcode}
                   </Text>
                 </View>
               ))}
             </ScrollView>
             
             <View style={styles.correctionsFooter}>
-              <Text style={styles.correctionsFooterText}>
+              <Ionicons 
+                name={correctionsData?.success ? "checkmark-circle" : "close-circle"} 
+                size={20} 
+                color={correctionsData?.success ? "#10b981" : "#ef4444"} 
+              />
+              <Text style={[styles.correctionsFooterText, correctionsData?.success ? styles.successText : styles.errorText]}>
                 {correctionsData?.success 
-                  ? '✅ Braki zapisane w tabeli Korekty'
-                  : '❌ Błąd zapisu - skontaktuj się z administratorem'}
+                  ? 'Wszystkie braki zostały zapisane w tabeli Korekty'
+                  : 'Błąd zapisu - skontaktuj się z administratorem'}
               </Text>
             </View>
             
             <TouchableOpacity
-              style={styles.confirmModalConfirmButton}
+              style={styles.correctionConfirmButton}
               onPress={() => setShowCorrectionsModal(false)}
             >
-              <Text style={styles.confirmModalConfirmText}>OK</Text>
+              <Ionicons name="checkmark-circle" size={24} color="#fff" />
+              <Text style={styles.correctionConfirmText}>Rozumiem</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1933,21 +1974,23 @@ const Users = () => {
       <Modal
         visible={showPrintConfirmModal}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => {}}
       >
         <View style={styles.confirmModalOverlay}>
           <View style={styles.confirmModalContent}>
             <View style={styles.confirmModalHeader}>
-              <Ionicons name="print" size={64} color="rgb(0, 123, 255)" />
+              <View style={styles.printIconContainer}>
+                <Ionicons name="print" size={40} color="#fff" />
+              </View>
               <Text style={styles.confirmModalTitle}>Potwierdzenie drukowania</Text>
               {pendingProcessData && (
-                <View style={{ marginTop: 10, marginBottom: 10 }}>
-                  <Text style={styles.confirmModalMessage}>
+                <View style={styles.printStatsContainer}>
+                  <Text style={styles.printStatsText}>
                     Wydrukowano {pendingProcessData.successCount} z {pendingProcessData.totalCount} etykiet
                   </Text>
                   {pendingProcessData.errorCount > 0 && (
-                    <Text style={[styles.confirmModalMessage, { color: '#ef4444' }]}>
+                    <Text style={styles.printErrorText}>
                       Błędów: {pendingProcessData.errorCount}
                     </Text>
                   )}
@@ -1956,31 +1999,33 @@ const Users = () => {
               <Text style={styles.confirmModalMessage}>
                 Czy wszystkie metki zostały poprawnie wydrukowane?
               </Text>
-              <Text style={[styles.confirmModalMessage, { fontSize: 14, color: '#94A3B8', marginTop: 10 }]}>
+              <Text style={styles.confirmModalSubtext}>
                 Po potwierdzeniu produkty zostaną przetworzone.
               </Text>
             </View>
             
-            <View style={styles.confirmModalButtons}>
+            <View style={styles.printModalButtons}>
               <TouchableOpacity
-                style={styles.confirmModalCancelButton}
-                onPress={() => {
-                  setShowPrintConfirmModal(false);
-                  setPendingProcessData(null);
-                }}
-              >
-                <Text style={styles.confirmModalCancelText}>❌ Nie - Anuluj</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.confirmModalConfirmButton}
+                style={styles.printConfirmButton}
                 onPress={() => {
                   setShowPrintConfirmModal(false);
                   setPendingProcessData(null);
                   executeProcessItems();
                 }}
               >
-                <Text style={styles.confirmModalConfirmText}>✅ Tak - Przetwórz</Text>
+                <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                <Text style={styles.printConfirmButtonText}>Tak - Przetwórz</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.printCancelButton}
+                onPress={() => {
+                  setShowPrintConfirmModal(false);
+                  setPendingProcessData(null);
+                }}
+              >
+                <Ionicons name="close-circle" size={24} color="#94A3B8" />
+                <Text style={styles.printCancelButtonText}>Nie - Anuluj</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2695,6 +2740,87 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#ffffff",
   },
+  confirmModalSubtext: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 20,
+  },
+  printIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgb(0, 123, 255)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    shadowColor: "rgb(0, 123, 255)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  printStatsContainer: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    width: '100%',
+  },
+  printStatsText: {
+    fontSize: 16,
+    color: '#cbd5e1',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  printErrorText: {
+    fontSize: 14,
+    color: '#ef4444',
+    textAlign: 'center',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  printModalButtons: {
+    gap: 12,
+    width: '100%',
+  },
+  printConfirmButton: {
+    backgroundColor: "rgb(0, 123, 255)",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "rgb(0, 123, 255)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  printConfirmButtonText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  printCancelButton: {
+    backgroundColor: "#1E293B",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  printCancelButtonText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
   topWarningContainer: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -2763,36 +2889,109 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
+  correctionIconContainer: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 60,
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  correctionsScrollView: {
+    maxHeight: 350,
+    width: '100%',
+    paddingHorizontal: 20,
+    marginVertical: 16,
+  },
   correctionItem: {
     backgroundColor: '#1E293B',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderLeftWidth: 3,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
     borderLeftColor: '#f59e0b',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  correctionItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  correctionItemNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f59e0b',
+    marginRight: 12,
+    minWidth: 24,
+  },
+  correctionItemInfo: {
+    flex: 1,
   },
   correctionItemText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
     marginBottom: 4,
   },
-  correctionItemBarcode: {
-    fontSize: 12,
+  correctionItemSize: {
+    fontSize: 14,
     color: '#94A3B8',
+    fontWeight: '500',
+  },
+  correctionItemBarcode: {
+    fontSize: 13,
+    color: '#64748b',
+    fontFamily: 'monospace',
+    marginTop: 4,
+    paddingLeft: 36,
   },
   correctionsFooter: {
     backgroundColor: '#1E293B',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
     marginHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   correctionsFooterText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  successText: {
+    color: '#10b981',
+  },
+  errorText: {
+    color: '#ef4444',
+  },
+  correctionConfirmButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#007bff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  correctionConfirmText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
