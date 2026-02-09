@@ -195,7 +195,7 @@ const Users = () => {
       const yellowTransfers = allTransfers.filter(transfer => {
         const transferDate = new Date(transfer.date).toISOString().split('T')[0];
         const isCorrectDate = transferDate === dateStr;
-        const isIncoming = transfer.transfer_to === selectedUserData.symbol && !transfer.fromWarehouse;
+        const isIncoming = transfer.transfer_to === selectedUserData.symbol && transfer.transfer_from !== 'MAGAZYN';
         const notProcessed = !transfer.yellowProcessed;
         
         return isCorrectDate && isIncoming && notProcessed;
@@ -921,7 +921,7 @@ const Users = () => {
       // Step 4: Process YELLOW transfers (incoming transfers from other users)
       if (yellowTransfers && yellowTransfers.length > 0) {
         try {
-          const url = getApiUrl('/transfer/process-yellow');
+          const url = getApiUrl('/transfer/process-warehouse');
           const { accessToken } = await tokenService.getTokens();
           
           const yellowItems = yellowTransfers.map(transfer => ({
@@ -955,9 +955,10 @@ const Users = () => {
       }
 
       // Calculate expected result BEFORE refresh
-      // Total orange = yellow (manual transfers) + orange (manually moved from warehouse) + green (auto-matched from warehouse)
-      const totalOrangeCount = yellowCount + orangeCount + greenMatchedCount;
-      const expectedAfterCount = currentUserStateCountBefore - allBlueCount + totalOrangeCount;
+      // Separate yellow (incoming transfers from other points) from orange (warehouse items)
+      const totalOrangeFromWarehouse = orangeCount + greenMatchedCount; // Only items from warehouse
+      const totalAdded = yellowCount + totalOrangeFromWarehouse; // Total added to user state
+      const expectedAfterCount = currentUserStateCountBefore - allBlueCount + totalAdded;
 
       setLastTransaction({
         transactionId: sharedTransactionId,
@@ -1007,8 +1008,9 @@ const Users = () => {
       const remainingItems = (checkData.blueItems?.length || 0) + (checkData.transfers?.length || 0);
 
       // Calculate warehouse state (like web app)
-      const warehouseAfterCount = warehouseBeforeCount - totalOrangeCount;
-      const warehouseProcessedCount = totalOrangeCount;
+      // Only orange items from warehouse affect warehouse count (NOT yellow transfers!)
+      const warehouseAfterCount = warehouseBeforeCount - totalOrangeFromWarehouse;
+      const warehouseProcessedCount = totalOrangeFromWarehouse;
 
       // Check if user is warehouse
       const isWarehouse = userSymbol === 'Magazyn';
@@ -1018,15 +1020,15 @@ const Users = () => {
         userSymbol: selectedUserData?.symbol || selectedUserData?.username,
         beforeCount: currentUserStateCountBefore,
         allBlueCount,
-        yellowCount,
-        warehouseCount: orangeCount,
-        allOrangeCount: totalOrangeCount,
+        yellowCount, // Incoming transfers from other points (NOT from warehouse)
+        warehouseCount: orangeCount, // Manually moved from warehouse
+        allOrangeCount: totalOrangeFromWarehouse, // Total from warehouse (manual + auto-matched)
         greenMatchedCount,
         expectedAfterCount,
         actualAfterCount: actualStateCountAfter,
         remainingItems,
         totalItemsToProcess,
-        calculation: `${currentUserStateCountBefore} - ${allBlueCount} (niebieskie) + ${totalOrangeCount} (pomarańczowe) = ${expectedAfterCount}`,
+        calculation: `${currentUserStateCountBefore} - ${allBlueCount} (niebieskie) + ${yellowCount} (żółte) + ${totalOrangeFromWarehouse} (pomarańczowe) = ${expectedAfterCount}`,
         transactionId: sharedTransactionId,
         processedDate: dateStr,
         warehouseBeforeCount,
@@ -1617,10 +1619,10 @@ const Users = () => {
               <TouchableOpacity
                 style={[
                   styles.processButton,
-                  (processing || (blueItems.length === 0 && transfers.length === 0)) && styles.processButtonDisabled
+                  (processing || (blueItems.length === 0 && transfers.length === 0 && yellowTransfers.length === 0)) && styles.processButtonDisabled
                 ]}
                 onPress={handleProcessItems}
-                disabled={processing || (blueItems.length === 0 && transfers.length === 0)}
+                disabled={processing || (blueItems.length === 0 && transfers.length === 0 && yellowTransfers.length === 0)}
               >
                 {processing ? (
                   <ActivityIndicator color="#fff" />
