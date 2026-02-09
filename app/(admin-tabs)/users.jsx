@@ -1060,9 +1060,37 @@ const Users = () => {
     try {
       setProcessing(true);
       
-      const url = getApiUrl('/transfer/undo-last');
       const { accessToken } = await tokenService.getTokens();
       
+      // Get current user data
+      const selectedUserData = users.find(u => u._id === selectedUserId);
+      const userSymbol = selectedUserData?.symbol || selectedUserData?.username;
+      
+      // Get warehouse state BEFORE undo
+      const warehouseUrlBefore = getApiUrl('/state/warehouse');
+      const warehouseResponseBefore = await fetch(warehouseUrlBefore, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      const warehouseDataBefore = await warehouseResponseBefore.json();
+      const warehouseBeforeCount = warehouseDataBefore.length;
+      
+      // Get user state count BEFORE undo
+      const allStatesUrlBefore = getApiUrl('/state');
+      const allStatesResponseBefore = await fetch(allStatesUrlBefore, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      const allStatesDataBefore = await allStatesResponseBefore.json();
+      const userStateBefore = allStatesDataBefore.filter(item => 
+        item.symbol === userSymbol || 
+        (item.sellingPoint && item.sellingPoint.symbol === userSymbol)
+      ).length;
+      
+      // Now call undo endpoint
+      const url = getApiUrl('/transfer/undo-last');
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -1074,11 +1102,7 @@ const Users = () => {
       if (response.ok) {
         const result = await response.json();
         
-        // Get current user data
-        const selectedUserData = users.find(u => u._id === selectedUserId);
-        const userSymbol = selectedUserData?.symbol || selectedUserData?.username;
-        
-        // Get warehouse state AFTER undo (to show correct counts)
+        // Get warehouse state AFTER undo
         const warehouseUrl = getApiUrl('/state/warehouse');
         const warehouseResponse = await fetch(warehouseUrl, {
           headers: {
@@ -1101,20 +1125,33 @@ const Users = () => {
           (item.sellingPoint && item.sellingPoint.symbol === userSymbol)
         ).length;
         
-        // Prepare undo modal data
-        const warehouseReturned = result.warehouseItems?.length || 0;
-        const stateRestored = result.restoredCount || 0;
+        // Calculate changes
+        const warehouseReturned = warehouseAfterCount - warehouseBeforeCount;
+        const stateChange = userStateAfter - userStateBefore;
         const isWarehouse = userSymbol === 'MAGAZYN';
+        
+        // Calculate display values based on user type
+        let restoredCount, calculation;
+        
+        if (isWarehouse) {
+          // For warehouse: show items removed (negative value)
+          restoredCount = stateChange; // Will be negative
+          calculation = `Cofnięcie: ${Math.abs(stateChange)} produktów zostało usuniętych z magazynu\nStan wraca do: ${userStateAfter}`;
+        } else {
+          // For selling points: don't show "restored count", only warehouse return
+          restoredCount = undefined;
+          calculation = `Stan przed transakcją: ${userStateBefore}`;
+        }
         
         setControlModalData({
           userSymbol: userSymbol,
-          beforeCount: userStateAfter - stateRestored,
-          restoredCount: stateRestored,
+          beforeCount: userStateBefore,
+          restoredCount: restoredCount,
           warehouseReturnedCount: warehouseReturned,
           expectedAfterCount: userStateAfter,
           actualAfterCount: userStateAfter,
-          calculation: `Cofnięto transakcję\nPrzywrócono do magazynu: ${warehouseReturned}\nPrzywrócono do stanu: ${stateRestored}`,
-          warehouseBeforeCount: warehouseAfterCount - warehouseReturned,
+          calculation: calculation,
+          warehouseBeforeCount: warehouseBeforeCount,
           warehouseAfterCount: warehouseAfterCount,
           warehouseProcessedCount: 0,
           isWarehouse,
@@ -1705,27 +1742,44 @@ const Users = () => {
                         </View>
                       </View>
 
-                      {controlModalData.warehouseReturnedCount > 0 && (
-                        <View style={styles.statRowGreen}>
-                          <Text style={styles.statLabelGreen}>📦 Przywrócono do magazynu</Text>
-                          <Text style={styles.statValueTextGreen}>+{controlModalData.warehouseReturnedCount}</Text>
-                        </View>
-                      )}
+                      {/* For warehouse: show items removed */}
+                      {controlModalData.isWarehouse ? (
+                        <>
+                          {controlModalData.restoredCount !== undefined && controlModalData.restoredCount < 0 && (
+                            <View style={styles.statRowRed}>
+                              <Text style={styles.statLabelRed}>↩️ Usunięte z magazynu (cofnięcie)</Text>
+                              <Text style={styles.statValueTextRed}>{controlModalData.restoredCount}</Text>
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {/* For selling points: show restored products and removed items */}
+                          {controlModalData.restoredCount !== undefined && controlModalData.restoredCount > 0 && (
+                            <View style={styles.statRowGreen}>
+                              <Text style={styles.statLabelGreen}>↩️ Przywrócone produkty</Text>
+                              <Text style={styles.statValueTextGreen}>+{controlModalData.restoredCount}</Text>
+                            </View>
+                          )}
 
-                      {controlModalData.restoredCount > 0 && (
-                        <View style={styles.statRowGreen}>
-                          <Text style={styles.statLabelGreen}>🔄 Przywrócono do stanu</Text>
-                          <Text style={styles.statValueTextGreen}>+{controlModalData.restoredCount}</Text>
-                        </View>
+                          {controlModalData.warehouseReturnedCount > 0 && (
+                            <View style={styles.statRowRed}>
+                              <Text style={styles.statLabelRed}>📦 Usunięte ze stanu (wrócone do magazynu)</Text>
+                              <Text style={styles.statValueTextRed}>-{controlModalData.warehouseReturnedCount}</Text>
+                            </View>
+                          )}
+                        </>
                       )}
 
                       <View style={styles.calculationBox}>
-                        <Text style={styles.calculationLabel}>INFORMACJE</Text>
+                        <Text style={styles.calculationLabel}>OBLICZENIE</Text>
                         <Text style={styles.calculationText}>{controlModalData.calculation}</Text>
                       </View>
 
                       <View style={styles.resultRow}>
-                        <Text style={styles.resultLabel}>Stan końcowy</Text>
+                        <Text style={styles.resultLabel}>
+                          {controlModalData.isWarehouse ? 'Oczekiwany stan końcowy magazynu' : 'Oczekiwany stan końcowy'}
+                        </Text>
                         <View style={styles.resultValue}>
                           <Text style={styles.resultValueText}>{controlModalData.expectedAfterCount}</Text>
                         </View>
@@ -2573,6 +2627,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#999999",
     textAlign: "center",
+  },
+  statRowRed: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#3a1a1a",
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: "#ff5555",
+    marginBottom: 10,
+  },
+  statLabelRed: {
+    fontSize: 13,
+    color: "#ffaaaa",
+    flex: 1,
+  },
+  statValueTextRed: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#ff6666",
   },
   calculationBox: {
     backgroundColor: "#1a1a1a",
