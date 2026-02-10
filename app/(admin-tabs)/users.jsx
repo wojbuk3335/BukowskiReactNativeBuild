@@ -1454,26 +1454,39 @@ const Users = () => {
 
   const handlePrintLabel = async (item) => {
     try {
-      const url = getApiUrl('/print/print-label');
-      const { accessToken } = await tokenService.getTokens();
       const zplCode = generateZplCode(item);
+      const printerIP = '192.168.1.25';
+      const printerPort = 9100;
+      const printerUrl = `http://${printerIP}:${printerPort}`;
 
-      const response = await fetch(url, {
+      // Wyślij ZPL bezpośrednio do drukarki przez HTTP POST
+      const response = await fetch(printerUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'text/plain',
         },
-        body: JSON.stringify({
-          zplCode,
-          printerIP: '192.168.1.25',
-          itemName: item.fullName?.fullName || item.fullName || 'Nieznany produkt'
-        })
+        body: zplCode,
       });
 
-      return response.ok;
+      // Drukarki Zebra zwracają różne statusy - sprawdź czy nie ma błędu
+      if (!response.ok && response.status !== 0) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      Alert.alert(
+        '✅ NOWY KOD - Drukowanie HTTP',
+        `Etykieta wysłana bezpośrednio przez HTTP na ${printerIP}:${printerPort}\n\nTo jest NOWY kod - działa!`,
+        [{ text: 'OK' }]
+      );
+      return true;
+
     } catch (error) {
       console.error('Error printing label:', error);
+      Alert.alert(
+        'Błąd drukowania',
+        `Nie można połączyć z drukarką. Sprawdź czy:\n1. Jesteś w sieci WiFi sklepu\n2. Drukarka jest włączona\n3. Adres: 192.168.1.25`,
+        [{ text: 'OK' }]
+      );
       return false;
     }
   };
