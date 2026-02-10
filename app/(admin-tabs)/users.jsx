@@ -1402,36 +1402,79 @@ const Users = () => {
     );
   };
 
+  const generateZplCode = (item) => {
+    const itemName = item.fullName?.fullName || item.fullName || 'N/A';
+    const itemSize = item.size?.Roz_Opis || item.size || 'N/A';
+    const barcode = item.barcode || 'NO-BARCODE';
+    const price = item.price || item.fullName?.price || 0;
+    const symbol = item.symbol || item.sellingPoint?.symbol || item.transfer_to || 'N/A';
+
+    const pointMapping = {
+      P: '01',
+      M: '02',
+      K: '03',
+      T: '04',
+      S: '05',
+      Kar: '06'
+    };
+
+    const mappedPoint = pointMapping[symbol] || symbol;
+
+    let processedName = (itemName || 'N/A');
+    processedName = processedName
+      .replace(/\s*(czarny|czarna|czarne|biały|biała|białe|niebieski|niebieska|niebieskie|czerwony|czerwona|czerwone|zielony|zielona|zielone|żółty|żółta|żółte|szary|szara|szare|brązowy|brązowa|brązowe|różowy|różowa|różowe|fioletowy|fioletowa|fioletowe|pomarańczowy|pomarańczowa|pomarańczowe|kakao|beżowy|beżowa|beżowe|kremowy|kremowa|kremowe|granatowy|granatowa|granatowe|bordowy|bordowa|bordowe|khaki|oliwkowy|oliwkowa|oliwkowe|złoty|złota|złote|srebrny|srebrna|srebrne|miętowy|miętowa|miętowe)\s*/gi, '')
+      .trim();
+
+    const barcodeDigits = (barcode && barcode.length >= 5) ? barcode.substring(3, 5) : '';
+    if (barcodeDigits) {
+      processedName += ` ${barcodeDigits}`;
+    }
+
+    const safeName = processedName.replace(/[^\x00-\x7F]/g, '?');
+    const safeSize = (itemSize || 'N/A').replace(/[^\x00-\x7F]/g, '?');
+    const safeTransfer = (mappedPoint || 'N/A').replace(/[^\x00-\x7F]/g, '?');
+    const safePrice = (price || 'N/A').toString().replace(/[^\x00-\x7F]/g, '?');
+
+    return `^XA
+^MMT
+^PW450
+^LL0400
+^LS0
+^FT3,50^A0N,40,40^FD${safeName}^FS
+^FT320,55^A0N,40,40^FDCena:^FS
+^FT320,105^A0N,55,55^FD${safePrice} zl^FS
+
+^FT3,120^A0N,38,38^FDRozmiar: ${safeSize}^FS
+^FT3,150^A0N,25,25^FDPunkt: ${safeTransfer}^FS
+^BY2,3,85^FT80,238^BCN,,N,N
+^FD${barcode}^FS
+^FT125,280^A0N,28,28^FB200,1,0,C,0^FD${barcode}^FS
+^XZ`;
+  };
+
   const handlePrintLabel = async (item) => {
     try {
-      const url = getApiUrl('/label/print-single');
+      const url = getApiUrl('/print/print-label');
       const { accessToken } = await tokenService.getTokens();
-      
-      const labelData = {
-        barcode: item.barcode,
-        fullName: item.fullName?.fullName || item.fullName,
-        size: item.size?.Roz_Opis || item.size,
-        price: item.price || item.fullName?.price || 0,
-        discount_price: item.discount_price || item.fullName?.discount_price || 0
-      };
-      
+      const zplCode = generateZplCode(item);
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(labelData)
+        body: JSON.stringify({
+          zplCode,
+          printerIP: '192.168.1.25',
+          itemName: item.fullName?.fullName || item.fullName || 'Nieznany produkt'
+        })
       });
-      
-      if (response.ok) {
-        return true; // Success
-      } else {
-        return false; // Failed
-      }
+
+      return response.ok;
     } catch (error) {
       console.error('Error printing label:', error);
-      return false; // Failed
+      return false;
     }
   };
 
