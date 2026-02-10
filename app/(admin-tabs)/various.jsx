@@ -159,6 +159,22 @@ const Various = () => {
       route: "/orders-list",
       color: "#8B5CF6",
     },
+    {
+      id: "cudzich",
+      title: "Cudzich",
+      subtitle: "Zarządzaj transakcjami cudzych",
+      icon: "swap-horizontal-outline",
+      route: "/cudzich-list",
+      color: "#10B981",
+    },
+    {
+      id: "operacje",
+      title: "Operacje",
+      subtitle: "Operacje finansowe użytkowników",
+      icon: "cash-outline",
+      route: "/operacje-list",
+      color: "#06B6D4",
+    },
   ];
 
   const handleMenuPress = (route) => {
