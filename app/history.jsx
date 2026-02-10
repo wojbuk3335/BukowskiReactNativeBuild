@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import tokenService from '../services/tokenService';
 import { getApiUrl } from '../config/api';
 
@@ -251,19 +251,52 @@ const History = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.title}>Historia</Text>
-          <Text style={styles.subtitle}>
-            {filteredData.length} {filteredData.length === 1 ? 'rekord' : 'rekordów'}
-          </Text>
-        </View>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: 'Historia',
+          headerStyle: {
+            backgroundColor: '#000000',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => setFilterModalVisible(true)}
+              style={styles.filterButton}
+            >
+              <Ionicons
+                name={
+                  filters.collectionName || filters.operation || filters.from || filters.to || filters.user
+                    ? 'funnel'
+                    : 'funnel-outline'
+                }
+                size={24}
+                color={
+                  filters.collectionName || filters.operation || filters.from || filters.to || filters.user
+                    ? '#3B82F6'
+                    : '#fff'
+                }
+              />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      <View style={styles.statsBar}>
+        <Text style={styles.subtitle}>
+          {filteredData.length} {filteredData.length === 1 ? 'rekord' : 'rekordów'}
+        </Text>
         <TouchableOpacity
           onPress={() => setFilterModalVisible(true)}
-          style={styles.filterButton}
+          style={styles.filterTextButton}
         >
           <Ionicons
             name={
@@ -271,13 +304,16 @@ const History = () => {
                 ? 'funnel'
                 : 'funnel-outline'
             }
-            size={24}
+            size={16}
             color={
               filters.collectionName || filters.operation || filters.from || filters.to || filters.user
                 ? '#3B82F6'
-                : '#fff'
+                : '#94A3B8'
             }
           />
+          <Text style={styles.filterActiveText}>
+            Filtry aktywne
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -678,33 +714,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  header: {
+  backButton: {
+    marginLeft: 8,
+  },
+  statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 12,
     backgroundColor: '#000000',
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
-  backButton: {
-    marginRight: 12,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
   subtitle: {
     fontSize: 14,
     color: '#94A3B8',
-    marginTop: 2,
   },
   filterButton: {
     padding: 8,
+    marginRight: 8,
+  },
+  filterTextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterActiveText: {
+    fontSize: 12,
+    color: '#3B82F6',
+    marginLeft: 4,
   },
   searchContainer: {
     flexDirection: 'row',

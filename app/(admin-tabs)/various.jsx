@@ -143,6 +143,22 @@ const Various = () => {
       route: "/users-management",
       color: "#DC2626",
     },
+    {
+      id: "corrections",
+      title: "Korekty",
+      subtitle: "Zarządzaj korektami stanu magazynowego",
+      icon: "create-outline",
+      route: "/corrections-list",
+      color: "#F59E0B",
+    },
+    {
+      id: "orders",
+      title: "Zamówienia",
+      subtitle: "Przeglądaj i zarządzaj zamówieniami",
+      icon: "cart-outline",
+      route: "/orders-list",
+      color: "#8B5CF6",
+    },
   ];
 
   const handleMenuPress = (route) => {

@@ -122,6 +122,20 @@ const Users = () => {
     }
   }, [selectedDate]);
 
+  // Auto-refresh last transaction every 5 seconds (for cross-app sync)
+  useEffect(() => {
+    // Initial check
+    checkLastTransaction();
+    
+    // Set up interval for periodic checks
+    const interval = setInterval(() => {
+      checkLastTransaction();
+    }, 5000); // Check every 5 seconds
+    
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+  }, [selectedUserId, selectedDate]);
+
   const checkLastTransaction = async () => {
     try {
       const { accessToken } = await tokenService.getTokens();
