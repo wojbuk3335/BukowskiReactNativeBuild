@@ -82,6 +82,33 @@ const ProductsList = () => {
   const [selectedManufacturer, setSelectedManufacturer] = useState("");
   const [selectedGender, setSelectedGender] = useState("");
   const [priceExceptions, setPriceExceptions] = useState([]);
+  
+  // States for Torebki category
+  const [selectedBagsCategoryId, setSelectedBagsCategoryId] = useState("");
+  const [selectedBagsCategoryCode, setSelectedBagsCategoryCode] = useState("");
+  const [selectedBagCode, setSelectedBagCode] = useState("");
+  const [showBagsPicker, setShowBagsPicker] = useState(false);
+  const [showBagsCategoryPicker, setShowBagsCategoryPicker] = useState(false);
+  const [bagsSearch, setBagsSearch] = useState("");
+  
+  // States for Portfele category
+  const [selectedWalletsCategoryId, setSelectedWalletsCategoryId] = useState("");
+  const [selectedWalletsCategoryCode, setSelectedWalletsCategoryCode] = useState("");
+  const [selectedWalletCode, setSelectedWalletCode] = useState("");
+  const [showWalletsPicker, setShowWalletsPicker] = useState(false);
+  const [showWalletsCategoryPicker, setShowWalletsCategoryPicker] = useState(false);
+  const [walletsSearch, setWalletsSearch] = useState("");
+  
+  // States for Pozostały asortyment category
+  const [remainingCategories, setRemainingCategories] = useState([]);
+  const [remainingSubcategories, setRemainingSubcategories] = useState([]);
+  const [selectedRemainingCategoryId, setSelectedRemainingCategoryId] = useState("");
+  const [selectedRemainingSubcategoryId, setSelectedRemainingSubcategoryId] = useState("");
+  const [selectedRemainingProductCode, setSelectedRemainingProductCode] = useState("");
+  const [showRemainingPicker, setShowRemainingPicker] = useState(false);
+  const [remainingProductsSearch, setRemainingProductsSearch] = useState("");
+  const [showRemainingCategoryPicker, setShowRemainingCategoryPicker] = useState(false);
+  const [showRemainingSubcategoryPicker, setShowRemainingSubcategoryPicker] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -222,7 +249,7 @@ const ProductsList = () => {
       const walletsCategoriesResponse = await tokenService.authenticatedFetch(walletsCategoriesUrl);
       if (walletsCategoriesResponse.ok) {
         const walletsCategoriesData = await walletsCategoriesResponse.json();
-        setWalletsCategories(walletsCategoriesData.walletsCategory || []);
+        setWalletsCategories(walletsCategoriesData.walletCategories || []);
       }
 
       // Fetch remaining products
@@ -232,6 +259,13 @@ const ProductsList = () => {
         const remainingData = await remainingResponse.json();
         setRemainingProducts(remainingData.remainingProducts || []);
       }
+
+      // Fetch remaining categories - use static categories for Paski and Rękawiczki
+      const staticCategories = [
+        { _id: 'belts', Rem_Kat_1_Opis_1: 'Paski', type: 'static' },
+        { _id: 'gloves', Rem_Kat_1_Opis_1: 'Rękawiczki', type: 'static' }
+      ];
+      setRemainingCategories(staticCategories);
     } catch (error) {
       console.error("Error fetching data:", error);
     }
@@ -288,6 +322,154 @@ const ProductsList = () => {
     return (10 - (sum % 10)) % 10;
   };
 
+  // Update bag product name: bagCode + colorDescription
+  const updateBagProductName = (bagCode, colorId) => {
+    const color = colors.find(c => c._id === colorId);
+    const newName = `${bagCode || ''} ${color ? color.Kol_Opis : ''}`.trim();
+    setProductName(newName);
+  };
+
+  // Update wallet product name: walletCode + colorDescription
+  const updateWalletProductName = (walletCode, colorId) => {
+    const color = colors.find(c => c._id === colorId);
+    const newName = `${walletCode || ''} ${color ? color.Kol_Opis : ''}`.trim();
+    setProductName(newName);
+  };
+
+  // Update remaining product name: productCode + colorDescription
+  const updateRemainingProductName = (productCode, colorId) => {
+    const color = colors.find(c => c._id === colorId);
+    const newName = `${productCode || ''} ${color ? color.Kol_Opis : ''}`.trim();
+    setProductName(newName);
+  };
+
+  // Generate bag product code
+  const generateBagProductCode = () => {
+    // Format: 000 + kolor(2) + Torebki_Nr(4) + po_kropce(3) + suma(1) = 13 digits
+    const color = colors.find(c => c._id === selectedColor);
+    const bag = bagsData.find(b => b.Torebki_Kod === selectedBagCode);
+    
+    if (!color || !bag) {
+      return '';
+    }
+
+    // Pozycje 1-3: zawsze 000
+    let code = '000';
+    
+    // Pozycje 4-5: Kod koloru (Kol_Kod) - 2 cyfry
+    const colorCode = color.Kol_Kod || '00';
+    code += colorCode.padStart(2, '0').substring(0, 2);
+    
+    // Pozycje 6-9: Numer wiersza (Torebki_Nr) - 4 cyfry
+    const rowNumber = bag.Torebki_Nr || 0;
+    code += rowNumber.toString().padStart(4, '0').substring(0, 4);
+    
+    // Pozycje 10-12: Wartość po kropce z Torebki_Kod - 3 cyfry
+    const bagCode = bag.Torebki_Kod || '';
+    const afterDotMatch = bagCode.match(/\.(\d{3})/); // Znajdź 3 cyfry po kropce
+    const afterDotValue = afterDotMatch ? afterDotMatch[1] : '000';
+    code += afterDotValue.padStart(3, '0').substring(0, 3);
+    
+    // Pozycja 13: Suma kontrolna
+    const controlSum = calculateControlSum(code);
+    code += controlSum;
+    
+    return code;
+  };
+
+  // Generate wallet product code
+  const generateWalletProductCode = () => {
+    // Format: 000 + kolor(2) + 0 + Portfele_Nr(3) + po_kropce(3) + suma(1) = 13 digits
+    const color = colors.find(c => c._id === selectedColor);
+    const wallet = walletsData.find(w => w.Portfele_Kod === selectedWalletCode);
+    
+    if (!color || !wallet) {
+      return '';
+    }
+
+    // Pozycje 1-3: zawsze 000
+    let code = '000';
+    
+    // Pozycje 4-5: Kod koloru (Kol_Kod) - 2 cyfry
+    const colorCode = color.Kol_Kod || '00';
+    code += colorCode.padStart(2, '0').substring(0, 2);
+    
+    // Pozycja 6: zawsze 0
+    code += '0';
+    
+    // Pozycje 7-9: Portfele_Nr - 3 cyfry
+    const rowNumber = wallet.Portfele_Nr || 0;
+    code += rowNumber.toString().padStart(3, '0').substring(0, 3);
+    
+    // Pozycje 10-12: Wartość po kropce z Portfele_Kod - 3 cyfry
+    const walletCode = wallet.Portfele_Kod || '';
+    const afterDotMatch = walletCode.match(/\.(\d+)/); // Znajdź cyfry po kropce
+    let afterDotValue = '000';
+    if (afterDotMatch) {
+      const digits = afterDotMatch[1];
+      afterDotValue = digits.padStart(3, '0').substring(0, 3); // Weź pierwsze 3 cyfry, uzupełnij zerami jeśli trzeba
+    }
+    code += afterDotValue;
+    
+    // Pozycja 13: Suma kontrolna
+    const controlSum = calculateControlSum(code);
+    code += controlSum;
+    
+    return code;
+  };
+
+  // Generate remaining product code
+  const generateRemainingProductCode = () => {
+    // Format: 000 + kolor(2) + 00 + Poz_Nr(2) + 3_cyfry(3) + suma(1) = 13 digits
+    const color = colors.find(c => c._id === selectedColor);
+    const remainingProduct = remainingProducts.find(p => p.Poz_Kod === selectedRemainingProductCode);
+    
+    if (!color || !remainingProduct) {
+      return '';
+    }
+
+    // Pozycje 1-3: zawsze 000
+    let code = '000';
+    
+    // Pozycje 4-5: Kod koloru (Kol_Kod) - 2 cyfry
+    const colorCode = color.Kol_Kod || '00';
+    code += colorCode.padStart(2, '0').substring(0, 2);
+    
+    // Pozycje 6-7: zawsze 00
+    code += '00';
+    
+    // Pozycje 8-9: Poz_Nr z wybranego produktu - 2 cyfry
+    const productNumber = remainingProduct.Poz_Nr || 0;
+    code += productNumber.toString().padStart(2, '0').substring(0, 2);
+    
+    // Pozycje 10-12: PASKI: ostatnie 3 cyfry | RĘKAWICZKI: cyfry po kropce
+    let lastThreeDigits = '000';
+    if (selectedRemainingProductCode) {
+      // Sprawdź czy to pasek (format "ABC 123")
+      if (selectedRemainingCategoryId === 'belts' && /^[A-Z]{3} \d{3}$/.test(selectedRemainingProductCode)) {
+        // Dla pasków: weź ostatnie 3 cyfry z kodu (np. z "APS 202" weź "202")
+        const beltNumberMatch = selectedRemainingProductCode.match(/\s(\d{3})$/);
+        if (beltNumberMatch) {
+          lastThreeDigits = beltNumberMatch[1];
+        }
+      } else {
+        // Dla rękawiczek: standardowa logika - cyfry po kropce
+        const afterDotMatch = selectedRemainingProductCode.match(/\.(\d+)/);
+        if (afterDotMatch) {
+          const digits = afterDotMatch[1];
+          lastThreeDigits = digits.padStart(3, '0').substring(0, 3);
+        }
+      }
+    }
+    code += lastThreeDigits;
+    
+    // Pozycja 13: Suma kontrolna
+    const controlSum = calculateControlSum(code);
+    code += controlSum;
+    
+    return code;
+  };
+
   // Generate product name based on selections
   const generateProductName = () => {
     if (category === "Kurtki kożuchy futra") {
@@ -301,13 +483,13 @@ const ProductsList = () => {
       if (!stock) return "(wybierz produkt)";
       if (!color) return "(wybierz kolor)";
     } else if (category === "Torebki") {
-      // TODO: Implement for bags
+      // Bag name is updated by updateBagProductName
       return productName || "";
     } else if (category === "Portfele") {
-      // TODO: Implement for wallets
+      // Wallet name is updated by updateWalletProductName
       return productName || "";
     } else if (category === "Pozostałe") {
-      // TODO: Implement for remaining
+      // Remaining name is updated by updateRemainingProductName
       return productName || "";
     }
     return productName || "";
@@ -332,30 +514,39 @@ const ProductsList = () => {
       
     } else if (category === "Torebki") {
       // Format: 000 + kolor(2) + Torebki_Nr(4) + po_kropce(3) + suma(1) = 13 digits
-      const color = colors.find(c => c._id === selectedColor);
-      // TODO: Need bag selection logic
-      
-      if (!color) return "(wybierz kolor)";
-      return "(wybierz torebkę)";
+      return generateBagProductCode() || "(wybierz torebkę i kolor)";
       
     } else if (category === "Portfele") {
       // Format: 000 + kolor(2) + 0 + Portfele_Nr(3) + po_kropce(3) + suma(1) = 13 digits
-      const color = colors.find(c => c._id === selectedColor);
-      // TODO: Need wallet selection logic
-      
-      if (!color) return "(wybierz kolor)";
-      return "(wybierz portfel)";
+      return generateWalletProductCode() || "(wybierz portfel i kolor)";
       
     } else if (category === "Pozostałe") {
       // Format: 000 + kolor(2) + 00 + Poz_Nr(2) + 3_cyfry(3) + suma(1) = 13 digits
-      const color = colors.find(c => c._id === selectedColor);
-      // TODO: Need remaining product selection logic
-      
-      if (!color) return "(wybierz kolor)";
-      return "(wybierz produkt)";
+      return generateRemainingProductCode() || "(wybierz produkt i kolor)";
     }
     
     return productCode || "";
+  };
+
+  // Filter remaining products based on selected category (belts or gloves)
+  const getFilteredRemainingProducts = () => {
+    return remainingProducts
+      .filter(product => product.Poz_Kod && product.Poz_Kod.trim() !== '')
+      .filter(product => {
+        // Filter by product type based on selected remaining category
+        if (selectedRemainingCategoryId === 'belts') {
+          // Show only belts: format "ABC 123" (3 letters + space + 3 digits)
+          return /^[A-Z]{3} \d{3}$/.test(product.Poz_Kod);
+        } else if (selectedRemainingCategoryId === 'gloves') {
+          // Show only gloves: must contain dot with exactly 3 digits after it
+          return /\d+\.\d{3}/.test(product.Poz_Kod);
+        }
+        // For other categories, show all products
+        return true;
+      })
+      .filter(product => 
+        product.Poz_Kod.toLowerCase().includes(remainingProductsSearch.toLowerCase())
+      );
   };
 
   const handleAddProduct = () => {
@@ -373,6 +564,20 @@ const ProductsList = () => {
     setSelectedManufacturer("");
     setSelectedGender("");
     setPriceExceptions([]);
+    // Reset Portfele fields
+    setSelectedWalletsCategoryId("");
+    setSelectedWalletsCategoryCode("");
+    setSelectedWalletCode("");
+    setWalletsSearch("");
+    // Reset Torebki fields
+    setSelectedBagsCategoryId("");
+    setSelectedBagsCategoryCode("");
+    setSelectedBagCode("");
+    setBagsSearch("");
+    // Reset Pozostałe fields
+    setSelectedRemainingCategoryId("");
+    setSelectedRemainingSubcategoryId("");
+    setSelectedRemainingProductCode("");
     // Reset search terms
     setStockSearch("");
     setColorSearch("");
@@ -980,6 +1185,686 @@ const ProductsList = () => {
                   </View>
                 </>
               )}
+
+              {/* Dla kategorii Torebki */}
+              {category === "Torebki" && (
+                <>
+                  {/* 2. Podkategoria (Bags Category) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Podkategoria</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowBagsCategoryPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedBagsCategoryId
+                          ? `${bagsCategories.find(c => c._id === selectedBagsCategoryId)?.Kat_1_Opis_1 || "Wybierz"} (${bagsCategories.find(c => c._id === selectedBagsCategoryId)?.Plec || ""})`
+                          : "Wybierz podkategorię"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 3. Grupa (Manufacturer) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Grupa</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowManufacturerPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedManufacturer
+                          ? manufacturers.find(m => m._id === selectedManufacturer)?.Prod_Opis || "Wybierz"
+                          : "Wybierz grupę"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 4. Produkt (Bag) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Produkt</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowBagsPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedBagCode || "Wybierz torebkę"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 5. Kolor */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kolor *</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowColorPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedColor
+                          ? colors.find(c => c._id === selectedColor)?.Kol_Opis || "Wybierz"
+                          : "Wybierz kolor"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 6. Nazwa produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Nazwa produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductName()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 7. Opis */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Opis</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.formTextArea]}
+                      placeholder="Opcjonalny opis produktu (max 200 znaków)"
+                      placeholderTextColor="#64748B"
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      maxLength={200}
+                    />
+                    <Text style={styles.characterCount}>{description.length}/200</Text>
+                  </View>
+
+                  {/* 8. Kod produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kod produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductCode()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 9. Zdjęcie produktu */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Zdjęcie produktu</Text>
+                    <TouchableOpacity
+                      style={styles.imagePickerButton}
+                      onPress={pickImage}
+                    >
+                      <Ionicons name="images" size={24} color="#0D6EFD" />
+                      <Text style={styles.imagePickerText}>
+                        {selectedImage ? "Zmień zdjęcie" : "Wybierz z galerii"}
+                      </Text>
+                    </TouchableOpacity>
+                    {selectedImage && (
+                      <View style={styles.imagePreviewContainer}>
+                        <Image
+                          source={{ uri: selectedImage.uri }}
+                          style={styles.imagePreview}
+                          resizeMode="cover"
+                        />
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#DC2626" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* 10 & 11. Ceny */}
+                  <View style={styles.formRow}>
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Cena (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={price}
+                        onChangeText={setPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Promocyjna (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={discountPrice}
+                        onChangeText={setDiscountPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+
+                  {/* 12. Wyjątki cenowe */}
+                  <View style={styles.formGroup}>
+                    <View style={styles.exceptionHeader}>
+                      <Text style={styles.formLabel}>Wyjątki cenowe</Text>
+                      <TouchableOpacity
+                        style={styles.addExceptionButton}
+                        onPress={handleAddPriceException}
+                      >
+                        <Ionicons name="add-circle" size={24} color="#0D6EFD" />
+                        <Text style={styles.addExceptionText}>Dodaj wyjątek</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {priceExceptions.length === 0 ? (
+                      <Text style={styles.noExceptionsText}>
+                        Brak wyjątków cenowych. Dodaj wyjątek dla konkretnego rozmiaru.
+                      </Text>
+                    ) : (
+                      priceExceptions.map((exception, index) => (
+                        <View key={index} style={styles.exceptionItem}>
+                          <View style={styles.exceptionRow}>
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Rozmiar</Text>
+                              <TouchableOpacity
+                                style={styles.exceptionSelect}
+                                onPress={() => {
+                                  setActiveSizeExceptionIndex(index);
+                                  setShowSizePicker(true);
+                                }}
+                              >
+                                <Text style={styles.exceptionSelectText}>
+                                  {sizes.find(s => s._id === exception.size)?.Roz_Opis || "Wybierz"}
+                                </Text>
+                                <Ionicons name="chevron-down" size={16} color="#94A3B8" />
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Cena (PLN)</Text>
+                              <TextInput
+                                style={styles.exceptionInput}
+                                placeholder="0.00"
+                                placeholderTextColor="#64748B"
+                                value={exception.value?.toString() || ""}
+                                onChangeText={(text) => handlePriceExceptionChange(index, 'value', parseFloat(text) || 0)}
+                                keyboardType="decimal-pad"
+                              />
+                            </View>
+
+                            <TouchableOpacity
+                              style={styles.removeExceptionButton}
+                              onPress={() => handleRemovePriceException(index)}
+                            >
+                              <Ionicons name="trash" size={20} color="#DC2626" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </>
+              )}
+
+              {/* Dla kategorii Portfele */}
+              {category === "Portfele" && (
+                <>
+                  {/* 2. Podkategoria (Wallet Category) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Podkategoria</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowWalletsCategoryPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedWalletsCategoryId
+                          ? `${walletsCategories.find(c => c._id === selectedWalletsCategoryId)?.Kat_1_Opis_1 || "Wybierz"} (${walletsCategories.find(c => c._id === selectedWalletsCategoryId)?.Plec || ""})`
+                          : "Wybierz podkategorię"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 3. Grupa (Manufacturer) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Grupa</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowManufacturerPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedManufacturer
+                          ? manufacturers.find(m => m._id === selectedManufacturer)?.Prod_Opis || "Wybierz"
+                          : "Wybierz grupę"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 4. Produkt (Wallet) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Produkt</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowWalletsPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedWalletCode || "Wybierz portfel"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 5. Kolor */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kolor *</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowColorPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedColor
+                          ? colors.find(c => c._id === selectedColor)?.Kol_Opis || "Wybierz"
+                          : "Wybierz kolor"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 6. Nazwa produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Nazwa produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductName()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 7. Opis */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Opis</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.formTextArea]}
+                      placeholder="Opcjonalny opis produktu (max 200 znaków)"
+                      placeholderTextColor="#64748B"
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      maxLength={200}
+                    />
+                    <Text style={styles.characterCount}>{description.length}/200</Text>
+                  </View>
+
+                  {/* 8. Kod produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kod produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductCode()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 9. Zdjęcie produktu */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Zdjęcie produktu</Text>
+                    <TouchableOpacity
+                      style={styles.imagePickerButton}
+                      onPress={pickImage}
+                    >
+                      <Ionicons name="images" size={24} color="#0D6EFD" />
+                      <Text style={styles.imagePickerText}>
+                        {selectedImage ? "Zmień zdjęcie" : "Wybierz z galerii"}
+                      </Text>
+                    </TouchableOpacity>
+                    {selectedImage && (
+                      <View style={styles.imagePreviewContainer}>
+                        <Image
+                          source={{ uri: selectedImage.uri }}
+                          style={styles.imagePreview}
+                          resizeMode="cover"
+                        />
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#DC2626" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* 10 & 11. Ceny */}
+                  <View style={styles.formRow}>
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Cena (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={price}
+                        onChangeText={setPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Promocyjna (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={discountPrice}
+                        onChangeText={setDiscountPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+
+                  {/* 12. Wyjątki cenowe */}
+                  <View style={styles.formGroup}>
+                    <View style={styles.exceptionHeader}>
+                      <Text style={styles.formLabel}>Wyjątki cenowe</Text>
+                      <TouchableOpacity
+                        style={styles.addExceptionButton}
+                        onPress={handleAddPriceException}
+                      >
+                        <Ionicons name="add-circle" size={24} color="#0D6EFD" />
+                        <Text style={styles.addExceptionText}>Dodaj wyjątek</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {priceExceptions.length === 0 ? (
+                      <Text style={styles.noExceptionsText}>
+                        Brak wyjątków cenowych. Dodaj wyjątek dla konkretnego rozmiaru.
+                      </Text>
+                    ) : (
+                      priceExceptions.map((exception, index) => (
+                        <View key={index} style={styles.exceptionItem}>
+                          <View style={styles.exceptionRow}>
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Rozmiar</Text>
+                              <TouchableOpacity
+                                style={styles.exceptionSelect}
+                                onPress={() => {
+                                  setActiveSizeExceptionIndex(index);
+                                  setShowSizePicker(true);
+                                }}
+                              >
+                                <Text style={styles.exceptionSelectText}>
+                                  {sizes.find(s => s._id === exception.size)?.Roz_Opis || "Wybierz"}
+                                </Text>
+                                <Ionicons name="chevron-down" size={16} color="#94A3B8" />
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Cena (PLN)</Text>
+                              <TextInput
+                                style={styles.exceptionInput}
+                                placeholder="0.00"
+                                placeholderTextColor="#64748B"
+                                value={exception.value?.toString() || ""}
+                                onChangeText={(text) => handlePriceExceptionChange(index, 'value', parseFloat(text) || 0)}
+                                keyboardType="decimal-pad"
+                              />
+                            </View>
+
+                            <TouchableOpacity
+                              style={styles.removeExceptionButton}
+                              onPress={() => handleRemovePriceException(index)}
+                            >
+                              <Ionicons name="trash" size={20} color="#DC2626" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </>
+              )}
+
+              {/* Dla kategorii Pozostałe */}
+              {category === "Pozostałe" && (
+                <>
+                  {/* 2. Podkategoria (Remaining Category) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Podkategoria</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowRemainingCategoryPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedRemainingCategoryId
+                          ? remainingCategories.find(c => c._id === selectedRemainingCategoryId)?.Rem_Kat_1_Opis_1 || "Wybierz"
+                          : "Wybierz podkategorię"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 3. Podpodkategoria (Remaining Subcategory) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Podpodkategoria</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowRemainingSubcategoryPicker(true)}
+                      disabled={!selectedRemainingCategoryId || remainingSubcategories.length === 0}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedRemainingSubcategoryId
+                          ? remainingSubcategories.find(s => s._id === selectedRemainingSubcategoryId)?.Sub_Opis || "Wybierz"
+                          : "Wybierz podpodkategorię"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 4. Grupa (Manufacturer) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Grupa</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowManufacturerPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedManufacturer
+                          ? manufacturers.find(m => m._id === selectedManufacturer)?.Prod_Opis || "Wybierz"
+                          : "Wybierz grupę"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 5. Produkt */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Produkt</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowRemainingPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedRemainingProductCode || "Wybierz produkt"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 6. Kolor */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kolor *</Text>
+                    <TouchableOpacity
+                      style={styles.selectButton}
+                      onPress={() => setShowColorPicker(true)}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {selectedColor
+                          ? colors.find(c => c._id === selectedColor)?.Kol_Opis || "Wybierz"
+                          : "Wybierz kolor"}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 7. Nazwa produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Nazwa produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductName()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 8. Opis */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Opis</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.formTextArea]}
+                      placeholder="Opcjonalny opis produktu (max 200 znaków)"
+                      placeholderTextColor="#64748B"
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      maxLength={200}
+                    />
+                    <Text style={styles.characterCount}>{description.length}/200</Text>
+                  </View>
+
+                  {/* 9. Kod produktu (readonly) */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Kod produktu</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.readonlyInput]}
+                      value={generateProductCode()}
+                      editable={false}
+                    />
+                  </View>
+
+                  {/* 10. Zdjęcie produktu */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Zdjęcie produktu</Text>
+                    <TouchableOpacity
+                      style={styles.imagePickerButton}
+                      onPress={pickImage}
+                    >
+                      <Ionicons name="images" size={24} color="#0D6EFD" />
+                      <Text style={styles.imagePickerText}>
+                        {selectedImage ? "Zmień zdjęcie" : "Wybierz z galerii"}
+                      </Text>
+                    </TouchableOpacity>
+                    {selectedImage && (
+                      <View style={styles.imagePreviewContainer}>
+                        <Image
+                          source={{ uri: selectedImage.uri }}
+                          style={styles.imagePreview}
+                          resizeMode="cover"
+                        />
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#DC2626" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* 11 & 12. Ceny */}
+                  <View style={styles.formRow}>
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Cena (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={price}
+                        onChangeText={setPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+
+                    <View style={[styles.formGroup, styles.formGroupHalf]}>
+                      <Text style={styles.formLabel}>Promocyjna (PLN)</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        value={discountPrice}
+                        onChangeText={setDiscountPrice}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+
+                  {/* 13. Wyjątki cenowe */}
+                  <View style={styles.formGroup}>
+                    <View style={styles.exceptionHeader}>
+                      <Text style={styles.formLabel}>Wyjątki cenowe</Text>
+                      <TouchableOpacity
+                        style={styles.addExceptionButton}
+                        onPress={handleAddPriceException}
+                      >
+                        <Ionicons name="add-circle" size={24} color="#0D6EFD" />
+                        <Text style={styles.addExceptionText}>Dodaj wyjątek</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {priceExceptions.length === 0 ? (
+                      <Text style={styles.noExceptionsText}>
+                        Brak wyjątków cenowych. Dodaj wyjątek dla konkretnego rozmiaru.
+                      </Text>
+                    ) : (
+                      priceExceptions.map((exception, index) => (
+                        <View key={index} style={styles.exceptionItem}>
+                          <View style={styles.exceptionRow}>
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Rozmiar</Text>
+                              <TouchableOpacity
+                                style={styles.exceptionSelect}
+                                onPress={() => {
+                                  setActiveSizeExceptionIndex(index);
+                                  setShowSizePicker(true);
+                                }}
+                              >
+                                <Text style={styles.exceptionSelectText}>
+                                  {sizes.find(s => s._id === exception.size)?.Roz_Opis || "Wybierz"}
+                                </Text>
+                                <Ionicons name="chevron-down" size={16} color="#94A3B8" />
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.exceptionField}>
+                              <Text style={styles.exceptionLabel}>Cena (PLN)</Text>
+                              <TextInput
+                                style={styles.exceptionInput}
+                                placeholder="0.00"
+                                placeholderTextColor="#64748B"
+                                value={exception.value?.toString() || ""}
+                                onChangeText={(text) => handlePriceExceptionChange(index, 'value', parseFloat(text) || 0)}
+                                keyboardType="decimal-pad"
+                              />
+                            </View>
+
+                            <TouchableOpacity
+                              style={styles.removeExceptionButton}
+                              onPress={() => handleRemovePriceException(index)}
+                            >
+                              <Ionicons name="trash" size={20} color="#DC2626" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </>
+              )}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -1017,8 +1902,9 @@ const ProductsList = () => {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={["Kurtki kożuchy futra", "Portfele", "Torby", "Pozostałe"]}
+              data={["Kurtki kożuchy futra", "Torebki", "Portfele", "Pozostałe"]}
               keyExtractor={(item) => item}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -1027,6 +1913,76 @@ const ProductsList = () => {
                   ]}
                   onPress={() => {
                     setCategory(item);
+                    
+                    // Reset form and initialize defaults based on category
+                    setProductName("");
+                    setProductCode("");
+                    setSelectedStock("");
+                    setSelectedColor("");
+                    setSelectedSubcategory("");
+                    setSelectedBagsCategoryId("");
+                    setSelectedBagsCategoryCode("");
+                    setSelectedBagCode("");
+                    setSelectedWalletsCategoryId("");
+                    setSelectedWalletsCategoryCode("");
+                    setSelectedWalletCode("");
+                    
+                    if (item === "Torebki") {
+                      // Initialize Torebki category defaults
+                      if (bagsCategories.length > 0) {
+                        const firstCategory = bagsCategories[0];
+                        setSelectedBagsCategoryId(firstCategory._id);
+                        setSelectedBagsCategoryCode(firstCategory.Kat_1_Kod_1);
+                      }
+                      if (colors.length > 0) {
+                        setSelectedColor(colors[0]._id);
+                      }
+                      if (bagsData.length > 0) {
+                        const firstBag = bagsData[0];
+                        setSelectedBagCode(firstBag.Torebki_Kod);
+                        // Update product name with first bag and color
+                        if (colors.length > 0) {
+                          updateBagProductName(firstBag.Torebki_Kod, colors[0]._id);
+                        }
+                      }
+                    } else if (item === "Portfele") {
+                      // Initialize Portfele category defaults
+                      if (walletsCategories.length > 0) {
+                        const firstCategory = walletsCategories[0];
+                        setSelectedWalletsCategoryId(firstCategory._id);
+                        setSelectedWalletsCategoryCode(firstCategory.Kat_1_Kod_1);
+                      }
+                      if (colors.length > 0) {
+                        setSelectedColor(colors[0]._id);
+                      }
+                      if (walletsData.length > 0) {
+                        const firstWallet = walletsData[0];
+                        setSelectedWalletCode(firstWallet.Portfele_Kod);
+                        // Update product name with first wallet and color
+                        if (colors.length > 0) {
+                          updateWalletProductName(firstWallet.Portfele_Kod, colors[0]._id);
+                        }
+                      }
+                    } else if (item === "Kurtki kożuchy futra") {
+                      // Initialize defaults for Kurtki
+                      if (subcategories.length > 0) {
+                        setSelectedSubcategory(subcategories[0]._id);
+                      }
+                      if (colors.length > 0) {
+                        setSelectedColor(colors[0]._id);
+                      }
+                    } else if (item === "Pozostałe") {
+                      // Initialize defa ults for Pozostałe
+                      if (remainingCategories.length > 0) {
+                        const firstCategory = remainingCategories[0];
+                        setSelectedRemainingCategoryId(firstCategory._id);
+                        // subcategories will be fetched by useEffect
+                      }
+                      if (colors.length > 0) {
+                        setSelectedColor(colors[0]._id);
+                      }
+                    }
+                    
                     setShowCategoryPicker(false);
                   }}
                 >
@@ -1076,6 +2032,7 @@ const ProductsList = () => {
                 s.Tow_Opis?.toLowerCase().includes(stockSearch.toLowerCase())
               )}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -1137,6 +2094,7 @@ const ProductsList = () => {
                 c.Kol_Opis?.toLowerCase().includes(colorSearch.toLowerCase())
               )}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -1145,6 +2103,14 @@ const ProductsList = () => {
                   ]}
                   onPress={() => {
                     setSelectedColor(item._id);
+                    // Update product name based on category
+                    if (category === "Torebki" && selectedBagCode) {
+                      updateBagProductName(selectedBagCode, item._id);
+                    } else if (category === "Portfele" && selectedWalletCode) {
+                      updateWalletProductName(selectedWalletCode, item._id);
+                    } else if (category === "Pozostałe" && selectedRemainingProductCode) {
+                      updateRemainingProductName(selectedRemainingProductCode, item._id);
+                    }
                     setShowColorPicker(false);
                     setColorSearch("");
                   }}
@@ -1198,6 +2164,7 @@ const ProductsList = () => {
                 s.Kat_1_Opis_1?.toLowerCase().includes(subcategorySearch.toLowerCase())
               )}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -1259,6 +2226,7 @@ const ProductsList = () => {
                 m.Prod_Opis?.toLowerCase().includes(manufacturerSearch.toLowerCase())
               )}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -1320,6 +2288,7 @@ const ProductsList = () => {
                 s.Roz_Opis?.toLowerCase().includes(sizeSearch.toLowerCase())
               )}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.pickerItem}
@@ -1335,6 +2304,428 @@ const ProductsList = () => {
                   <Text style={styles.pickerItemText}>
                     {item.Roz_Opis}
                   </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bags Category Picker Modal */}
+      <Modal
+        visible={showBagsCategoryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBagsCategoryPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz podkategorię</Text>
+              <TouchableOpacity onPress={() => setShowBagsCategoryPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={bagsCategories}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedBagsCategoryId === item._id && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedBagsCategoryId(item._id);
+                    setSelectedBagsCategoryCode(item.Kat_1_Kod_1);
+                    setShowBagsCategoryPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedBagsCategoryId === item._id && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Kat_1_Opis_1} ({item.Plec})
+                  </Text>
+                  {selectedBagsCategoryId === item._id && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Bags Picker Modal */}
+      <Modal
+        visible={showBagsPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBagsPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz torebkę</Text>
+              <TouchableOpacity onPress={() => setShowBagsPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerSearchContainer}>
+              <Ionicons name="search" size={20} color="#94A3B8" />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder="Szukaj..."
+                placeholderTextColor="#64748B"
+                value={bagsSearch}
+                onChangeText={setBagsSearch}
+              />
+            </View>
+            <FlatList
+              data={bagsData.filter(b => 
+                b.Torebki_Kod?.toLowerCase().includes(bagsSearch.toLowerCase())
+              )}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedBagCode === item.Torebki_Kod && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedBagCode(item.Torebki_Kod);
+                    // Update product name when bag is selected
+                    if (selectedColor) {
+                      updateBagProductName(item.Torebki_Kod, selectedColor);
+                    }
+                    setShowBagsPicker(false);
+                    setBagsSearch("");
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedBagCode === item.Torebki_Kod && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Torebki_Kod}
+                  </Text>
+                  {selectedBagCode === item.Torebki_Kod && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Wallets Category Picker Modal */}
+      <Modal
+        visible={showWalletsCategoryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowWalletsCategoryPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz podkategorię</Text>
+              <TouchableOpacity onPress={() => setShowWalletsCategoryPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={walletsCategories}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedWalletsCategoryId === item._id && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedWalletsCategoryId(item._id);
+                    setSelectedWalletsCategoryCode(item.Kat_1_Kod_1);
+                    setShowWalletsCategoryPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedWalletsCategoryId === item._id && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Kat_1_Opis_1} ({item.Plec})
+                  </Text>
+                  {selectedWalletsCategoryId === item._id && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Wallets Picker Modal */}
+      <Modal
+        visible={showWalletsPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowWalletsPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz portfel</Text>
+              <TouchableOpacity onPress={() => setShowWalletsPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerSearchContainer}>
+              <Ionicons name="search" size={20} color="#94A3B8" />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder="Szukaj..."
+                placeholderTextColor="#64748B"
+                value={walletsSearch}
+                onChangeText={setWalletsSearch}
+              />
+            </View>
+            <FlatList
+              data={walletsData.filter(w => 
+                w.Portfele_Kod?.toLowerCase().includes(walletsSearch.toLowerCase())
+              )}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedWalletCode === item.Portfele_Kod && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedWalletCode(item.Portfele_Kod);
+                    // Update product name when wallet is selected
+                    if (selectedColor) {
+                      updateWalletProductName(item.Portfele_Kod, selectedColor);
+                    }
+                    setShowWalletsPicker(false);
+                    setWalletsSearch("");
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedWalletCode === item.Portfele_Kod && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Portfele_Kod}
+                  </Text>
+                  {selectedWalletCode === item.Portfele_Kod && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Remaining Category Picker Modal */}
+      <Modal
+        visible={showRemainingCategoryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRemainingCategoryPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz podkategorię</Text>
+              <TouchableOpacity onPress={() => setShowRemainingCategoryPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={remainingCategories}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedRemainingCategoryId === item._id && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedRemainingCategoryId(item._id);
+                    // Reset subcategory and product when category changes
+                    setSelectedRemainingSubcategoryId("");
+                    setSelectedRemainingProductCode("");
+                    setProductName("");
+                    
+                    // Immediately load subcategories based on category
+                    if (item._id === 'belts') {
+                      const beltsOptions = belts.map(belt => ({
+                        _id: belt._id,
+                        Sub_Opis: belt.Belt_Opis,
+                        type: 'belt'
+                      }));
+                      setRemainingSubcategories(beltsOptions);
+                      if (beltsOptions.length > 0) {
+                        setSelectedRemainingSubcategoryId(beltsOptions[0]._id);
+                      }
+                    } else if (item._id === 'gloves') {
+                      const glovesOptions = gloves.map(glove => ({
+                        _id: glove._id,
+                        Sub_Opis: glove.Glove_Opis,
+                        type: 'glove'
+                      }));
+                      setRemainingSubcategories(glovesOptions);
+                      if (glovesOptions.length > 0) {
+                        setSelectedRemainingSubcategoryId(glovesOptions[0]._id);
+                      }
+                    }
+                    
+                    setShowRemainingCategoryPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedRemainingCategoryId === item._id && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Rem_Kat_1_Opis_1}
+                  </Text>
+                  {selectedRemainingCategoryId === item._id && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Remaining Subcategory Picker Modal */}
+      <Modal
+        visible={showRemainingSubcategoryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRemainingSubcategoryPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz podpodkategorię</Text>
+              <TouchableOpacity onPress={() => setShowRemainingSubcategoryPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={remainingSubcategories}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedRemainingSubcategoryId === item._id && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedRemainingSubcategoryId(item._id);
+                    setShowRemainingSubcategoryPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedRemainingSubcategoryId === item._id && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Sub_Opis}
+                  </Text>
+                  {selectedRemainingSubcategoryId === item._id && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.pickerEmptyText}>Brak wyników</Text>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Remaining Products Picker Modal */}
+      <Modal
+        visible={showRemainingPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRemainingPicker(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>Wybierz produkt</Text>
+              <TouchableOpacity onPress={() => setShowRemainingPicker(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerSearchContainer}>
+              <Ionicons name="search" size={20} color="#94A3B8" />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder="Szukaj..."
+                placeholderTextColor="#64748B"
+                value={remainingProductsSearch}
+                onChangeText={setRemainingProductsSearch}
+              />
+            </View>
+            <FlatList
+              data={getFilteredRemainingProducts()}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    selectedRemainingProductCode === item.Poz_Kod && styles.pickerItemSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedRemainingProductCode(item.Poz_Kod);
+                    // Update product name when product is selected
+                    if (selectedColor) {
+                      updateRemainingProductName(item.Poz_Kod, selectedColor);
+                    }
+                    setShowRemainingPicker(false);
+                    setRemainingProductsSearch("");
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedRemainingProductCode === item.Poz_Kod && styles.pickerItemTextSelected
+                  ]}>
+                    {item.Poz_Kod}
+                  </Text>
+                  {selectedRemainingProductCode === item.Poz_Kod && (
+                    <Ionicons name="checkmark" size={24} color="#0D6EFD" />
+                  )}
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
@@ -1713,6 +3104,7 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: "row",
     padding: 20,
+    paddingBottom: 40,
     gap: 12,
     borderTopWidth: 1,
     borderTopColor: "#1E293B",
