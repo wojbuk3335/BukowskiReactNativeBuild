@@ -723,13 +723,18 @@ const Home = () => {
   };
 
   const performRemoval = async (employeeId, deleteWorkHours) => {
+    console.log('\n========== 🗑️ USUWANIE SPRZEDAWCY - START ==========');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log('👤 Employee ID:', employeeId);
+    console.log('🕒 Usuń godziny pracy (deleteWorkHours):', deleteWorkHours);
+    
     try {
       // Pobierz dane użytkownika z localStorage
+      console.log('🔐 Pobieranie danych autoryzacji...');
       const { accessToken } = await tokenService.getTokens();
       const userData = await AsyncStorage.getItem('user');
-      
-      // Logger.debug('Remove salesperson - Token:', accessToken ? 'present' : 'missing');
-      // Logger.debug('Remove salesperson - UserData:', userData ? 'present' : 'missing');
+      console.log('🔑 Token present:', !!accessToken);
+      console.log('👤 UserData present:', !!userData);
       
       if (!accessToken || !userData) {
         setSuccessMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
@@ -739,18 +744,19 @@ const Home = () => {
 
       const user = JSON.parse(userData);
       const sellingPoint = user.sellingPoint || user.symbol;
-      
-      // Logger.debug('Remove salesperson - Selling point:', sellingPoint);
-      // Logger.debug('Remove salesperson - Employee ID:', employeeId);
+      console.log('🏢 Punkt sprzedaży (sellingPoint):', sellingPoint);
+      console.log('📧 Email użytkownika:', user.email);
 
       if (!sellingPoint) {
+        console.log('❌ Błąd: Brak punktu sprzedaży');
         setSuccessMessage("Nie można określić punktu sprzedaży.");
         setSuccessModalVisible(true);
         return;
       }
 
       const url = getApiUrl(`/sales-assignments/employee/${employeeId}?sellingPoint=${encodeURIComponent(sellingPoint)}&deleteWorkHours=${deleteWorkHours}`);
-      // Logger.debug('Remove salesperson - URL:', url);
+      console.log('📍 Request URL:', url);
+      console.log('📤 Wysyłam żądanie DELETE...');
 
       const response = await fetch(url, {
         method: 'DELETE',
@@ -760,40 +766,53 @@ const Home = () => {
         }
       });
 
-      // Logger.debug('Remove salesperson - Response status:', response.status);
+      console.log('📥 Response status:', response.status);
       
       const data = await response.json();
-      // Logger.debug('Remove salesperson - Response data:', data);
+      console.log('📥 Response data:', JSON.stringify(data, null, 2));
 
       if (response.ok) {
+        console.log('✅ SUKCES: Sprzedawca został usunięty przez API');
         // Usuń z lokalnego stanu
         const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+        console.log('🔄 Aktualizuję lokalny stan - pozostaje:', updatedSalespeople.length, 'sprzedawców');
         setAssignedSalespeople(updatedSalespeople);
         
         // 🔄 Odśwież godziny pracy żeby stan był aktualny
+        console.log('🔄 Odświeżam godziny pracy...');
         await fetchTodaysWorkHours();
         
         const message = deleteWorkHours 
           ? "Sprzedawca został usunięty z zespołu wraz z godzinami pracy." 
           : "Sprzedawca został usunięty z zespołu. Godziny pracy zostały zachowane.";
+        console.log('📝 Komunikat:', message);
+        console.log('========== ✅ USUWANIE SPRZEDAWCY - KONIEC ==========\n');
         setSuccessMessage(message);
         setSuccessModalVisible(true);
       } else if (response.status === 404) {
+        console.log('⚠️ Status 404: Przypisanie nie istnieje w bazie');
         // Przypisanie nie istnieje w bazie - usuń tylko lokalnie
         const updatedSalespeople = assignedSalespeople.filter(person => person._id !== employeeId);
+        console.log('🔄 Aktualizuję tylko lokalny stan');
         setAssignedSalespeople(updatedSalespeople);
         
-        // 🔄 Odśwież godziny pracy żeby stan był aktualny  
+        // 🔄 Odświeżam godziny pracy żeby stan był aktualny  
         await fetchTodaysWorkHours();
         
+        console.log('========== ✅ USUWANIE SPRZEDAWCY - KONIEC ==========\n');
         setSuccessMessage("Sprzedawca został usunięty z zespołu (nie był zapisany w bazie danych).");
         setSuccessModalVisible(true);
       } else {
+        console.log('❌ BŁĄD: Nie udało się usunąć sprzedawcy');
+        console.log('========== ❌ USUWANIE SPRZEDAWCY - KONIEC ==========\n');
         setSuccessMessage(data.message || "Nie udało się usunąć sprzedawcy z bazy danych");
         setSuccessModalVisible(true);
       }
     } catch (error) {
-      Logger.error('Error removing salesperson:', error);
+      console.log('💥 EXCEPTION podczas usuwania sprzedawcy:', error);
+      console.log('📄 Error message:', error.message);
+      console.log('📄 Error stack:', error.stack);
+      console.log('========== ❌ USUWANIE SPRZEDAWCY - KONIEC ==========\n');
       setSuccessMessage("Błąd połączenia z serwerem. Spróbuj ponownie.");
       setSuccessModalVisible(true);
     }
@@ -816,7 +835,13 @@ const Home = () => {
   };
 
   const assignSelectedSalespeople = async () => {
+    console.log('\n========== 📝 DODAWANIE SPRZEDAWCÓW - START ==========');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log('👥 Liczba wybranych sprzedawców:', selectedSalespeople.length);
+    console.log('📋 Wybrani sprzedawcy:', selectedSalespeople.map(s => `${s.firstName} ${s.lastName} (ID: ${s._id})`));
+    
     if (selectedSalespeople.length === 0) {
+      console.log('❌ Błąd: Nie wybrano żadnych sprzedawców');
       setErrorMessage("Proszę wybrać co najmniej jednego sprzedawcę.");
       setErrorModalVisible(true);
       return;
@@ -827,8 +852,11 @@ const Home = () => {
     let errorCount = 0;
 
     // Pobierz dane autoryzacji
+    console.log('🔐 Pobieranie danych autoryzacji...');
     const { accessToken } = await tokenService.getTokens();
     const userData = await AsyncStorage.getItem('user');
+    console.log('🔑 Token present:', !!accessToken);
+    console.log('👤 UserData present:', !!userData);
     
     if (!accessToken || !userData) {
       setErrorMessage("Brak danych autoryzacji. Zaloguj się ponownie.");
@@ -838,18 +866,30 @@ const Home = () => {
 
     const user = JSON.parse(userData);
     const sellingPoint = user.sellingPoint || user.symbol;
+    console.log('🏢 Punkt sprzedaży (sellingPoint):', sellingPoint);
+    console.log('📧 Email użytkownika:', user.email);
 
     if (!sellingPoint) {
+      console.log('❌ Błąd: Brak punktu sprzedaży');
       setErrorMessage("Nie można określić punktu sprzedaży.");
       setErrorModalVisible(true);
       return;
     }
 
     // Dodaj każdego sprzedawcę przez API
+    console.log('\n🔄 Rozpoczynam przypisywanie sprzedawców...');
     for (const employee of selectedSalespeople) {
+      console.log(`\n--- Przetwarzam: ${employee.firstName} ${employee.lastName} ---`);
       if (!assignedSalespeople.find(person => person._id === employee._id)) {
         try {
-          // Logger.debug(`Assign salesperson - Adding ${employee.firstName} ${employee.lastName} to database`);
+          console.log(`📤 Wysyłam żądanie POST do API...`);
+          console.log(`📍 URL: ${getApiUrl('/sales-assignments')}`);
+          const requestBody = {
+            employeeId: employee._id,
+            sellingPoint: sellingPoint,
+            notes: `Przypisano przez ${user.email || user.symbol}`
+          };
+          console.log(`📦 Request body:`, JSON.stringify(requestBody, null, 2));
           
           const response = await fetch(getApiUrl('/sales-assignments'), {
             method: 'POST',
@@ -857,36 +897,49 @@ const Home = () => {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${accessToken}`
             },
-            body: JSON.stringify({
-              employeeId: employee._id,
-              sellingPoint: sellingPoint,
-              notes: `Przypisano przez ${user.email || user.symbol}`
-            })
+            body: JSON.stringify(requestBody)
           });
 
+          console.log(`📥 Response status:`, response.status);
           const data = await response.json();
+          console.log(`📥 Response data:`, JSON.stringify(data, null, 2));
 
           if (response.ok) {
             addedCount++;
-            // Logger.debug(`Successfully assigned ${employee.firstName} ${employee.lastName}`);
+            console.log(`✅ SUKCES: ${employee.firstName} ${employee.lastName} został dodany`);
           } else {
             errorCount++;
-            Logger.error(`Failed to assign ${employee.firstName} ${employee.lastName}:`, data.message);
+            console.log(`❌ BŁĄD: Nie udało się dodać ${employee.firstName} ${employee.lastName}`);
+            console.log(`📄 Komunikat błędu:`, data.message);
           }
         } catch (error) {
           errorCount++;
-          Logger.error(`Error assigning ${employee.firstName} ${employee.lastName}:`, error);
+          console.log(`💥 EXCEPTION podczas dodawania ${employee.firstName} ${employee.lastName}:`, error);
+          console.log(`📄 Error message:`, error.message);
+          console.log(`📄 Error stack:`, error.stack);
         }
       } else {
+        console.log(`⚠️ Pracownik już przypisany - pomijam`);
         alreadyAssignedNames.push(`${employee.firstName} ${employee.lastName}`);
       }
     }
 
     // Odśwież listę przypisanych sprzedawców z bazy danych
+    console.log('\n🔄 Odświeżam listę przypisanych sprzedawców...');
     await fetchAssignedSalespeople();
     
     // 🔧 FIX: Odśwież też godziny pracy, żeby pokazać aktualny stan
+    console.log('🔄 Odświeżam godziny pracy...');
     await fetchTodaysWorkHours();
+
+    console.log('\n📊 PODSUMOWANIE DODAWANIA:');
+    console.log(`✅ Dodano pomyślnie: ${addedCount}`);
+    console.log(`❌ Błędy: ${errorCount}`);
+    console.log(`⚠️ Już przypisani: ${alreadyAssignedNames.length}`);
+    if (alreadyAssignedNames.length > 0) {
+      console.log(`   - ${alreadyAssignedNames.join(', ')}`);
+    }
+    console.log('========== ✅ DODAWANIE SPRZEDAWCÓW - KONIEC ==========\n');
 
     setSalespersonModalVisible(false);
     setSelectedSalespeople([]);
@@ -1222,6 +1275,9 @@ const Home = () => {
   };
 
   const submitWorkHours = async () => {
+    console.log('\n========== ⏰ AKTUALIZACJA GODZIN PRACY - START ==========');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    
     try {
       const workHoursData = {
         employeeId: selectedEmployeeForHours._id,
@@ -1233,10 +1289,17 @@ const Home = () => {
         notes: workNotes.trim()
       };
 
-      // Logger.debug('🔍 DEBUG Work Hours Submit:');
-      // Logger.debug('- workHoursData:', workHoursData);
+      console.log('👤 Pracownik:', `${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName}`);
+      console.log('📅 Data:', workHoursData.date);
+      console.log('🕐 Godzina rozpoczęcia:', workHoursData.startTime);
+      console.log('🕔 Godzina zakończenia:', workHoursData.endTime);
+      console.log('🏢 Punkt sprzedaży:', workHoursData.sellingPoint);
+      console.log('📍 Lokalizacja:', workHoursData.location);
+      console.log('📝 Notatki:', workHoursData.notes || '(brak)');
+      console.log('📦 Pełne dane:', JSON.stringify(workHoursData, null, 2));
 
       // Użyj endpoint upsert - automatycznie update lub create
+      console.log('📤 Wysyłam żądanie PUT do:', getApiUrl('/work-hours/upsert'));
       const response = await tokenService.authenticatedFetch(getApiUrl('/work-hours/upsert'), {
         method: 'PUT',
         headers: {
@@ -1245,28 +1308,44 @@ const Home = () => {
         body: JSON.stringify(workHoursData)
       });
 
+      console.log('📥 Response status:', response.status);
+
       if (response.ok) {
         const result = await response.json();
+        console.log('✅ SUKCES: Godziny pracy zapisane');
+        console.log('📥 Response data:', JSON.stringify(result, null, 2));
         const actionText = result.isUpdate ? 'zaktualizowane' : 'zapisane';
+        console.log('🔄 Typ operacji:', actionText);
+        console.log('💰 Dzienna wypłata:', result.workHours.dailyPay, 'PLN');
+        
         setSuccessMessage(
           `Godziny pracy dla ${selectedEmployeeForHours.firstName} ${selectedEmployeeForHours.lastName} zostały ${actionText}.\n\nGodziny: ${workStartTime} - ${workEndTime}\nWypłata: ${result.workHours.dailyPay.toFixed(2)} PLN`
         );
         setSuccessModalVisible(true);
+        console.log('🔒 Zamykam modal godzin pracy...');
         closeWorkHoursModal(); // Użyj funkcji pomocniczej do zamknięcia
+        console.log('🔄 Odświeżam dzisiejsze godziny pracy...');
         fetchTodaysWorkHours(); // Refresh today's work hours
         
         // 🔄 AUTOMATICALLY RECALCULATE COMMISSIONS after work hours update
+        console.log('🔄 Przeliczam prowizje...');
         await recalculateCommissions();
+        console.log('========== ✅ AKTUALIZACJA GODZIN PRACY - KONIEC ==========\n');
       } else {
         const errorData = await response.json();
-        Logger.error('❌ Error saving work hours:', errorData);
+        console.log('❌ BŁĄD: Nie udało się zapisać godzin pracy');
+        console.log('📥 Error data:', JSON.stringify(errorData, null, 2));
+        console.log('========== ❌ AKTUALIZACJA GODZIN PRACY - KONIEC ==========\n');
         setSuccessMessage(
           errorData.message || "Nie udało się zapisać godzin pracy."
         );
         setSuccessModalVisible(true);
       }
     } catch (error) {
-      Logger.error("Error saving work hours:", error);
+      console.log('💥 EXCEPTION podczas zapisywania godzin:', error);
+      console.log('📄 Error message:', error.message);
+      console.log('📄 Error stack:', error.stack);
+      console.log('========== ❌ AKTUALIZACJA GODZIN PRACY - KONIEC ==========\n');
       setSuccessMessage(
         `Wystąpił błąd podczas zapisywania godzin pracy.\n\nSzczegóły: ${error.message}`
       );
