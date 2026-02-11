@@ -884,6 +884,9 @@ const Home = () => {
 
     // Odśwież listę przypisanych sprzedawców z bazy danych
     await fetchAssignedSalespeople();
+    
+    // 🔧 FIX: Odśwież też godziny pracy, żeby pokazać aktualny stan
+    await fetchTodaysWorkHours();
 
     setSalespersonModalVisible(false);
     setSelectedSalespeople([]);

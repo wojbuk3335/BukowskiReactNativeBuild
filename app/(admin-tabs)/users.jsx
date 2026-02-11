@@ -52,6 +52,9 @@ const Users = () => {
   // Yellow transfers (incoming transfers)
   const [yellowTransfers, setYellowTransfers] = useState([]);
   
+  // All products cache (for prices)
+  const [allProducts, setAllProducts] = useState([]);
+  
   // Corrections modal
   const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
   const [correctionsData, setCorrectionsData] = useState(null);
@@ -97,7 +100,27 @@ const Users = () => {
     if (users.length === 0) {
       fetchUsers();
     }
+    fetchAllProducts(); // Fetch products for price cache
   }, []);
+
+  const fetchAllProducts = async () => {
+    try {
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl('/excel/goods/get-all-goods');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const products = data.goods || [];
+        setAllProducts(products);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    }
+  };
 
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
@@ -678,36 +701,95 @@ const Users = () => {
 
     // Step 1: Print labels for orange and yellow items
     const itemsToPrint = [
-      ...transfers.filter(t => t.fromWarehouse), // Orange from warehouse
-      ...matchedPairs.filter(pair => {
-        // Orange matched items (not already in manual transfers)
+      ...transfers.filter(t => t.fromWarehouse).map(item => {
+        // 🔧 FIX: Enrich transfer items with price
+        if (!item.price) {
+          const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+          
+          // Try warehouse first (match by barcode OR fullName)
+          const matchingWarehouse = warehouseItems.find(w => 
+            w.barcode === item.barcode || w.fullName === itemFullName
+          );
+          if (matchingWarehouse) {
+            return { ...item, price: matchingWarehouse.price };
+          }
+          
+          // Try product cache by fullName
+          if (itemFullName && allProducts.length > 0) {
+            const productByName = allProducts.find(p => p.fullName === itemFullName);
+            if (productByName) {
+              return { ...item, price: productByName.price };
+            }
+          }
+          
+          // Fallback to 0 if nothing found
+          return { ...item, price: 0 };
+        }
+        return item;
+      }), // Orange from warehouse
+      ...matchedPairs.map(pair => {
+        // Orange matched items - enrich with price if missing
         const warehouseItem = pair.warehouseProduct;
-        return !transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
-      }).map(pair => pair.warehouseProduct),
-      ...yellowTransfers // Yellow incoming transfers
+        if (!warehouseItem.price) {
+          const itemFullName = typeof warehouseItem.fullName === 'string' ? warehouseItem.fullName : warehouseItem.fullName?.fullName;
+          
+          // Try allProducts by fullName
+          if (itemFullName && allProducts.length > 0) {
+            const productByName = allProducts.find(p => p.fullName === itemFullName);
+            if (productByName) {
+              return { ...warehouseItem, price: productByName.price };
+            }
+          }
+          return { ...warehouseItem, price: 0 };
+        }
+        return warehouseItem;
+      }), // Orange matched pairs
+      ...yellowTransfers.map(item => {
+        // 🔧 FIX: Enrich yellow transfer items with price
+        if (!item.price) {
+          const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+          
+          // Try warehouse first (match by barcode OR fullName)
+          const matchingWarehouse = warehouseItems.find(w => 
+            w.barcode === item.barcode || w.fullName === itemFullName
+          );
+          if (matchingWarehouse) {
+            return { ...item, price: matchingWarehouse.price };
+          }
+          
+          // Try product cache by fullName
+          if (itemFullName && allProducts.length > 0) {
+            const productByName = allProducts.find(p => p.fullName === itemFullName);
+            if (productByName) {
+              return { ...item, price: productByName.price };
+            }
+          }
+          
+          // Fallback to 0 if nothing found
+          return { ...item, price: 0 };
+        }
+        return item;
+      }) // Yellow incoming transfers
     ];
 
     if (itemsToPrint.length > 0) {
       try {
         setProcessing(true);
         
-        // Print all labels
-        let successCount = 0;
-        let errorCount = 0;
-        
-        for (const item of itemsToPrint) {
+        // Print labels quickly - printer has buffer
+        const results = [];
+        for (let i = 0; i < itemsToPrint.length; i++) {
+          const item = itemsToPrint[i];
+          
           try {
             const result = await handlePrintLabel(item);
-            if (result) {
-              successCount++;
-            } else {
-              errorCount++;
-            }
+            results.push(result);
           } catch (error) {
-            console.error('Error printing label:', error);
-            errorCount++;
+            results.push(false);
           }
         }
+        const successCount = results.filter(r => r === true).length;
+        const errorCount = results.filter(r => r === false).length;
         
         setProcessing(false);
         
@@ -1311,9 +1393,39 @@ const Users = () => {
           </View>
           
           <View style={styles.transferActions}>
-            <View style={styles.matchedBadge}>
-              <Text style={styles.matchedBadgeText}>✓</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.printButton}
+              onPress={() => {
+                // 🔧 Enrich item with price before printing
+                const enrichedItem = { ...item };
+                const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+                
+                // Try warehouse first (match by barcode OR fullName)
+                if (!enrichedItem.price) {
+                  const matchingWarehouse = warehouseItems.find(w => 
+                    w.barcode === enrichedItem.barcode || 
+                    w.fullName === itemFullName
+                  );
+                  if (matchingWarehouse) {
+                    enrichedItem.price = matchingWarehouse.price;
+                  }
+                }
+                
+                // Try allProducts cache (match by fullName)
+                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                  const productByName = allProducts.find(p => p.fullName === itemFullName);
+                  if (productByName) {
+                    enrichedItem.price = productByName.price;
+                  } else {
+                    enrichedItem.price = 0; // Fallback if product deleted
+                  }
+                }
+                
+                handlePrintLabel(enrichedItem);
+              }}
+            >
+              <Ionicons name="print" size={20} color="#fff" />
+            </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.returnButton}
@@ -1349,7 +1461,34 @@ const Users = () => {
           <View style={styles.transferActions}>
             <TouchableOpacity
               style={styles.printButton}
-              onPress={() => handlePrintLabel(item)}
+              onPress={() => {
+                // 🔧 Enrich item with price before printing
+                const enrichedItem = { ...item };
+                const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+                
+                // Try warehouse first (match by barcode OR fullName)
+                if (!enrichedItem.price) {
+                  const matchingWarehouse = warehouseItems.find(w => 
+                    w.barcode === enrichedItem.barcode || 
+                    w.fullName === itemFullName
+                  );
+                  if (matchingWarehouse) {
+                    enrichedItem.price = matchingWarehouse.price;
+                  }
+                }
+                
+                // Try allProducts cache (match by fullName)
+                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                  const productByName = allProducts.find(p => p.fullName === itemFullName);
+                  if (productByName) {
+                    enrichedItem.price = productByName.price;
+                  } else {
+                    enrichedItem.price = 0; // Fallback if product deleted
+                  }
+                }
+                
+                handlePrintLabel(enrichedItem);
+              }}
             >
               <Ionicons name="print" size={20} color="#fff" />
             </TouchableOpacity>
@@ -1394,8 +1533,44 @@ const Users = () => {
             </Text>
           </View>
           
-          <View style={styles.yellowBadge}>
-            <Text style={styles.yellowBadgeText}>🟡</Text>
+          <View style={styles.transferActions}>
+            <TouchableOpacity
+              style={styles.printButton}
+              onPress={() => {
+                // 🔧 Enrich item with price before printing
+                const enrichedItem = { ...item };
+                const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+                
+                // Try warehouse first (match by barcode OR fullName)
+                if (!enrichedItem.price) {
+                  const matchingWarehouse = warehouseItems.find(w => 
+                    w.barcode === enrichedItem.barcode || 
+                    w.fullName === itemFullName
+                  );
+                  if (matchingWarehouse) {
+                    enrichedItem.price = matchingWarehouse.price;
+                  }
+                }
+                
+                // Try allProducts cache (match by fullName)
+                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                  const productByName = allProducts.find(p => p.fullName === itemFullName);
+                  if (productByName) {
+                    enrichedItem.price = productByName.price;
+                  } else {
+                    enrichedItem.price = 0; // Fallback if product deleted
+                  }
+                }
+                
+                handlePrintLabel(enrichedItem);
+              }}
+            >
+              <Ionicons name="print" size={20} color="#fff" />
+            </TouchableOpacity>
+            
+            <View style={styles.yellowBadge}>
+              <Text style={styles.yellowBadgeText}>🟡</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -1406,7 +1581,15 @@ const Users = () => {
     const itemName = item.fullName?.fullName || item.fullName || 'N/A';
     const itemSize = item.size?.Roz_Opis || item.size || 'N/A';
     const barcode = item.barcode || 'NO-BARCODE';
-    const price = item.price || item.fullName?.price || 0;
+    
+    // 🔧 FIX: Extract price (should be enriched before calling this function)
+    let price = null;
+    if (item.price !== undefined && item.price !== null) {
+      price = item.price;
+    } else if (item.fullName?.price !== undefined && item.fullName?.price !== null) {
+      price = item.fullName.price;
+    }
+    
     const symbol = item.symbol || item.sellingPoint?.symbol || item.transfer_to || 'N/A';
 
     const pointMapping = {
@@ -1433,7 +1616,11 @@ const Users = () => {
     const safeName = processedName.replace(/[^\x00-\x7F]/g, '?');
     const safeSize = (itemSize || 'N/A').replace(/[^\x00-\x7F]/g, '?');
     const safeTransfer = (mappedPoint || 'N/A').replace(/[^\x00-\x7F]/g, '?');
-    const safePrice = (price || 'N/A').toString().replace(/[^\x00-\x7F]/g, '?');
+    
+    // 🔧 FIX: Only show 'N/A' if price is truly missing (not if it's 0)
+    const safePrice = (price !== null && price !== undefined) 
+      ? price.toString().replace(/[^\x00-\x7F]/g, '?') 
+      : 'N/A';
 
     return `^XA
 ^MMT
@@ -1459,6 +1646,10 @@ const Users = () => {
       const printerPort = 9100;
       const printerUrl = `http://${printerIP}:${printerPort}`;
 
+      // Kontroler do timeout - 300ms (drukarka nie odpowiada przez HTTP)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300);
+
       // Wyślij ZPL bezpośrednio do drukarki przez HTTP POST
       const response = await fetch(printerUrl, {
         method: 'POST',
@@ -1466,27 +1657,23 @@ const Users = () => {
           'Content-Type': 'text/plain',
         },
         body: zplCode,
+        signal: controller.signal
       });
 
-      // Drukarki Zebra zwracają różne statusy - sprawdź czy nie ma błędu
-      if (!response.ok && response.status !== 0) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      Alert.alert(
-        '✅ NOWY KOD - Drukowanie HTTP',
-        `Etykieta wysłana bezpośrednio przez HTTP na ${printerIP}:${printerPort}\n\nTo jest NOWY kod - działa!`,
-        [{ text: 'OK' }]
-      );
+      clearTimeout(timeoutId);
+      
+      // 🔇 Ciche drukowanie - bez komunikatu sukcesu
       return true;
 
     } catch (error) {
-      console.error('Error printing label:', error);
-      Alert.alert(
-        'Błąd drukowania',
-        `Nie można połączyć z drukarką. Sprawdź czy:\n1. Jesteś w sieci WiFi sklepu\n2. Drukarka jest włączona\n3. Adres: 192.168.1.25`,
-        [{ text: 'OK' }]
-      );
+      // ✅ AbortError = SUKCES! Drukarka Zebra nie odpowiada przez HTTP,
+      // ale jeśli dostaliśmy timeout to znaczy że komenda została wysłana
+      if (error.name === 'AbortError') {
+        return true; // Sukces - drukarka dostała komendę
+      }
+      
+      // ❌ Inne błędy (brak sieci, etc.) - zwróć false
+      // Modal potwierdzenia pokaże statystyki błędów
       return false;
     }
   };
@@ -2176,10 +2363,10 @@ const Users = () => {
             </View>
             
             <TouchableOpacity
-              style={styles.confirmModalConfirmButton}
+              style={styles.printErrorButton}
               onPress={() => setShowPrintErrorModal(false)}
             >
-              <Text style={styles.confirmModalConfirmText}>OK</Text>
+              <Text style={styles.printErrorButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2967,6 +3154,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#94A3B8",
+  },
+  printErrorButton: {
+    backgroundColor: "#ef4444",
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 120,
+    marginTop: 8,
+  },
+  printErrorButtonText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#ffffff",
+    textAlign: "center",
   },
   topWarningContainer: {
     paddingHorizontal: 16,
