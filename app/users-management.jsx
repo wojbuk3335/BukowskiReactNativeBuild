@@ -29,6 +29,10 @@ const UsersManagement = () => {
   // Modal states
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [isSuccessModalVisible, setIsSuccessModalVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isErrorModalVisible, setIsErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   // Form states
   const [formData, setFormData] = useState({
@@ -39,6 +43,7 @@ const UsersManagement = () => {
     role: 'user',
     sellingPoint: '',
     location: '',
+    pointNumber: '',
   });
   
   const [editingUser, setEditingUser] = useState(null);
@@ -55,7 +60,7 @@ const UsersManagement = () => {
       await Promise.all([fetchUsers(), fetchLocalizations()]);
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Błąd', 'Nie udało się załadować danych');
+      showError('Nie udało się załadować danych');
     } finally {
       setLoading(false);
     }
@@ -84,13 +89,20 @@ const UsersManagement = () => {
 
   const fetchLocalizations = async () => {
     try {
-      const response = await axios.get(getApiUrl('/excel/localization/get-all-localizations'));
+      const { accessToken } = await tokenService.getTokens();
+      const response = await axios.get(getApiUrl('/excel/localization/get-all-localizations'), {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
       const localizationsWithDescription = response.data.localizations.filter(
         (loc) => loc.Miejsc_1_Opis_1 && loc.Miejsc_1_Opis_1.trim() !== ''
       );
       setLocalizations(localizationsWithDescription);
     } catch (error) {
       console.error('Error fetching localizations:', error);
+      // Ustaw pustą tablicę jeśli nie udało się pobrać lokalizacji
+      setLocalizations([]);
     }
   };
 
@@ -103,39 +115,67 @@ const UsersManagement = () => {
       role: 'user',
       sellingPoint: '',
       location: '',
+      pointNumber: '',
     });
     setShowPassword(false);
     setShowConfirmPassword(false);
   };
 
+  const showError = (message) => {
+    setErrorMessage(message);
+    setIsErrorModalVisible(true);
+  };
+
   const validateForm = (isEditing = false) => {
     if (!formData.email || !formData.symbol) {
-      Alert.alert('Błąd', 'Email i symbol są wymagane');
+      showError('Email i symbol są wymagane');
       return false;
     }
 
     if (!isEditing && !formData.password) {
-      Alert.alert('Błąd', 'Hasło jest wymagane');
+      showError('Hasło jest wymagane');
       return false;
     }
 
     if (formData.password && formData.password.length < 5) {
-      Alert.alert('Błąd', 'Hasło musi mieć co najmniej 5 znaków');
+      showError('Hasło musi mieć co najmniej 5 znaków');
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      Alert.alert('Błąd', 'Hasła nie są identyczne');
+      showError('Hasła nie są identyczne');
       return false;
     }
 
     if (formData.role === 'user') {
       if (!formData.sellingPoint) {
-        Alert.alert('Błąd', 'Użytkownik musi mieć punkt sprzedaży');
+        showError('Użytkownik musi mieć punkt sprzedaży');
         return false;
       }
       if (!formData.location) {
-        Alert.alert('Błąd', 'Użytkownik musi mieć lokalizację');
+        showError('Użytkownik musi mieć lokalizację');
+        return false;
+      }
+    }
+
+    // Walidacja numeru punktu dla user i magazyn
+    if (formData.role === 'user' || formData.role === 'magazyn') {
+      if (!formData.pointNumber || formData.pointNumber.trim() === '') {
+        showError('Numer punktu jest wymagany (00-99)');
+        return false;
+      }
+      if (!/^\d{2}$/.test(formData.pointNumber)) {
+        showError('Numer punktu musi być dwucyfrowy (00-99)');
+        return false;
+      }
+      const pointNumberExists = users.some(
+        (u) =>
+          u.pointNumber &&
+          u.pointNumber === formData.pointNumber &&
+          (!isEditing || u._id !== editingUser?._id)
+      );
+      if (pointNumberExists) {
+        showError(`Numer punktu ${formData.pointNumber} jest już zajęty`);
         return false;
       }
     }
@@ -147,7 +187,7 @@ const UsersManagement = () => {
         (!isEditing || u._id !== editingUser?._id)
     );
     if (emailExists) {
-      Alert.alert('Błąd', 'Użytkownik z tym emailem już istnieje');
+      showError('Użytkownik z tym emailem już istnieje');
       return false;
     }
 
@@ -157,7 +197,7 @@ const UsersManagement = () => {
         (!isEditing || u._id !== editingUser?._id)
     );
     if (symbolExists) {
-      Alert.alert('Błąd', 'Użytkownik z tym symbolem już istnieje');
+      showError('Użytkownik z tym symbolem już istnieje');
       return false;
     }
 
@@ -170,7 +210,7 @@ const UsersManagement = () => {
           (!isEditing || u._id !== editingUser?._id)
       );
       if (sellingPointExists) {
-        Alert.alert('Błąd', 'Użytkownik z tym punktem sprzedaży już istnieje');
+        showError('Użytkownik z tym punktem sprzedaży już istnieje');
         return false;
       }
     }
@@ -198,13 +238,15 @@ const UsersManagement = () => {
         },
       });
 
-      Alert.alert('Sukces', 'Użytkownik został dodany');
+      setSuccessMessage('Użytkownik został dodany pomyślnie');
+      setIsSuccessModalVisible(true);
       setIsAddModalVisible(false);
       resetForm();
       await fetchUsers();
     } catch (error) {
       console.error('Error adding user:', error);
-      Alert.alert('Błąd', error.response?.data?.message || 'Nie udało się dodać użytkownika');
+      setErrorMessage(error.response?.data?.message || 'Nie udało się dodać użytkownika');
+      setIsErrorModalVisible(true);
     }
   };
 
@@ -218,6 +260,7 @@ const UsersManagement = () => {
       role: userToEdit.role,
       sellingPoint: userToEdit.sellingPoint || '',
       location: userToEdit.location || '',
+      pointNumber: userToEdit.pointNumber || '',
     });
     setIsEditModalVisible(true);
   };
@@ -229,7 +272,7 @@ const UsersManagement = () => {
     if (editingUser.role === 'admin' && formData.role !== 'admin') {
       const adminCount = users.filter((u) => u.role === 'admin').length;
       if (adminCount <= 1) {
-        Alert.alert('Błąd', 'Nie można zmienić ostatniego administratora na użytkownika');
+        showError('Nie można zmienić ostatniego administratora na użytkownika');
         return;
       }
     }
@@ -251,14 +294,16 @@ const UsersManagement = () => {
         },
       });
 
-      Alert.alert('Sukces', 'Użytkownik został zaktualizowany');
+      setSuccessMessage('Użytkownik został zaktualizowany pomyślnie');
+      setIsSuccessModalVisible(true);
       setIsEditModalVisible(false);
       resetForm();
       setEditingUser(null);
       await fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
-      Alert.alert('Błąd', error.response?.data?.message || 'Nie udało się zaktualizować użytkownika');
+      setErrorMessage(error.response?.data?.message || 'Nie udało się zaktualizować użytkownika');
+      setIsErrorModalVisible(true);
     }
   };
 
@@ -268,7 +313,7 @@ const UsersManagement = () => {
     if (userToDelete.role === 'admin') {
       const adminCount = users.filter((u) => u.role === 'admin').length;
       if (adminCount <= 1) {
-        Alert.alert('Błąd', 'Nie można usunąć ostatniego administratora');
+        showError('Nie można usunąć ostatniego administratora');
         return;
       }
     }
@@ -290,11 +335,13 @@ const UsersManagement = () => {
                   'transaction-id': Date.now().toString(),
                 },
               });
-              Alert.alert('Sukces', 'Użytkownik został usunięty');
+              setSuccessMessage('Użytkownik został usunięty');
+              setIsSuccessModalVisible(true);
               await fetchUsers();
             } catch (error) {
               console.error('Error deleting user:', error);
-              Alert.alert('Błąd', 'Nie udało się usunąć użytkownika');
+              setErrorMessage('Nie udało się usunąć użytkownika');
+              setIsErrorModalVisible(true);
             }
           },
         },
@@ -407,6 +454,22 @@ const UsersManagement = () => {
           ))}
         </View>
       </View>
+
+      {(formData.role === 'user' || formData.role === 'magazyn') && (
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Numer punktu *</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.pointNumber}
+            onChangeText={(text) => setFormData({ ...formData, pointNumber: text })}
+            placeholder="np. 00, 01, 02..."
+            placeholderTextColor="#666"
+            keyboardType="numeric"
+            maxLength={2}
+          />
+          <Text style={styles.helpText}>Unikalny dwucyfrowy numer (wymagany do drukowania etykiet)</Text>
+        </View>
+      )}
 
       {formData.role === 'user' && (
         <>
@@ -555,15 +618,21 @@ const UsersManagement = () => {
               <Text style={styles.userNumber}>#{index + 1}</Text>
             </View>
 
-            {userItem.role === 'user' && (
+            {(userItem.role === 'user' || userItem.role === 'magazyn') && (
               <View style={styles.userDetails}>
-                {userItem.sellingPoint && (
+                {userItem.pointNumber && (
+                  <View style={styles.detailRow}>
+                    <Ionicons name="pricetag" size={16} color="#CDCDE0" />
+                    <Text style={styles.detailText}>Punkt nr: {userItem.pointNumber}</Text>
+                  </View>
+                )}
+                {userItem.role === 'user' && userItem.sellingPoint && (
                   <View style={styles.detailRow}>
                     <Ionicons name="storefront" size={16} color="#CDCDE0" />
                     <Text style={styles.detailText}>{userItem.sellingPoint}</Text>
                   </View>
                 )}
-                {userItem.location && (
+                {userItem.role === 'user' && userItem.location && (
                   <View style={styles.detailRow}>
                     <Ionicons name="location" size={16} color="#CDCDE0" />
                     <Text style={styles.detailText}>{userItem.location}</Text>
@@ -646,6 +715,54 @@ const UsersManagement = () => {
               </TouchableOpacity>
             </View>
             {renderUserForm(true)}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={isSuccessModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsSuccessModalVisible(false)}
+      >
+        <View style={styles.notificationOverlay}>
+          <View style={[styles.notificationContainer, styles.successContainer]}>
+            <View style={styles.notificationIcon}>
+              <Ionicons name="checkmark-circle" size={60} color="#28a745" />
+            </View>
+            <Text style={styles.notificationTitle}>Sukces!</Text>
+            <Text style={styles.notificationMessage}>{successMessage}</Text>
+            <TouchableOpacity
+              style={[styles.notificationButton, styles.successButton]}
+              onPress={() => setIsSuccessModalVisible(false)}
+            >
+              <Text style={styles.notificationButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={isErrorModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsErrorModalVisible(false)}
+      >
+        <View style={styles.notificationOverlay}>
+          <View style={[styles.notificationContainer, styles.errorContainer]}>
+            <View style={styles.notificationIcon}>
+              <Ionicons name="close-circle" size={60} color="#dc3545" />
+            </View>
+            <Text style={styles.notificationTitle}>Błąd!</Text>
+            <Text style={styles.notificationMessage}>{errorMessage}</Text>
+            <TouchableOpacity
+              style={[styles.notificationButton, styles.errorButton]}
+              onPress={() => setIsErrorModalVisible(false)}
+            >
+              <Text style={styles.notificationButtonText}>Zamknij</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -813,6 +930,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  helpText: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
   input: {
     backgroundColor: '#1a1a1a',
     color: '#fff',
@@ -903,6 +1026,62 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#CDCDE0',
     fontSize: 16,
+  },
+  notificationOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  notificationContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 30,
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  successContainer: {
+    borderColor: '#28a745',
+  },
+  errorContainer: {
+    borderColor: '#dc3545',
+  },
+  notificationIcon: {
+    marginBottom: 20,
+  },
+  notificationTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  notificationMessage: {
+    color: '#CDCDE0',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  notificationButton: {
+    paddingHorizontal: 40,
+    paddingVertical: 12,
+    borderRadius: 10,
+    minWidth: 120,
+  },
+  successButton: {
+    backgroundColor: '#28a745',
+  },
+  errorButton: {
+    backgroundColor: '#dc3545',
+  },
+  notificationButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

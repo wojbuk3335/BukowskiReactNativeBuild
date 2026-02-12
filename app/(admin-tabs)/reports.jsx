@@ -33,7 +33,7 @@ const Reports = () => {
     },
     {
       id: 2,
-      title: "Raport stanów magazynowych",
+      title: "Stany magazynowe",
       description: "Aktualny stan wszystkich produktów",
       icon: "cube",
       color: "#198754",

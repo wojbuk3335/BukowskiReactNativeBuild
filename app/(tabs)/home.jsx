@@ -1033,17 +1033,34 @@ const Home = () => {
   const handleDeleteConfirm = async () => {
     setConfirmDeleteModalVisible(false);
     try {
+      Logger.debug('\n🗑️ === USUWANIE SPRZEDAŻY (FRONTEND) ===');
+      Logger.debug('📦 Sale to delete:', {
+        id: selectedItem._id,
+        fullName: selectedItem.fullName,
+        size: selectedItem.size,
+        sellingPoint: selectedItem.sellingPoint,
+        timestamp: new Date().toLocaleString('pl-PL')
+      });
+      
       const response = await tokenService.authenticatedFetch(
         getApiUrl(`/sales/delete-sale/${selectedItem._id}`),
         { method: "DELETE" }
       );
+      
+      Logger.debug('📥 Response status:', response.status);
+      
       if (!response.ok) {
         throw new Error("Failed to delete the sale.");
       }
+      
+      Logger.debug('✅ Sprzedaż usunięta, id:', selectedItem._id);
       setFilteredData((prev) =>
         prev.filter((item) => item._id !== selectedItem._id)
       ); // Remove the item from the list
       setModalVisible(false); // Close the options modal
+      
+      // Backend już automatycznie przeliczył prowizje po usunięciu
+      
       setSuccessMessage("Sprzedaż została pomyślnie usunięta!");
       setSuccessModalVisible(true);
     } catch (error) {

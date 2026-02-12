@@ -41,6 +41,7 @@ const InventoryReport = () => {
   const [products, setProducts] = useState([]);
   const [sizes, setSizes] = useState([]);
   const [manufacturers, setManufacturers] = useState([]);
+  const [colors, setColors] = useState([]);
   
   // Aktywny filtr (który dropdown jest otwarty)
   const [activeFilter, setActiveFilter] = useState(null);
@@ -52,6 +53,7 @@ const InventoryReport = () => {
     totalItems: 0,
     uniqueProducts: 0,
   });
+  
 
   const categories = [
     'Kurtki kożuchy futra',
@@ -83,31 +85,38 @@ const InventoryReport = () => {
     setLoading(true);
     try {
       // Load data using authenticatedFetch
-      const [usersRes, goodsRes, sizesRes, manufacturersRes] = await Promise.all([
+      const [usersRes, goodsRes, sizesRes, manufacturersRes, colorsRes] = await Promise.all([
         tokenService.authenticatedFetch(getApiUrl('/user')),
         tokenService.authenticatedFetch(getApiUrl('/excel/goods/get-all-goods')),
         tokenService.authenticatedFetch(getApiUrl('/excel/size/get-all-sizes')),
         tokenService.authenticatedFetch(getApiUrl('/manufacturers')),
+        tokenService.authenticatedFetch(getApiUrl('/excel/color/get-all-colors')),
       ]);
 
       const usersData = await usersRes.json();
       const goodsData = await goodsRes.json();
       const sizesData = await sizesRes.json();
       const manufacturersData = await manufacturersRes.json();
+      const colorsData = await colorsRes.json();
 
       // API zwraca {count, users} więc bierzemy users array
       const usersArray = usersData?.users || [];
       if (Array.isArray(usersArray) && usersArray.length > 0) {
         const points = usersArray
-          .filter((u) => 
-            u.role === 'user' && 
-            u.sellingPoint && 
-            u.sellingPoint.trim() !== '' &&
-            u.sellingPoint !== 'Cudzich'
-          )
+          .filter((u) => {
+            // Magazyn zawsze dodajemy
+            if (u.role === 'magazyn') {
+              return true;
+            }
+            // Dla user sprawdzamy warunki
+            return u.role === 'user' && 
+              u.sellingPoint && 
+              u.sellingPoint.trim() !== '' &&
+              u.sellingPoint !== 'Cudzich';
+          })
           .map((u) => ({
             value: u._id,
-            label: u.sellingPoint,
+            label: u.role === 'magazyn' ? 'Magazyn' : u.sellingPoint,
             symbol: u.symbol, // Store symbol (P, T) for filtering
           }));
         
@@ -145,6 +154,10 @@ const InventoryReport = () => {
           value: m._id,
           label: m.Prod_Opis || m.name
         })));
+      }
+
+      if (colorsData && colorsData.colors && Array.isArray(colorsData.colors)) {
+        setColors(colorsData.colors);
       }
 
       // Load initial inventory data
@@ -435,6 +448,7 @@ const InventoryReport = () => {
     );
   };
 
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
@@ -442,7 +456,7 @@ const InventoryReport = () => {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Raport Stanów',
+          headerTitle: 'Stany magazynowe',
           headerStyle: { backgroundColor: '#000000' },
           headerTintColor: '#fff',
           headerTitleStyle: { fontWeight: 'bold' },
@@ -612,8 +626,10 @@ const InventoryReport = () => {
               <View key={index} style={styles.inventoryItem}>
                 <View style={styles.inventoryItemHeader}>
                   <Text style={styles.productName}>{item.product || item.fullName || 'Nieznany produkt'}</Text>
-                  <View style={styles.quantityBadge}>
-                    <Text style={styles.quantityText}>{item.quantity} szt.</Text>
+                  <View style={styles.headerActions}>
+                    <View style={styles.quantityBadge}>
+                      <Text style={styles.quantityText}>{item.quantity} szt.</Text>
+                    </View>
                   </View>
                 </View>
                 
@@ -843,6 +859,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   inventoryItemDetails: {
     gap: 4,

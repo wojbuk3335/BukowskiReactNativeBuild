@@ -101,6 +101,7 @@ const RootLayout = () => {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(admin-tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="products-list" options={{ headerShown: false }} />
+          <Stack.Screen name="cenniki" options={{ headerShown: false }} />
           <Stack.Screen name="sales-view" options={{ headerShown: false }} />
           <Stack.Screen name="stock-list" options={{ headerShown: false }} />
           <Stack.Screen name="colors-list" options={{ headerShown: false }} />
@@ -112,6 +113,7 @@ const RootLayout = () => {
           <Stack.Screen name="employees-list" options={{ headerShown: false }} />
           <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
           <Stack.Screen name="payroll" options={{ headerShown: false }} />
+          <Stack.Screen name="print-labels" options={{ headerShown: false }} />
         </Stack>
       </GlobalStateProvider>
     </SafeAreaProvider>

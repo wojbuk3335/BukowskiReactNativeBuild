@@ -175,6 +175,22 @@ const Various = () => {
       route: "/operacje-list",
       color: "#06B6D4",
     },
+    {
+      id: "cenniki",
+      title: "Cenniki",
+      subtitle: "Zarządzaj cennikami punktów sprzedaży",
+      icon: "pricetags",
+      route: "/cenniki",
+      color: "#0EA5E9",
+    },
+    {
+      id: "print-labels",
+      title: "Wydruk etykiet",
+      subtitle: "Drukuj etykiety produktów",
+      icon: "print",
+      route: "/print-labels",
+      color: "#22C55E",
+    },
   ];
 
   const handleMenuPress = (route) => {

@@ -753,10 +753,26 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
 
     try {
+      Logger.debug('\n📝 === DODAWANIE SPRZEDAŻY (FRONTEND) ===');
+      Logger.debug('📦 Payload:', {
+        fullName: payload.fullName,
+        size: payload.size,
+        barcode: payload.barcode,
+        sellingPoint: payload.sellingPoint,
+        from: payload.from,
+        cashTotal: payload.cash?.reduce((sum, item) => sum + parseFloat(item.price || 0), 0),
+        cardTotal: payload.card?.reduce((sum, item) => sum + parseFloat(item.price || 0), 0),
+        isPickup: payload.isPickup,
+        employeeId: payload.employeeId,
+        timestamp: new Date().toLocaleString('pl-PL')
+      });
+      
       const response = await tokenService.authenticatedFetch(getApiUrl("/sales/save-sales"), {
         method: 'POST',
         body: JSON.stringify(payload)
       });
+      
+      Logger.debug('📥 Response status:', response.status);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -765,9 +781,9 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       }
       
       const responseData = await response.json();
+      Logger.debug('✅ Sprzedaż zapisana:', responseData?.sales?._id);
       
-      // Auto-recalculate commissions after successful sale
-      await recalculateCommissions();
+      // Backend już automatycznie przeliczył prowizje po dodaniu sprzedaży
       
       // Show success modal instead of alert
       setSuccessMessage("Dane zostały zapisane pomyślnie!");

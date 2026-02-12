@@ -68,6 +68,10 @@ const Users = () => {
   const [printErrorMessage, setPrintErrorMessage] = useState('');
   const [processingStatusMessage, setProcessingStatusMessage] = useState("");
   const [allProcessed, setAllProcessed] = useState(false);
+  const [priceList, setPriceList] = useState(null);
+  const [priceListLoading, setPriceListLoading] = useState(false);
+  const [priceListCount, setPriceListCount] = useState(0);
+  const [hasPriceList, setHasPriceList] = useState(false);
 
   const filteredUsers = users.filter((u) => !u.isAdmin);
 
@@ -122,6 +126,101 @@ const Users = () => {
     }
   };
 
+  const fetchPriceListInfo = async (userId) => {
+    if (!userId) return;
+
+    try {
+      setPriceListLoading(true);
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl(`/pricelists/${userId}`);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const list = data.priceList || [];
+        setPriceList({ items: list });
+        setHasPriceList(list.length > 0);
+        setPriceListCount(list.length);
+      } else if (response.status === 404) {
+        setPriceList(null);
+        setHasPriceList(false);
+        setPriceListCount(0);
+      } else {
+        setPriceList(null);
+        setHasPriceList(false);
+        setPriceListCount(0);
+      }
+    } catch (error) {
+      setPriceList(null);
+      setHasPriceList(false);
+      setPriceListCount(0);
+    } finally {
+      setPriceListLoading(false);
+    }
+  };
+
+  const getPriceFromPriceList = (item, itemSize) => {
+    if (!priceList || !priceList.items) {
+      return null;
+    }
+
+    const itemBarcode = item.barcode || item.productId;
+    const normalizedBarcode = itemBarcode !== undefined && itemBarcode !== null
+      ? itemBarcode.toString().trim()
+      : null;
+    const itemFullName = typeof item.fullName === 'object'
+      ? item.fullName?.fullName
+      : item.fullName;
+    const normalizedFullName = itemFullName ? itemFullName.trim() : null;
+
+    const priceListItem = priceList.items.find(priceItem => {
+      const priceItemCode = priceItem.code !== undefined && priceItem.code !== null
+        ? priceItem.code.toString().trim()
+        : null;
+      const priceItemFullName = priceItem.fullName ? priceItem.fullName.trim() : null;
+
+      if (normalizedBarcode && priceItemCode && priceItemCode === normalizedBarcode) {
+        return true;
+      }
+
+      if (priceItemFullName && normalizedFullName && priceItemFullName === normalizedFullName) {
+        return true;
+      }
+
+      return priceItemFullName && normalizedFullName &&
+        priceItemFullName === normalizedFullName &&
+        priceItem.category === item.category;
+    });
+
+    if (!priceListItem) {
+      return null;
+    }
+
+    const result = {
+      regularPrice: priceListItem.price || 0,
+      discountPrice: priceListItem.discountPrice || 0,
+      sizeExceptionPrice: null,
+      hasDiscount: priceListItem.discountPrice && priceListItem.discountPrice > 0
+    };
+
+    if (itemSize && priceListItem.priceExceptions && priceListItem.priceExceptions.length > 0) {
+      const sizeException = priceListItem.priceExceptions.find(exception => {
+        const exceptionSizeName = exception.size?.Roz_Opis || exception.size;
+        return exceptionSizeName === itemSize;
+      });
+
+      if (sizeException) {
+        result.sizeExceptionPrice = sizeException.value;
+      }
+    }
+
+    return result;
+  };
+
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
       const parzygniatUser = users.find(u => 
@@ -138,6 +237,12 @@ const Users = () => {
       fetchItemsToPick();
     }
   }, [selectedUserId, selectedDate]);
+
+  useEffect(() => {
+    if (selectedUserId) {
+      fetchPriceListInfo(selectedUserId);
+    }
+  }, [selectedUserId]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -1577,20 +1682,24 @@ const Users = () => {
     );
   };
 
-  const generateZplCode = (item) => {
+  const generateZplCode = (item, priceOverride = null) => {
     const itemName = item.fullName?.fullName || item.fullName || 'N/A';
     const itemSize = item.size?.Roz_Opis || item.size || 'N/A';
     const barcode = item.barcode || 'NO-BARCODE';
     
     // 🔧 FIX: Extract price (should be enriched before calling this function)
     let price = null;
-    if (item.price !== undefined && item.price !== null) {
+    if (priceOverride !== null && priceOverride !== undefined) {
+      price = priceOverride;
+    } else if (item.price !== undefined && item.price !== null) {
       price = item.price;
     } else if (item.fullName?.price !== undefined && item.fullName?.price !== null) {
       price = item.fullName.price;
     }
     
     const symbol = item.symbol || item.sellingPoint?.symbol || item.transfer_to || 'N/A';
+    const selectedUserPointNumber = users.find(u => u._id === selectedUserId)?.pointNumber;
+    const explicitPointNumber = item.pointNumber || item.sellingPoint?.pointNumber || selectedUserPointNumber;
 
     const pointMapping = {
       P: '01',
@@ -1601,7 +1710,7 @@ const Users = () => {
       Kar: '06'
     };
 
-    const mappedPoint = pointMapping[symbol] || symbol;
+    const mappedPoint = explicitPointNumber || pointMapping[symbol] || symbol;
 
     let processedName = (itemName || 'N/A');
     processedName = processedName
@@ -1639,19 +1748,16 @@ const Users = () => {
 ^XZ`;
   };
 
-  const handlePrintLabel = async (item) => {
+  const sendZplToPrinter = async (zplCode) => {
+    const printerIP = '192.168.1.25';
+    const printerPort = 9100;
+    const printerUrl = `http://${printerIP}:${printerPort}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300);
+
     try {
-      const zplCode = generateZplCode(item);
-      const printerIP = '192.168.1.25';
-      const printerPort = 9100;
-      const printerUrl = `http://${printerIP}:${printerPort}`;
-
-      // Kontroler do timeout - 300ms (drukarka nie odpowiada przez HTTP)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300);
-
-      // Wyślij ZPL bezpośrednio do drukarki przez HTTP POST
-      const response = await fetch(printerUrl, {
+      await fetch(printerUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain',
@@ -1661,19 +1767,42 @@ const Users = () => {
       });
 
       clearTimeout(timeoutId);
-      
-      // 🔇 Ciche drukowanie - bez komunikatu sukcesu
       return true;
-
     } catch (error) {
-      // ✅ AbortError = SUKCES! Drukarka Zebra nie odpowiada przez HTTP,
-      // ale jeśli dostaliśmy timeout to znaczy że komenda została wysłana
+      clearTimeout(timeoutId);
+
       if (error.name === 'AbortError') {
-        return true; // Sukces - drukarka dostała komendę
+        return true;
       }
-      
-      // ❌ Inne błędy (brak sieci, etc.) - zwróć false
-      // Modal potwierdzenia pokaże statystyki błędów
+
+      return false;
+    }
+  };
+
+  const handlePrintLabel = async (item) => {
+    try {
+      const itemSize = item.isFromSale
+        ? item.size
+        : (typeof item.size === 'object' ? item.size?.Roz_Opis : item.size);
+      const priceInfo = getPriceFromPriceList(item, itemSize);
+      const shouldPrintTwoLabels = priceInfo && priceInfo.hasDiscount && !priceInfo.sizeExceptionPrice;
+
+      if (shouldPrintTwoLabels) {
+        const regularZpl = generateZplCode(item, priceInfo.regularPrice);
+        const discountZpl = generateZplCode(item, priceInfo.discountPrice);
+
+        const regularResult = await sendZplToPrinter(regularZpl);
+        const discountResult = await sendZplToPrinter(discountZpl);
+
+        return regularResult && discountResult;
+      }
+
+      const fallbackPrice = item.price ?? item.fullName?.price ?? null;
+      const finalPrice = priceInfo?.sizeExceptionPrice ?? priceInfo?.regularPrice ?? fallbackPrice;
+      const zplCode = generateZplCode(item, finalPrice);
+
+      return await sendZplToPrinter(zplCode);
+    } catch (error) {
       return false;
     }
   };
@@ -1741,6 +1870,35 @@ const Users = () => {
             <Ionicons name="people" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {selectedUserId && (
+          <View style={styles.priceListInfoContainer}>
+            {priceListLoading ? (
+              <View style={styles.priceListInfoLoading}>
+                <ActivityIndicator size="small" color="rgb(0, 123, 255)" />
+                <Text style={styles.priceListInfoTitle}>Ładowanie cennika...</Text>
+              </View>
+            ) : (
+              <View style={hasPriceList ? styles.priceListInfoSuccess : styles.priceListInfoWarning}>
+                <Ionicons
+                  name={hasPriceList ? "checkmark-circle" : "information-circle"}
+                  size={24}
+                  color={hasPriceList ? "#22c55e" : "#f59e0b"}
+                />
+                <View style={styles.priceListInfoText}>
+                  <Text style={styles.priceListInfoTitle}>
+                    {hasPriceList ? `Cennik: ${priceListCount} produktów` : "Brak dedykowanego cennika"}
+                  </Text>
+                  <Text style={styles.priceListInfoSubtitle}>
+                    {hasPriceList
+                      ? "Ceny pobierane są z dedykowanego cennika."
+                      : "Ceny pobierane są z kart produktów."}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.label}>Data:</Text>
@@ -3226,6 +3384,53 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: "#ff9900",
+  },
+  priceListInfoContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  priceListInfoLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  priceListInfoSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#13261a",
+    borderLeftWidth: 5,
+    borderLeftColor: "#22c55e",
+  },
+  priceListInfoWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#2d2415",
+    borderLeftWidth: 5,
+    borderLeftColor: "#f59e0b",
+  },
+  priceListInfoText: {
+    flex: 1,
+  },
+  priceListInfoTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#e2e8f0",
+    marginBottom: 4,
+  },
+  priceListInfoSubtitle: {
+    fontSize: 12,
+    color: "#cbd5e1",
   },
   yellowBadge: {
     width: 40,
