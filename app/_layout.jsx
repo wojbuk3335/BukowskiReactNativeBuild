@@ -4,7 +4,6 @@ import React, { useEffect } from 'react';
 import "react-native-url-polyfill/auto";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
-import * as NavigationBar from 'expo-navigation-bar';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
@@ -35,20 +34,9 @@ const RootLayout = () => {
     }
   }, [fontsLoaded, error]);
 
-  // Configure Android navigation bar  
   useEffect(() => {
     if (Platform.OS === 'android') {
-      const configureNavigationBar = async () => {
-        try {
-          // Set navigation bar background to black (this should work)
-          await NavigationBar.setBackgroundColorAsync('#000000');
-        } catch (error) {
-          console.warn('Navigation bar configuration failed:', error.message);
-          // Silently fail - edge-to-edge mode handles this automatically
-        }
-      };
-      
-      configureNavigationBar();
+      // Edge-to-edge handles nav bar styling; avoid unsupported calls.
     }
   }, []);
 
