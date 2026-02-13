@@ -55,6 +55,9 @@ const Users = () => {
   // All products cache (for prices)
   const [allProducts, setAllProducts] = useState([]);
   
+  // Colors cache (for color codes)
+  const [colors, setColors] = useState([]);
+  
   // Corrections modal
   const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
   const [correctionsData, setCorrectionsData] = useState(null);
@@ -105,6 +108,7 @@ const Users = () => {
       fetchUsers();
     }
     fetchAllProducts(); // Fetch products for price cache
+    fetchColors(); // Fetch colors for color codes
   }, []);
 
   const fetchAllProducts = async () => {
@@ -123,6 +127,28 @@ const Users = () => {
       }
     } catch (error) {
       console.error('Error fetching products:', error);
+    }
+  };
+
+  const fetchColors = async () => {
+    try {
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl('/excel/colors/get-all-colors');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const colorsData = data.colors || [];
+        const validColors = colorsData.filter(
+          color => color && color.Kol_Opis && color.Kol_Opis.trim() !== ""
+        );
+        setColors(validColors);
+      }
+    } catch (error) {
+      console.error('Error fetching colors:', error);
     }
   };
 
@@ -1682,6 +1708,21 @@ const Users = () => {
     );
   };
 
+  const getColorCodeFromName = (itemName) => {
+    if (!itemName || !colors.length) return null;
+    
+    const foundColor = colors.find(color => {
+      const colorName = color.Kol_Opis ? color.Kol_Opis.toLowerCase() : '';
+      const itemNameLower = itemName.toLowerCase();
+      
+      if (!colorName) return false;
+      
+      return itemNameLower.includes(colorName);
+    });
+    
+    return foundColor ? { code: foundColor.Kol_Kod, colorName: foundColor.Kol_Opis } : null;
+  };
+
   const generateZplCode = (item, priceOverride = null) => {
     const itemName = item.fullName?.fullName || item.fullName || 'N/A';
     const itemSize = item.size?.Roz_Opis || item.size || 'N/A';
@@ -1713,10 +1754,20 @@ const Users = () => {
     const mappedPoint = explicitPointNumber || pointMapping[symbol] || symbol;
 
     let processedName = (itemName || 'N/A');
-    processedName = processedName
-      .replace(/\s*(czarny|czarna|czarne|biały|biała|białe|niebieski|niebieska|niebieskie|czerwony|czerwona|czerwone|zielony|zielona|zielone|żółty|żółta|żółte|szary|szara|szare|brązowy|brązowa|brązowe|różowy|różowa|różowe|fioletowy|fioletowa|fioletowe|pomarańczowy|pomarańczowa|pomarańczowe|kakao|beżowy|beżowa|beżowe|kremowy|kremowa|kremowe|granatowy|granatowa|granatowe|bordowy|bordowa|bordowe|khaki|oliwkowy|oliwkowa|oliwkowe|złoty|złota|złote|srebrny|srebrna|srebrne|miętowy|miętowa|miętowe)\s*/gi, '')
-      .trim();
-
+    
+    // Get color code and name from the database
+    const colorInfo = getColorCodeFromName(itemName);
+    
+    if (colorInfo && colorInfo.colorName) {
+      // Remove the found color name from the product name (case-insensitive)
+      const colorNameRegex = new RegExp('\\s*' + colorInfo.colorName + '\\s*', 'gi');
+      processedName = processedName.replace(colorNameRegex, ' ').trim();
+      
+      // Add color code at the end
+      processedName += ' ' + colorInfo.code;
+    }
+    
+    // Add barcode digits
     const barcodeDigits = (barcode && barcode.length >= 5) ? barcode.substring(3, 5) : '';
     if (barcodeDigits) {
       processedName += ` ${barcodeDigits}`;

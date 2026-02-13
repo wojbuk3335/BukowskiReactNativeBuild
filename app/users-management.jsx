@@ -152,8 +152,12 @@ const UsersManagement = () => {
         showError('Użytkownik musi mieć punkt sprzedaży');
         return false;
       }
+    }
+    
+    // Walidacja lokalizacji dla user i magazyn
+    if (formData.role === 'user' || formData.role === 'magazyn') {
       if (!formData.location) {
-        showError('Użytkownik musi mieć lokalizację');
+        showError('Lokalizacja jest wymagana');
         return false;
       }
     }
@@ -472,63 +476,63 @@ const UsersManagement = () => {
       )}
 
       {formData.role === 'user' && (
-        <>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Punkt sprzedaży *</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.sellingPoint}
-              onChangeText={(text) => setFormData({ ...formData, sellingPoint: text })}
-              placeholder="Punkt sprzedaży"
-              placeholderTextColor="#666"
-            />
-          </View>
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Punkt sprzedaży *</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.sellingPoint}
+            onChangeText={(text) => setFormData({ ...formData, sellingPoint: text })}
+            placeholder="Punkt sprzedaży"
+            placeholderTextColor="#666"
+          />
+        </View>
+      )}
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Lokalizacja *</Text>
-            <ScrollView style={styles.locationPicker} nestedScrollEnabled>
+      {(formData.role === 'user' || formData.role === 'magazyn') && (
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Lokalizacja *</Text>
+          <ScrollView style={styles.locationPicker} nestedScrollEnabled>
+            <TouchableOpacity
+              style={[
+                styles.locationOption,
+                !formData.location && styles.locationOptionSelected,
+              ]}
+              onPress={() => setFormData({ ...formData, location: '' })}
+            >
+              <Text
+                style={[
+                  styles.locationOptionText,
+                  !formData.location && styles.locationOptionTextSelected,
+                ]}
+              >
+                Wybierz lokalizację
+              </Text>
+            </TouchableOpacity>
+            {localizations.map((loc) => (
               <TouchableOpacity
+                key={loc._id}
                 style={[
                   styles.locationOption,
-                  !formData.location && styles.locationOptionSelected,
+                  formData.location === loc.Miejsc_1_Opis_1 &&
+                    styles.locationOptionSelected,
                 ]}
-                onPress={() => setFormData({ ...formData, location: '' })}
+                onPress={() =>
+                  setFormData({ ...formData, location: loc.Miejsc_1_Opis_1 })
+                }
               >
                 <Text
                   style={[
                     styles.locationOptionText,
-                    !formData.location && styles.locationOptionTextSelected,
+                    formData.location === loc.Miejsc_1_Opis_1 &&
+                      styles.locationOptionTextSelected,
                   ]}
                 >
-                  Wybierz lokalizację
+                  {loc.Miejsc_1_Opis_1}
                 </Text>
               </TouchableOpacity>
-              {localizations.map((loc) => (
-                <TouchableOpacity
-                  key={loc._id}
-                  style={[
-                    styles.locationOption,
-                    formData.location === loc.Miejsc_1_Opis_1 &&
-                      styles.locationOptionSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, location: loc.Miejsc_1_Opis_1 })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.locationOptionText,
-                      formData.location === loc.Miejsc_1_Opis_1 &&
-                        styles.locationOptionTextSelected,
-                    ]}
-                  >
-                    {loc.Miejsc_1_Opis_1}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       <TouchableOpacity
@@ -632,7 +636,7 @@ const UsersManagement = () => {
                     <Text style={styles.detailText}>{userItem.sellingPoint}</Text>
                   </View>
                 )}
-                {userItem.role === 'user' && userItem.location && (
+                {(userItem.role === 'user' || userItem.role === 'magazyn') && userItem.location && (
                   <View style={styles.detailRow}>
                     <Ionicons name="location" size={16} color="#CDCDE0" />
                     <Text style={styles.detailText}>{userItem.location}</Text>

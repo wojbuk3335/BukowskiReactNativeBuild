@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -49,6 +50,8 @@ const PrintLabels = () => {
   // Printing states
   const [printingId, setPrintingId] = useState(null);
   const [printingAll, setPrintingAll] = useState(false);
+  const [confirmPrintModalVisible, setConfirmPrintModalVisible] = useState(false);
+  const [printAllResult, setPrintAllResult] = useState(null);
   
   // Price list for dedicated pricing
   const [priceLists, setPriceLists] = useState({});
@@ -84,7 +87,7 @@ const PrintLabels = () => {
     if (localizations.length > 0 && sellingPoints.length > 0) {
       loadInventoryData();
     }
-  }, [selectedLocalization, selectedSellingPoint]);
+  }, [selectedLocalization, selectedSellingPoint, localizations.length, sellingPoints.length]);
 
   useEffect(() => {
     if (inventoryData.length > 0) {
@@ -120,22 +123,11 @@ const PrintLabels = () => {
           value: l._id,
           label: l.Miejsc_1_Opis_1
         }));
-        console.log('=== LOCALIZATIONS LOADED ===');
-        console.log('Localizations count:', locArray.length);
-        if (locArray.length > 0) {
-          console.log('First localization:', locArray[0]);
-        }
         setLocalizations(locArray);
       }
 
       // Store all users for location-based filtering
       const usersArray = usersData?.users || [];
-      console.log('=== USERS LOADED ===');
-      console.log('Users count:', usersArray.length);
-      if (usersArray.length > 0) {
-        console.log('First user:', usersArray[0]);
-        console.log('First user location:', usersArray[0].location);
-      }
       setAllUsers(usersArray);
       
       // Selling points - will be filtered by location later
@@ -168,7 +160,8 @@ const PrintLabels = () => {
           category: g.category,
           barcode: g.barcode,
           manufacturerId: g.manufacturerId,
-          price: g.price
+          price: g.price,
+          discountPrice: g.discount_price || 0
         }));
         setProducts(productsData);
       }
@@ -230,14 +223,6 @@ const PrintLabels = () => {
       const response = await tokenService.authenticatedFetch(getApiUrl(endpoint));
       const data = await response.json();
 
-      console.log('=== INVENTORY DATA LOADED ===');
-      console.log('Endpoint:', endpoint);
-      console.log('Data received:', data);
-      console.log('Inventory count:', data?.inventory?.length || 0);
-      if (data?.inventory?.length > 0) {
-        console.log('First inventory item:', data.inventory[0]);
-      }
-
       if (data && data.inventory && Array.isArray(data.inventory)) {
         // Expand items by quantity AND by selling points
         // If item has "T, M" and quantity 2, create 4 items: T(1), T(2), M(1), M(2)
@@ -268,7 +253,6 @@ const PrintLabels = () => {
             }
           });
         });
-        console.log('Expanded inventory count:', expandedInventory.length);
         setInventoryData(expandedInventory);
       } else {
         setInventoryData([]);
@@ -280,14 +264,7 @@ const PrintLabels = () => {
   };
 
   const applyFilters = () => {
-    console.log('=== APPLY FILTERS START ===');
-    console.log('inventoryData length:', inventoryData.length);
-    console.log('selectedLocalization:', selectedLocalization);
-    console.log('selectedSellingPoint:', selectedSellingPoint);
-    console.log('allUsers length:', allUsers.length);
-    
     let filtered = [...inventoryData];
-    console.log('Starting filtered length:', filtered.length);
 
     // Search filter
     if (searchQuery.trim()) {
@@ -308,19 +285,8 @@ const PrintLabels = () => {
 
     // Localization filter (PRIORITY) - based on sellingPoint's location
     if (selectedLocalization) {
-      console.log('=== LOCALIZATION FILTER ===');
-      console.log('Selected localization ID:', selectedLocalization);
-      console.log('Before localization filter:', filtered.length);
-      
-      // Log first few items to see structure
-      if (filtered.length > 0) {
-        console.log('First item structure:', filtered[0]);
-        console.log('First item sellingPoints:', filtered[0].sellingPoints);
-      }
-      
       // Get selected location label
       const selectedLocLabel = localizations.find(l => l.value === selectedLocalization)?.label;
-      console.log('Selected location label:', selectedLocLabel);
       
       // After expansion, sellingPoints is a single point (e.g., "T" or "M")
       filtered = filtered.filter((item) => {
@@ -338,22 +304,14 @@ const PrintLabels = () => {
         // Check if this user has the selected location
         return user && user.location === selectedLocLabel;
       });
-      
-      console.log('After localization filter:', filtered.length);
     }
 
     // Selling point filter
     if (selectedSellingPoint && selectedSellingPoint !== 'all') {
-      console.log('=== SELLING POINT FILTER ===');
-      console.log('Selected selling point ID:', selectedSellingPoint);
-      console.log('Before selling point filter:', filtered.length);
-      
       // Get the user to find their symbol
       const selectedUser = allUsers.find(u => u._id === selectedSellingPoint);
       const selectedSymbol = selectedUser?.symbol || '';
       const selectedName = selectedUser?.sellingPoint || '';
-      console.log('Selected user symbol:', selectedSymbol);
-      console.log('Selected user name:', selectedName);
       
       filtered = filtered.filter((item) => {
         const singlePoint = item.sellingPoints || item.sellingPoint || '';
@@ -362,7 +320,6 @@ const PrintLabels = () => {
                singlePoint === selectedName ||
                (selectedUser?.role === 'magazyn' && singlePoint === 'MAGAZYN');
       });
-      console.log('After selling point filter:', filtered.length);
     }
 
     // Category filter
@@ -402,13 +359,16 @@ const PrintLabels = () => {
       );
     }
 
-    console.log('=== FINAL FILTERED LENGTH:', filtered.length, '===');
     setFilteredData(filtered);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadInventoryData();
+    // Reload price lists to get updated prices and exceptions
+    if (allUsers.length > 0) {
+      await loadPriceLists(allUsers);
+    }
     setRefreshing(false);
   };
 
@@ -531,6 +491,7 @@ const PrintLabels = () => {
   // Price list logic (same as users.jsx)
   const getPriceFromPriceList = (item, itemSize, userId) => {
     const priceList = priceLists[userId];
+    
     if (!priceList || !priceList.items) {
       return null;
     }
@@ -594,28 +555,28 @@ const PrintLabels = () => {
 
   const getColorCodeFromName = (itemName) => {
     if (!itemName || !colors.length) return null;
+    
     const foundColor = colors.find(color => {
-      const colorName = color.Kol_Opis.toLowerCase();
+      const colorName = color.Kol_Opis ? color.Kol_Opis.toLowerCase() : '';
       const itemNameLower = itemName.toLowerCase();
+      
+      if (!colorName) return false; // Skip colors without description
+      
       return itemNameLower.includes(colorName);
     });
-    return foundColor ? foundColor.Kol_Kod : null;
+    
+    // Return both code and the original color name for removal
+    return foundColor ? { code: foundColor.Kol_Kod, colorName: foundColor.Kol_Opis } : null;
   };
 
   const generateZplCode = (item, priceOverride = null, userId = null) => {
     try {
-      console.log('=== GENERATE ZPL ===');
-      console.log('Item:', item);
-      console.log('Item keys:', Object.keys(item));
-      
       // /state/all/inventory: product, barcodes, sellingPoints, size
       // /state/${userId}/inventory: fullName, barcode, sellingPoint, size
       
       const itemName = item.product || getProductName(item.fullName);
-      console.log('Item name:', itemName);
       
       const itemSize = item.size ? getSizeLabel(item.size) : '-';
-      console.log('Item size:', itemSize);
       
       let barcode = 'NO-BARCODE';
       const itemBarcode = item.barcodes || item.barcode;
@@ -623,7 +584,6 @@ const PrintLabels = () => {
         // If barcodes is a string with multiple codes, take first one
         barcode = itemBarcode.split(',')[0].trim();
       }
-      console.log('Barcode:', barcode);
       
       let price = null;
       if (priceOverride !== null && priceOverride !== undefined) {
@@ -631,13 +591,11 @@ const PrintLabels = () => {
       } else if (item.price !== undefined && item.price !== null) {
         price = item.price;
       }
-      console.log('Price:', price);
       
       // Get selling point label
       const sellingPointLabel = userId 
         ? getSellingPointLabel(userId)
         : (item.sellingPoints || getSellingPointLabel(item.sellingPoint));
-      console.log('Selling point label:', sellingPointLabel);
       
       let symbol = 'N/A';
       const pointMapping = {
@@ -688,13 +646,17 @@ const PrintLabels = () => {
       }
 
       let processedName = (itemName || 'N/A');
-      processedName = processedName
-        .replace(/\s*(czarny|czarna|czarne|biały|biała|białe|niebieski|niebieska|niebieskie|czerwony|czerwona|czerwone|zielony|zielona|zielone|żółty|żółta|żółte|szary|szara|szare|brązowy|brązowa|brązowe|różowy|różowa|różowe|fioletowy|fioletowa|fioletowe|pomarańczowy|pomarańczowa|pomarańczowe|kakao|beżowy|beżowa|beżowe|beż|kremowy|kremowa|kremowe|granatowy|granatowa|granatowe|bordowy|bordowa|bordowe|khaki|oliwkowy|oliwkowa|oliwkowe|złoty|złota|złote|srebrny|srebrna|srebrne|miętowy|miętowa|miętowe)\s*/gi, '')
-        .trim();
-
-      const colorCode = getColorCodeFromName(itemName);
-      if (colorCode) {
-        processedName += ' ' + colorCode;
+      
+      // Get color code and name from the database
+      const colorInfo = getColorCodeFromName(itemName);
+      
+      if (colorInfo && colorInfo.colorName) {
+        // Remove the found color name from the product name (case-insensitive)
+        const colorNameRegex = new RegExp('\\s*' + colorInfo.colorName + '\\s*', 'gi');
+        processedName = processedName.replace(colorNameRegex, ' ').trim();
+        
+        // Add color code at the end
+        processedName += ' ' + colorInfo.code;
       }
 
       const safeName = processedName.replace(/[^\x00-\x7F]/g, '?');
@@ -762,13 +724,55 @@ const PrintLabels = () => {
     setPrintingId(uniqueKey || itemBarcode);
     
     try {
-      const itemSize = getSizeLabel(item.size); // Convert size ID/name to label for price list lookup
+      const itemSize = getSizeLabel(item.size);
       const priceInfo = getPriceFromPriceList(item, itemSize, userId);
-      const shouldPrintTwoLabels = priceInfo && priceInfo.hasDiscount && !priceInfo.sizeExceptionPrice;
 
-      if (shouldPrintTwoLabels) {
-        const regularZpl = generateZplCode(item, priceInfo.regularPrice, userId);
-        const discountZpl = generateZplCode(item, priceInfo.discountPrice, userId);
+      // Check if we have dedicated price list
+      if (priceInfo) {
+        // Priority 1: Size exception - print ONE label with exception price
+        if (priceInfo.sizeExceptionPrice) {
+          const zplCode = generateZplCode(item, priceInfo.sizeExceptionPrice, userId);
+          const result = await sendZplToPrinter(zplCode);
+          setPrintingId(null);
+          return result;
+        }
+        
+        // Priority 2: Has discount - print TWO labels (regular + discount)
+        if (priceInfo.hasDiscount) {
+          const regularZpl = generateZplCode(item, priceInfo.regularPrice, userId);
+          const discountZpl = generateZplCode(item, priceInfo.discountPrice, userId);
+
+          const regularResult = await sendZplToPrinter(regularZpl);
+          const discountResult = await sendZplToPrinter(discountZpl);
+
+          setPrintingId(null);
+          return regularResult && discountResult;
+        }
+        
+        // Priority 3: Regular price only - print ONE label
+        const zplCode = generateZplCode(item, priceInfo.regularPrice, userId);
+        const result = await sendZplToPrinter(zplCode);
+        setPrintingId(null);
+        return result;
+      }
+
+      // No dedicated price list - use goods prices
+      const productName = item.product || getProductName(item.fullName);
+      const product = products.find(p => p.label === productName || p.value === item.fullName);
+      
+      if (!product) {
+        // Fallback to item price if product not found
+        const fallbackPrice = item.price || null;
+        const zplCode = generateZplCode(item, fallbackPrice, userId);
+        const result = await sendZplToPrinter(zplCode);
+        setPrintingId(null);
+        return result;
+      }
+
+      // Check if goods has discount price - print TWO labels
+      if (product.discountPrice && product.discountPrice > 0) {
+        const regularZpl = generateZplCode(item, product.price, userId);
+        const discountZpl = generateZplCode(item, product.discountPrice, userId);
 
         const regularResult = await sendZplToPrinter(regularZpl);
         const discountResult = await sendZplToPrinter(discountZpl);
@@ -777,14 +781,8 @@ const PrintLabels = () => {
         return regularResult && discountResult;
       }
 
-      // Get fallback price from products
-      const productName = item.product || getProductName(item.fullName);
-      const product = products.find(p => p.label === productName || p.value === item.fullName);
-      const fallbackPrice = product?.price || item.price || null;
-      
-      const finalPrice = priceInfo?.sizeExceptionPrice ?? priceInfo?.regularPrice ?? fallbackPrice;
-      const zplCode = generateZplCode(item, finalPrice, userId);
-
+      // No discount - print ONE label with regular price
+      const zplCode = generateZplCode(item, product.price, userId);
       const result = await sendZplToPrinter(zplCode);
       setPrintingId(null);
       return result;
@@ -794,59 +792,49 @@ const PrintLabels = () => {
     }
   };
 
-  const handlePrintAll = async () => {
+  const handlePrintAll = () => {
     if (filteredData.length === 0) {
       Alert.alert('Brak danych', 'Nie ma produktów do wydrukowania');
       return;
     }
 
-    Alert.alert(
-      'Masowy wydruk',
-      `Czy na pewno chcesz wydrukować ${filteredData.length} etykiet?`,
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Drukuj',
-          onPress: async () => {
-            setPrintingAll(true);
-            let successCount = 0;
-            let errorCount = 0;
+    setConfirmPrintModalVisible(true);
+  };
 
-            for (const item of filteredData) {
-              try {
-                // Find user ID for this specific selling point
-                const singlePoint = item.sellingPoints || item.sellingPoint;
-                const pointUser = allUsers.find(u => {
-                  const symbol = u.symbol || '';
-                  const sellingPoint = u.sellingPoint || '';
-                  return symbol === singlePoint || 
-                         sellingPoint === singlePoint ||
-                         (u.role === 'magazyn' && singlePoint === 'MAGAZYN');
-                });
-                const itemBarcode = item.barcodes || item.barcode;
-                const itemUniqueKey = `${itemBarcode}-${item._expandedIndex || 0}`;
-                const result = await handlePrintLabel(item, pointUser?._id || null, itemUniqueKey);
-                if (result) {
-                  successCount++;
-                } else {
-                  errorCount++;
-                }
-                // Small delay between prints
-                await new Promise(resolve => setTimeout(resolve, 100));
-              } catch (error) {
-                errorCount++;
-              }
-            }
+  const executePrintAll = async () => {
+    setConfirmPrintModalVisible(false);
+    setPrintingAll(true);
+    let successCount = 0;
+    let errorCount = 0;
 
-            setPrintingAll(false);
-            Alert.alert(
-              'Wydruk zakończony',
-              `Wydrukowano: ${successCount}\nBłędy: ${errorCount}`
-            );
-          }
+    for (const item of filteredData) {
+      try {
+        // Find user ID for this specific selling point
+        const singlePoint = item.sellingPoints || item.sellingPoint;
+        const pointUser = allUsers.find(u => {
+          const symbol = u.symbol || '';
+          const sellingPoint = u.sellingPoint || '';
+          return symbol === singlePoint || 
+                 sellingPoint === singlePoint ||
+                 (u.role === 'magazyn' && singlePoint === 'MAGAZYN');
+        });
+        const itemBarcode = item.barcodes || item.barcode;
+        const itemUniqueKey = `${itemBarcode}-${item._expandedIndex || 0}`;
+        const result = await handlePrintLabel(item, pointUser?._id || null, itemUniqueKey);
+        if (result) {
+          successCount++;
+        } else {
+          errorCount++;
         }
-      ]
-    );
+        // Small delay between prints
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        errorCount++;
+      }
+    }
+
+    setPrintingAll(false);
+    setPrintAllResult({ successCount, errorCount });
   };
 
   const renderFilterDropdown = (filterName, options, selectedValue, onSelect, placeholder) => {
@@ -1185,6 +1173,67 @@ const PrintLabels = () => {
           )}
         </View>
       </ScrollView>
+
+      {/* Confirm Print Modal */}
+      <Modal
+        transparent
+        visible={confirmPrintModalVisible}
+        animationType="fade"
+        onRequestClose={() => setConfirmPrintModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.warningIconContainer}>
+              <Text style={styles.warningIcon}>⚠</Text>
+            </View>
+            <Text style={styles.modalTitle}>Masowy wydruk</Text>
+            <Text style={styles.modalMessage}>
+              Czy na pewno chcesz wydrukować {filteredData.length} etykiet?
+            </Text>
+            <View style={styles.modalButtonsContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => setConfirmPrintModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirmButton]}
+                onPress={executePrintAll}
+              >
+                <Text style={styles.modalButtonText}>Drukuj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Print Result Modal */}
+      <Modal
+        transparent
+        visible={printAllResult !== null}
+        animationType="fade"
+        onRequestClose={() => setPrintAllResult(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIconContainer}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+            <Text style={styles.modalTitle}>Wydruk zakończony</Text>
+            <Text style={styles.modalMessage}>
+              Wydrukowano: {printAllResult?.successCount || 0}
+              {"\n"}Błędy: {printAllResult?.errorCount || 0}
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalConfirmButton, { width: '100%' }]}
+              onPress={() => setPrintAllResult(null)}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1362,6 +1411,97 @@ const styles = StyleSheet.create({
   },
   printAllButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0d6efd',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  warningIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#ffc107',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  warningIcon: {
+    color: '#000000',
+    fontSize: 30,
+    fontWeight: 'bold',
+  },
+  successIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#28a745',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    color: '#ffffff',
+    fontSize: 35,
+    fontWeight: 'bold',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 25,
+  },
+  modalButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#6c757d',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#0d6efd',
+  },
+  modalButtonText: {
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },
