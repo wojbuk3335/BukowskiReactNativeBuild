@@ -133,7 +133,7 @@ const Users = () => {
   const fetchColors = async () => {
     try {
       const { accessToken } = await tokenService.getTokens();
-      const url = getApiUrl('/excel/colors/get-all-colors');
+      const url = getApiUrl('/excel/color/get-all-colors');
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -142,8 +142,10 @@ const Users = () => {
       if (response.ok) {
         const data = await response.json();
         const colorsData = data.colors || [];
+        
+        // Filter by Kol_Kod instead of Kol_Opis (many colors have empty Kol_Opis)
         const validColors = colorsData.filter(
-          color => color && color.Kol_Opis && color.Kol_Opis.trim() !== ""
+          color => color && color.Kol_Kod && color.Kol_Kod.trim() !== ""
         );
         setColors(validColors);
       }
@@ -510,7 +512,13 @@ const Users = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchItemsToPick();
+    // Reload all data: items, price list, products cache, and colors
+    await Promise.all([
+      fetchItemsToPick(),
+      selectedUserId ? fetchPriceListInfo(selectedUserId) : Promise.resolve(),
+      fetchAllProducts(),
+      fetchColors()
+    ]);
     setRefreshing(false);
   };
 
@@ -833,73 +841,95 @@ const Users = () => {
     // Step 1: Print labels for orange and yellow items
     const itemsToPrint = [
       ...transfers.filter(t => t.fromWarehouse).map(item => {
-        // 🔧 FIX: Enrich transfer items with price
-        if (!item.price) {
-          const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
-          
-          // Try warehouse first (match by barcode OR fullName)
+        // Enrich transfer items with price AND color
+        let enrichedItem = { ...item };
+        const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+        
+        // Try warehouse first for price (match by barcode OR fullName)
+        if (!enrichedItem.price) {
           const matchingWarehouse = warehouseItems.find(w => 
             w.barcode === item.barcode || w.fullName === itemFullName
           );
           if (matchingWarehouse) {
-            return { ...item, price: matchingWarehouse.price };
+            enrichedItem.price = matchingWarehouse.price;
           }
-          
-          // Try product cache by fullName
-          if (itemFullName && allProducts.length > 0) {
-            const productByName = allProducts.find(p => p.fullName === itemFullName);
-            if (productByName) {
-              return { ...item, price: productByName.price };
-            }
-          }
-          
-          // Fallback to 0 if nothing found
-          return { ...item, price: 0 };
         }
-        return item;
+        
+        // Always try to get color from allProducts cache
+        if (!enrichedItem.color && itemFullName && allProducts.length > 0) {
+          const productByName = allProducts.find(p => p.fullName === itemFullName);
+          if (productByName) {
+            if (!enrichedItem.price) {
+              enrichedItem.price = productByName.price;
+            }
+            enrichedItem.color = productByName.color;
+          }
+        }
+        
+        // Fallback price to 0 if still not found
+        if (!enrichedItem.price) {
+          enrichedItem.price = 0;
+        }
+        
+        return enrichedItem;
       }), // Orange from warehouse
       ...matchedPairs.map(pair => {
-        // Orange matched items - enrich with price if missing
-        const warehouseItem = pair.warehouseProduct;
-        if (!warehouseItem.price) {
-          const itemFullName = typeof warehouseItem.fullName === 'string' ? warehouseItem.fullName : warehouseItem.fullName?.fullName;
-          
-          // Try allProducts by fullName
-          if (itemFullName && allProducts.length > 0) {
-            const productByName = allProducts.find(p => p.fullName === itemFullName);
-            if (productByName) {
-              return { ...warehouseItem, price: productByName.price };
+        // Orange matched items - enrich with price AND color if missing
+        let warehouseItem = { ...pair.warehouseProduct };
+        const itemFullName = typeof warehouseItem.fullName === 'string' ? warehouseItem.fullName : warehouseItem.fullName?.fullName;
+        
+        // Try allProducts by fullName for both price and color
+        if (itemFullName && allProducts.length > 0) {
+          const productByName = allProducts.find(p => p.fullName === itemFullName);
+          if (productByName) {
+            if (!warehouseItem.price) {
+              warehouseItem.price = productByName.price;
+            }
+            if (!warehouseItem.color) {
+              warehouseItem.color = productByName.color;
             }
           }
-          return { ...warehouseItem, price: 0 };
         }
+        
+        // Fallback price to 0 if still not found
+        if (!warehouseItem.price) {
+          warehouseItem.price = 0;
+        }
+        
         return warehouseItem;
       }), // Orange matched pairs
       ...yellowTransfers.map(item => {
-        // 🔧 FIX: Enrich yellow transfer items with price
-        if (!item.price) {
-          const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
-          
-          // Try warehouse first (match by barcode OR fullName)
+        // Enrich yellow transfer items with price AND color
+        let enrichedItem = { ...item };
+        const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+        
+        // Try warehouse first for price (match by barcode OR fullName)
+        if (!enrichedItem.price) {
           const matchingWarehouse = warehouseItems.find(w => 
             w.barcode === item.barcode || w.fullName === itemFullName
           );
           if (matchingWarehouse) {
-            return { ...item, price: matchingWarehouse.price };
+            enrichedItem.price = matchingWarehouse.price;
           }
-          
-          // Try product cache by fullName
-          if (itemFullName && allProducts.length > 0) {
-            const productByName = allProducts.find(p => p.fullName === itemFullName);
-            if (productByName) {
-              return { ...item, price: productByName.price };
-            }
-          }
-          
-          // Fallback to 0 if nothing found
-          return { ...item, price: 0 };
         }
-        return item;
+        
+        // Always try to get color from allProducts cache
+        if (!enrichedItem.color && itemFullName && allProducts.length > 0) {
+          const productByName = allProducts.find(p => p.fullName === itemFullName);
+          if (productByName) {
+            if (!enrichedItem.price) {
+              enrichedItem.price = productByName.price;
+            }
+            enrichedItem.color = productByName.color;
+          }
+        }
+        
+        // Fallback price to 0 if still not found
+        if (!enrichedItem.price) {
+          enrichedItem.price = 0;
+        }
+        
+        return enrichedItem;
       }) // Yellow incoming transfers
     ];
 
@@ -1527,7 +1557,7 @@ const Users = () => {
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
-                // 🔧 Enrich item with price before printing
+                // 🔧 Enrich item with price AND color before printing
                 const enrichedItem = { ...item };
                 const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
                 
@@ -1542,12 +1572,17 @@ const Users = () => {
                   }
                 }
                 
-                // Try allProducts cache (match by fullName)
-                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                // Try allProducts cache (match by fullName) - get price AND color
+                if (itemFullName && allProducts.length > 0) {
                   const productByName = allProducts.find(p => p.fullName === itemFullName);
                   if (productByName) {
-                    enrichedItem.price = productByName.price;
-                  } else {
+                    if (!enrichedItem.price) {
+                      enrichedItem.price = productByName.price;
+                    }
+                    if (!enrichedItem.color) {
+                      enrichedItem.color = productByName.color;
+                    }
+                  } else if (!enrichedItem.price) {
                     enrichedItem.price = 0; // Fallback if product deleted
                   }
                 }
@@ -1593,7 +1628,7 @@ const Users = () => {
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
-                // 🔧 Enrich item with price before printing
+                // 🔧 Enrich item with price AND color before printing
                 const enrichedItem = { ...item };
                 const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
                 
@@ -1608,12 +1643,17 @@ const Users = () => {
                   }
                 }
                 
-                // Try allProducts cache (match by fullName)
-                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                // Try allProducts cache (match by fullName) - get price AND color
+                if (itemFullName && allProducts.length > 0) {
                   const productByName = allProducts.find(p => p.fullName === itemFullName);
                   if (productByName) {
-                    enrichedItem.price = productByName.price;
-                  } else {
+                    if (!enrichedItem.price) {
+                      enrichedItem.price = productByName.price;
+                    }
+                    if (!enrichedItem.color) {
+                      enrichedItem.color = productByName.color;
+                    }
+                  } else if (!enrichedItem.price) {
                     enrichedItem.price = 0; // Fallback if product deleted
                   }
                 }
@@ -1668,7 +1708,7 @@ const Users = () => {
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
-                // 🔧 Enrich item with price before printing
+                // 🔧 Enrich item with price AND color before printing
                 const enrichedItem = { ...item };
                 const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
                 
@@ -1683,12 +1723,17 @@ const Users = () => {
                   }
                 }
                 
-                // Try allProducts cache (match by fullName)
-                if (!enrichedItem.price && itemFullName && allProducts.length > 0) {
+                // Try allProducts cache (match by fullName) - get BOTH price AND color
+                if (itemFullName && allProducts.length > 0) {
                   const productByName = allProducts.find(p => p.fullName === itemFullName);
                   if (productByName) {
-                    enrichedItem.price = productByName.price;
-                  } else {
+                    if (!enrichedItem.price) {
+                      enrichedItem.price = productByName.price;
+                    }
+                    if (!enrichedItem.color) {
+                      enrichedItem.color = productByName.color;
+                    }
+                  } else if (!enrichedItem.price) {
                     enrichedItem.price = 0; // Fallback if product deleted
                   }
                 }
@@ -1755,34 +1800,52 @@ const Users = () => {
 
     let processedName = (itemName || 'N/A');
     
-    // Get color code and name from the database
-    const colorInfo = getColorCodeFromName(itemName);
+    // Get color code from item.color or fallback to name search
+    let colorInfo = null;
     
-    if (colorInfo && colorInfo.colorName) {
+    // Priority 1: Use color from item if available
+    if (item.color) {
+      const colorId = typeof item.color === 'object' ? item.color._id : item.color;
+      const foundColor = colors.find(c => c._id === colorId);
+      if (foundColor && foundColor.Kol_Kod) {
+        colorInfo = { code: foundColor.Kol_Kod, colorName: foundColor.Kol_Opis || '' };
+      }
+    }
+    
+    // Priority 2: Fallback to name search (old method)
+    if (!colorInfo) {
+      colorInfo = getColorCodeFromName(itemName);
+    }
+    
+    if (colorInfo) {
       // Remove the found color name from the product name (case-insensitive)
-      const colorNameRegex = new RegExp('\\s*' + colorInfo.colorName + '\\s*', 'gi');
-      processedName = processedName.replace(colorNameRegex, ' ').trim();
+      if (colorInfo.colorName) {
+        const colorNameRegex = new RegExp('\\s*' + colorInfo.colorName + '\\s*', 'gi');
+        processedName = processedName.replace(colorNameRegex, ' ').trim();
+      }
       
       // Add color code at the end
-      processedName += ' ' + colorInfo.code;
+      if (colorInfo.code) {
+        processedName += ' ' + colorInfo.code;
+      }
     }
     
-    // Add barcode digits
-    const barcodeDigits = (barcode && barcode.length >= 5) ? barcode.substring(3, 5) : '';
-    if (barcodeDigits) {
-      processedName += ` ${barcodeDigits}`;
-    }
+    // NOTE: We DON'T add barcode digits here because color code already contains them
+    // The color code (e.g., "21") comes from the same barcode position (substring 3-5)
+    // Adding both would create duplicates like "Amanda 21 21"
 
-    const safeName = processedName.replace(/[^\x00-\x7F]/g, '?');
-    const safeSize = (itemSize || 'N/A').replace(/[^\x00-\x7F]/g, '?');
-    const safeTransfer = (mappedPoint || 'N/A').replace(/[^\x00-\x7F]/g, '?');
+    // 🇵🇱 Keep Polish characters - Zebra printer will handle UTF-8 with ^CI28
+    const safeName = processedName || 'N/A';
+    const safeSize = itemSize || 'N/A';
+    const safeTransfer = mappedPoint || 'N/A';
     
     // 🔧 FIX: Only show 'N/A' if price is truly missing (not if it's 0)
     const safePrice = (price !== null && price !== undefined) 
-      ? price.toString().replace(/[^\x00-\x7F]/g, '?') 
+      ? price.toString() 
       : 'N/A';
 
     return `^XA
+^CI28
 ^MMT
 ^PW450
 ^LL0400
@@ -1835,12 +1898,49 @@ const Users = () => {
       const itemSize = item.isFromSale
         ? item.size
         : (typeof item.size === 'object' ? item.size?.Roz_Opis : item.size);
+      
+      // Try to get price from dedicated price list first
       const priceInfo = getPriceFromPriceList(item, itemSize);
-      const shouldPrintTwoLabels = priceInfo && priceInfo.hasDiscount && !priceInfo.sizeExceptionPrice;
+      
+      // If no dedicated price list, get price from goods (fallback)
+      let fallbackPriceInfo = null;
+      if (!priceInfo && allProducts.length > 0) {
+        const product = allProducts.find(p =>
+          (item.barcode && p.code === item.barcode) ||
+          (item.productId && p._id === item.productId) ||
+          (typeof item.fullName === 'object' && item.fullName?.fullName && p.fullName === item.fullName.fullName) ||
+          (typeof item.fullName === 'string' && p.fullName === item.fullName)
+        );
+        
+        if (product) {
+          fallbackPriceInfo = {
+            regularPrice: product.price || 0,
+            discountPrice: product.discount_price || 0,
+            sizeExceptionPrice: null,
+            hasDiscount: product.discount_price && product.discount_price > 0
+          };
+          
+          // Check for size exceptions in goods
+          if (itemSize && product.priceExceptions && product.priceExceptions.length > 0) {
+            const sizeException = product.priceExceptions.find(exception => {
+              const exceptionSizeName = exception.size?.Roz_Opis || exception.size;
+              return exceptionSizeName === itemSize;
+            });
+            
+            if (sizeException) {
+              fallbackPriceInfo.sizeExceptionPrice = sizeException.value;
+            }
+          }
+        }
+      }
+      
+      const finalPriceInfo = priceInfo || fallbackPriceInfo;
+      const shouldPrintTwoLabels = finalPriceInfo && finalPriceInfo.hasDiscount && !finalPriceInfo.sizeExceptionPrice;
 
       if (shouldPrintTwoLabels) {
-        const regularZpl = generateZplCode(item, priceInfo.regularPrice);
-        const discountZpl = generateZplCode(item, priceInfo.discountPrice);
+        
+        const regularZpl = generateZplCode(item, finalPriceInfo.regularPrice);
+        const discountZpl = generateZplCode(item, finalPriceInfo.discountPrice);
 
         const regularResult = await sendZplToPrinter(regularZpl);
         const discountResult = await sendZplToPrinter(discountZpl);
@@ -1848,12 +1948,14 @@ const Users = () => {
         return regularResult && discountResult;
       }
 
+      // Print single label
       const fallbackPrice = item.price ?? item.fullName?.price ?? null;
-      const finalPrice = priceInfo?.sizeExceptionPrice ?? priceInfo?.regularPrice ?? fallbackPrice;
+      const finalPrice = finalPriceInfo?.sizeExceptionPrice ?? finalPriceInfo?.regularPrice ?? fallbackPrice;
+      
       const zplCode = generateZplCode(item, finalPrice);
-
       return await sendZplToPrinter(zplCode);
     } catch (error) {
+      console.error('❌ Error in handlePrintLabel:', error);
       return false;
     }
   };
