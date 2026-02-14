@@ -606,24 +606,6 @@ const ProductsList = () => {
     setPriceExceptions(newExceptions);
   };
 
-  const handleClearAdditionalPrices = () => {
-    Alert.alert(
-      "Wyczyść ceny dodatkowe",
-      "Czy na pewno chcesz wyczyścić cenę promocyjną i wyjątki cenowe? Ta akcja spowoduje również usunięcie tych cen z wszystkich dedykowanych cenników.",
-      [
-        { text: "Anuluj", style: "cancel" },
-        {
-          text: "Wyczyść",
-          style: "destructive",
-          onPress: () => {
-            setDiscountPrice("");
-            setPriceExceptions([]);
-          }
-        }
-      ]
-    );
-  };
-
   const handleEditProduct = (product) => {
     const imageUrl = product.picture ? getImageUrl(product.picture) : null;
     
@@ -734,24 +716,7 @@ const ProductsList = () => {
       });
 
       if (response.ok) {
-        // 🔧 Synchronize prices to dedicated price lists if this is an update
-        if (editingProduct) {
-          try {
-            await tokenService.authenticatedFetch(getApiUrl('/pricelists/sync-all'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                updatePrices: true, 
-                addNew: false, 
-                removeDeleted: false 
-              })
-            });
-            console.log('✅ Price synchronization completed');
-          } catch (syncError) {
-            console.log('⚠️ Price sync error (non-critical):', syncError);
-          }
-        }
-        
+        // Backend już automatycznie synchronizuje cenniki po zapisie produktu
         setSuccessMessage(
           editingProduct
             ? "Produkt został zaktualizowany"
@@ -1217,24 +1182,6 @@ const ProductsList = () => {
                       ))
                     )}
                   </View>
-
-                  {/* Clear additional prices button */}
-                  {(discountPrice || priceExceptions.length > 0) && (
-                    <View style={styles.formGroup}>
-                      <TouchableOpacity
-                        style={styles.clearPricesButton}
-                        onPress={handleClearAdditionalPrices}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#DC2626" />
-                        <Text style={styles.clearPricesButtonText}>
-                          Wyczyść ceny dodatkowe
-                        </Text>
-                      </TouchableOpacity>
-                      <Text style={styles.clearPricesHelperText}>
-                        Usuń cenę promocyjną i wyjątki cenowe z głównego cennika oraz dedykowanych cenników
-                      </Text>
-                    </View>
-                  )}
                 </>
               )}
 
@@ -1456,24 +1403,6 @@ const ProductsList = () => {
                       ))
                     )}
                   </View>
-
-                  {/* Clear additional prices button */}
-                  {(discountPrice || priceExceptions.length > 0) && (
-                    <View style={styles.formGroup}>
-                      <TouchableOpacity
-                        style={styles.clearPricesButton}
-                        onPress={handleClearAdditionalPrices}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#DC2626" />
-                        <Text style={styles.clearPricesButtonText}>
-                          Wyczyść ceny dodatkowe
-                        </Text>
-                      </TouchableOpacity>
-                      <Text style={styles.clearPricesHelperText}>
-                        Usuń cenę promocyjną i wyjątki cenowe z głównego cennika oraz dedykowanych cenników
-                      </Text>
-                    </View>
-                  )}
                 </>
               )}
 
@@ -1695,24 +1624,6 @@ const ProductsList = () => {
                       ))
                     )}
                   </View>
-
-                  {/* Clear additional prices button */}
-                  {(discountPrice || priceExceptions.length > 0) && (
-                    <View style={styles.formGroup}>
-                      <TouchableOpacity
-                        style={styles.clearPricesButton}
-                        onPress={handleClearAdditionalPrices}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#DC2626" />
-                        <Text style={styles.clearPricesButtonText}>
-                          Wyczyść ceny dodatkowe
-                        </Text>
-                      </TouchableOpacity>
-                      <Text style={styles.clearPricesHelperText}>
-                        Usuń cenę promocyjną i wyjątki cenowe z głównego cennika oraz dedykowanych cenników
-                      </Text>
-                    </View>
-                  )}
                 </>
               )}
 
@@ -1952,23 +1863,6 @@ const ProductsList = () => {
                     )}
                   </View>
 
-                  {/* Clear additional prices button */}
-                  {(discountPrice || priceExceptions.length > 0) && (
-                    <View style={styles.formGroup}>
-                      <TouchableOpacity
-                        style={styles.clearPricesButton}
-                        onPress={handleClearAdditionalPrices}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#DC2626" />
-                        <Text style={styles.clearPricesButtonText}>
-                          Wyczyść ceny dodatkowe
-                        </Text>
-                      </TouchableOpacity>
-                      <Text style={styles.clearPricesHelperText}>
-                        Usuń cenę promocyjną i wyjątki cenowe z głównego cennika oraz dedykowanych cenników
-                      </Text>
-                    </View>
-                  )}
                 </>
               )}
             </ScrollView>
@@ -3645,30 +3539,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#0D6EFD",
     fontWeight: "600",
-  },
-  clearPricesButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#2C1A1F",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#DC2626",
-    gap: 8,
-  },
-  clearPricesButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#DC2626",
-  },
-  clearPricesHelperText: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 8,
-    textAlign: "center",
-    lineHeight: 16,
   },
 });
 
