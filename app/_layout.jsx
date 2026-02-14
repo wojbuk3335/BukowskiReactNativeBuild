@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
+import { AuthProvider } from '../context/AuthContext'; // Import auth provider
 
 // Configure axios baseURL globally
 axios.defaults.baseURL = API_CONFIG.BASE_URL;
@@ -82,28 +83,30 @@ const RootLayout = () => {
 
   return (
     <SafeAreaProvider>
-      <GlobalStateProvider>
-        <Stack options={{ headerShown: false }}>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(admin-tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="products-list" options={{ headerShown: false }} />
-          <Stack.Screen name="cenniki" options={{ headerShown: false }} />
-          <Stack.Screen name="sales-view" options={{ headerShown: false }} />
-          <Stack.Screen name="stock-list" options={{ headerShown: false }} />
-          <Stack.Screen name="colors-list" options={{ headerShown: false }} />
-          <Stack.Screen name="sizes-list" options={{ headerShown: false }} />
-          <Stack.Screen name="localizations-list" options={{ headerShown: false }} />
-          <Stack.Screen name="bags-list" options={{ headerShown: false }} />
-          <Stack.Screen name="wallets-list" options={{ headerShown: false }} />
-          <Stack.Screen name="remaining-products-list" options={{ headerShown: false }} />
-          <Stack.Screen name="employees-list" options={{ headerShown: false }} />
-          <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
-          <Stack.Screen name="payroll" options={{ headerShown: false }} />
-          <Stack.Screen name="print-labels" options={{ headerShown: false }} />
-        </Stack>
-      </GlobalStateProvider>
+      <AuthProvider>
+        <GlobalStateProvider>
+          <Stack options={{ headerShown: false }}>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(admin-tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="products-list" options={{ headerShown: false }} />
+            <Stack.Screen name="cenniki" options={{ headerShown: false }} />
+            <Stack.Screen name="sales-view" options={{ headerShown: false }} />
+            <Stack.Screen name="stock-list" options={{ headerShown: false }} />
+            <Stack.Screen name="colors-list" options={{ headerShown: false }} />
+            <Stack.Screen name="sizes-list" options={{ headerShown: false }} />
+            <Stack.Screen name="localizations-list" options={{ headerShown: false }} />
+            <Stack.Screen name="bags-list" options={{ headerShown: false }} />
+            <Stack.Screen name="wallets-list" options={{ headerShown: false }} />
+            <Stack.Screen name="remaining-products-list" options={{ headerShown: false }} />
+            <Stack.Screen name="employees-list" options={{ headerShown: false }} />
+            <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
+            <Stack.Screen name="payroll" options={{ headerShown: false }} />
+            <Stack.Screen name="print-labels" options={{ headerShown: false }} />
+          </Stack>
+        </GlobalStateProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 };

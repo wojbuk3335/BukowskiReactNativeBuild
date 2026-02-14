@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   View,
   Text,
@@ -16,8 +16,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { getApiUrl } from '../config/api';
 import tokenService from '../services/tokenService';
+import { AuthContext } from '../context/AuthContext';
 
 const PrintLabels = () => {
+  const authContext = useContext(AuthContext);
+  const authData = authContext?.authData;
+  
   // State management
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,6 +87,14 @@ const PrintLabels = () => {
     }
   }, [selectedLocalization]);
 
+  // Clear size filter when category doesn't have sizes
+  useEffect(() => {
+    const categoriesWithoutSizes = ['Torebki', 'Portfele', 'Pozostały asortyment', 'Paski', 'Rękawiczki'];
+    if (selectedCategory && categoriesWithoutSizes.includes(selectedCategory) && selectedSize) {
+      setSelectedSize(null);
+    }
+  }, [selectedCategory]);
+
   useEffect(() => {
     if (localizations.length > 0 && sellingPoints.length > 0) {
       loadInventoryData();
@@ -116,9 +128,17 @@ const PrintLabels = () => {
 
       // Localizations
       if (localizationsData && localizationsData.localizations && Array.isArray(localizationsData.localizations)) {
-        const validLocalizations = localizationsData.localizations.filter(l => 
+        let validLocalizations = localizationsData.localizations.filter(l => 
           l.Miejsc_1_Kod_1 && l.Miejsc_1_Kod_1.toString().trim() !== ''
         );
+        
+        // Filter out 'Ząb' for admin users
+        if (authData?.role === 'admin' || authData?.symbol === 'SUPER_ADMIN') {
+          validLocalizations = validLocalizations.filter(l => 
+            l.Miejsc_1_Opis_1 !== 'Ząb'
+          );
+        }
+        
         const locArray = validLocalizations.map(l => ({
           value: l._id,
           label: l.Miejsc_1_Opis_1
@@ -159,7 +179,7 @@ const PrintLabels = () => {
           label: g.fullName,
           category: g.category,
           barcode: g.barcode,
-          manufacturerId: g.manufacturerId,
+          manufacturerId: g.manufacturerId?._id || g.Prod_ID || g.manufacturer,
           price: g.price,
           discountPrice: g.discount_price || 0
         }));
@@ -327,7 +347,10 @@ const PrintLabels = () => {
       filtered = filtered.filter((item) => {
         // Try to find product by name
         const product = products.find(p => 
-          p.label === item.product || p.value === item.fullName
+          p.label === item.product || 
+          p.label === item.fullName || 
+          p.value === item.fullName ||
+          p.value === item.productId
         );
         return product && product.category === selectedCategory;
       });
@@ -344,18 +367,35 @@ const PrintLabels = () => {
     // Manufacturer filter
     if (selectedManufacturer) {
       filtered = filtered.filter((item) => {
-        const product = products.find(p => 
-          p.label === item.product || p.value === item.fullName
-        );
-        return product && product.manufacturerId === selectedManufacturer;
+        const itemProduct = (item.product || '').trim();
+        const itemFullName = (item.fullName || '').trim();
+        const itemProductId = item.productId;
+        
+        const product = products.find(p => {
+          const pLabel = (p.label || '').trim();
+          const pValue = p.value;
+          
+          return pLabel === itemProduct || 
+                 pLabel === itemFullName || 
+                 pValue === itemFullName ||
+                 pValue === itemProductId ||
+                 pValue === itemProduct;
+        });
+        
+        const manufacturerIdToCompare = typeof product?.manufacturerId === 'object' ? product.manufacturerId?._id : product?.manufacturerId;
+        return product && manufacturerIdToCompare === selectedManufacturer;
       });
     }
 
     // Product filter - item might have product name or fullName as ID
     if (selectedProduct) {
-      const selectedProductName = products.find(p => p.value === selectedProduct)?.label;
+      const selectedProductObj = products.find(p => p.value === selectedProduct);
+      const selectedProductName = selectedProductObj?.label;
       filtered = filtered.filter((item) => 
-        item.fullName === selectedProduct || item.product === selectedProductName
+        item.fullName === selectedProduct || 
+        item.fullName === selectedProductName ||
+        item.product === selectedProductName ||
+        item.productId === selectedProduct
       );
     }
 
@@ -719,6 +759,46 @@ const PrintLabels = () => {
     }
   };
 
+  // Calculate total number of labels to print (considering discount prices)
+  const countTotalLabels = (items) => {
+    return items.reduce((total, item) => {
+      const itemSize = getSizeLabel(item.size);
+      
+      // Find user for this selling point
+      const singlePoint = item.sellingPoints || item.sellingPoint;
+      const pointUser = allUsers.find(u => {
+        const symbol = u.symbol || '';
+        const sellingPoint = u.sellingPoint || '';
+        return symbol === singlePoint || 
+               sellingPoint === singlePoint ||
+               (u.role === 'magazyn' && singlePoint === 'MAGAZYN');
+      });
+      
+      const priceInfo = getPriceFromPriceList(item, itemSize, pointUser?._id || null);
+
+      // Check if we have dedicated price list
+      if (priceInfo) {
+        // Size exception or no discount → 1 label
+        if (priceInfo.sizeExceptionPrice || !priceInfo.hasDiscount) {
+          return total + 1;
+        }
+        // Has discount → 2 labels
+        return total + 2;
+      }
+
+      // No dedicated price list - check goods
+      const productName = item.product || getProductName(item.fullName);
+      const product = products.find(p => p.label === productName || p.value === item.fullName);
+      
+      // Has discount in goods → 2 labels, otherwise 1
+      if (product && product.discountPrice && product.discountPrice > 0) {
+        return total + 2;
+      }
+      
+      return total + 1;
+    }, 0);
+  };
+
   const handlePrintLabel = async (item, userId = null, uniqueKey = null) => {
     const itemBarcode = item.barcode || item.barcodes;
     setPrintingId(uniqueKey || itemBarcode);
@@ -1037,7 +1117,8 @@ const PrintLabels = () => {
               'Kategoria'
             )}
 
-            {renderFilterDropdown(
+            {/* Show size filter only for categories that have sizes */}
+            {(!selectedCategory || selectedCategory === 'Kurtki kożuchy futra') && renderFilterDropdown(
               'size',
               sizes,
               selectedSize,
@@ -1080,7 +1161,7 @@ const PrintLabels = () => {
                 <>
                   <Ionicons name="print" size={20} color="#fff" />
                   <Text style={styles.printAllButtonText}>
-                    Drukuj wszystkie ({filteredData.length})
+                    Drukuj wszystkie ({countTotalLabels(filteredData)} etykiet)
                   </Text>
                 </>
               )}
@@ -1114,6 +1195,36 @@ const PrintLabels = () => {
               const locationLabel = getLocationLabel(singlePoint);
               const barcode = item.barcodes || item.barcode;
               const uniqueKey = `${barcode}-${item._expandedIndex || 0}-${index}`;
+              
+              // Get pricing information
+              const pointUser = allUsers.find(u => {
+                const symbol = u.symbol || '';
+                const sellingPoint = u.sellingPoint || '';
+                return symbol === singlePoint || 
+                       sellingPoint === singlePoint ||
+                       (u.role === 'magazyn' && singlePoint === 'MAGAZYN');
+              });
+              const priceInfo = getPriceFromPriceList(item, sizeLabel, pointUser?._id || null);
+              
+              // Fallback to goods prices if no dedicated price list
+              let regularPrice = '-';
+              let discountPrice = null;
+              let sizeExceptionPrice = null;
+              
+              if (priceInfo) {
+                regularPrice = priceInfo.regularPrice ? `${priceInfo.regularPrice} zł` : '-';
+                discountPrice = priceInfo.discountPrice && priceInfo.hasDiscount ? `${priceInfo.discountPrice} zł` : null;
+                sizeExceptionPrice = priceInfo.sizeExceptionPrice ? `${priceInfo.sizeExceptionPrice} zł` : null;
+              } else {
+                // Fallback to goods
+                const product = products.find(p => p.label === productName || p.value === item.fullName);
+                if (product) {
+                  regularPrice = product.price ? `${product.price} zł` : '-';
+                  discountPrice = product.discountPrice && product.discountPrice > 0 ? `${product.discountPrice} zł` : null;
+                } else if (item.price) {
+                  regularPrice = `${item.price} zł`;
+                }
+              }
               
               return (
               <View key={uniqueKey} style={styles.inventoryItem}>
@@ -1166,6 +1277,28 @@ const PrintLabels = () => {
                     <Ionicons name="storefront-outline" size={16} color="#64748B" />
                     <Text style={styles.detailText}>{sellingPointLabel}</Text>
                   </View>
+                  
+                  {/* Price Information */}
+                  {sizeExceptionPrice ? (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
+                      <Text style={[styles.detailText, { color: '#F59E0B' }]}>Cena ({sizeLabel}): {sizeExceptionPrice}</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.detailRow}>
+                        <Ionicons name="pricetag-outline" size={16} color="#64748B" />
+                        <Text style={styles.detailText}>Cena: {regularPrice}</Text>
+                      </View>
+                      
+                      {discountPrice && (
+                        <View style={styles.detailRow}>
+                          <Ionicons name="gift-outline" size={16} color="#10B981" />
+                          <Text style={[styles.detailText, { color: '#10B981' }]}>Promocja: {discountPrice}</Text>
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
               </View>
               );
@@ -1188,7 +1321,7 @@ const PrintLabels = () => {
             </View>
             <Text style={styles.modalTitle}>Masowy wydruk</Text>
             <Text style={styles.modalMessage}>
-              Czy na pewno chcesz wydrukować {filteredData.length} etykiet?
+              Czy na pewno chcesz wydrukować {countTotalLabels(filteredData)} etykiet?
             </Text>
             <View style={styles.modalButtonsContainer}>
               <TouchableOpacity
@@ -1226,10 +1359,10 @@ const PrintLabels = () => {
               {"\n"}Błędy: {printAllResult?.errorCount || 0}
             </Text>
             <TouchableOpacity
-              style={[styles.modalButton, styles.modalConfirmButton, { width: '100%' }]}
+              style={styles.singleModalButton}
               onPress={() => setPrintAllResult(null)}
             >
-              <Text style={styles.modalButtonText}>OK</Text>
+              <Text style={styles.modalButtonText}>Zamknij</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1504,6 +1637,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  fullWidthButton: {
+    width: '100%',
+  },
+  singleModalButton: {
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0d6efd',
+    marginTop: 10,
   },
   inventoryItem: {
     backgroundColor: '#2a2a2a',

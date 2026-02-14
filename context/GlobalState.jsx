@@ -1,13 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router"; // Import router
-import React, { createContext, useState } from "react";
+import React, { createContext, useState, useContext } from "react";
 import { getApiUrl, API_CONFIG } from "../config/api"; // Import API config
 import tokenService from "../services/tokenService"; // Import token service
 import AuthErrorHandler from "../utils/authErrorHandler"; // Import auth error handler
+import { AuthContext } from './AuthContext'; // Import auth context
 
 export const GlobalStateContext = createContext();
 
 export const GlobalStateProvider = ({ children }) => {
+    const authContext = useContext(AuthContext);
+    
     const [user, setUser] = useState(null); // Global state for user
     const [isLoggedIn, setIsLoggedIn] = useState(false); // State to track login status
     const [isLoading, setIsLoading] = useState(false); // State to track loading status
@@ -280,6 +283,11 @@ export const GlobalStateProvider = ({ children }) => {
             setUser(data); // Update user state
             setIsLoggedIn(true); // Set login status to true
             await AsyncStorage.setItem("user", JSON.stringify(data)); // Save user data locally
+            
+            // Save user data to AuthContext
+            if (authContext?.login) {
+                authContext.login(data);
+            }
 
             return data; // Return user data
         } catch (error) {
@@ -328,6 +336,11 @@ export const GlobalStateProvider = ({ children }) => {
             setGoods([]); // Clear goods
             setStocks([]); // Clear stocks
             setUsers([]); // Clear users
+            
+            // Clear AuthContext
+            if (authContext?.logout) {
+                authContext.logout();
+            }
             setBags([]); // Clear bags
             setWallets([]); // Clear wallets
             setMatchedItems([]); // Clear matched items
