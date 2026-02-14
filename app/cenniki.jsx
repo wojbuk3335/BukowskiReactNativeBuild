@@ -75,6 +75,7 @@ const Cenniki = () => {
   };
 
   const filteredUsers = useMemo(() => {
+    if (!Array.isArray(users)) return [];
     return users.filter((user) => {
       const symbol = user.symbol?.toLowerCase();
       const role = user.role?.toLowerCase();
@@ -130,10 +131,12 @@ const Cenniki = () => {
           setSelectedSellingPoint(filtered[0]._id);
         }
       } else {
-        Alert.alert("Błąd", "Nie udało się pobrać listy punktów sprzedaży");
+        console.error("Failed to fetch users:", response.status);
+        setUsers([]);
       }
     } catch (error) {
-      Alert.alert("Błąd", "Nie udało się pobrać listy punktów sprzedaży");
+      console.error("Error fetching users:", error);
+      setUsers([]);
     } finally {
       setLoadingUsers(false);
     }
@@ -427,17 +430,27 @@ const Cenniki = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
-    fetchSizes();
+    const initializeComponent = async () => {
+      try {
+        await fetchUsers();
+        await fetchSizes();
+      } catch (error) {
+        console.error("Error initializing cenniki:", error);
+      }
+    };
+    initializeComponent();
   }, []);
 
   useEffect(() => {
     if (selectedSellingPoint) {
-      fetchPriceList(selectedSellingPoint);
+      fetchPriceList(selectedSellingPoint).catch(error => {
+        console.error("Error fetching price list:", error);
+      });
     }
   }, [selectedSellingPoint]);
 
   const filteredPriceList = useMemo(() => {
+    if (!Array.isArray(priceList)) return [];
     if (!searchTerm.trim()) return priceList;
     const term = searchTerm.toLowerCase();
     return priceList.filter((item) => {
