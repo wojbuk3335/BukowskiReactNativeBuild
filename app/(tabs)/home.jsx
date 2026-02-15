@@ -624,8 +624,10 @@ const Home = () => {
         const data = await response.json();
         const assignments = data.assignments || [];
         
-        // Extract employee data from assignments
-        const assignedEmployees = assignments.map(assignment => assignment.employeeId);
+        // Extract employee data from assignments - filter out null values
+        const assignedEmployees = assignments
+          .map(assignment => assignment.employeeId)
+          .filter(emp => emp !== null && emp !== undefined);
         setAssignedSalespeople(assignedEmployees);
         // Logger.debug('Loaded assigned salespeople:', assignedEmployees.length);
       }
@@ -4826,7 +4828,7 @@ const Home = () => {
                 {employees.length > 0 ? (
                   employees.map((employee) => {
                     const isSelected = selectedSalespeople.find(person => person._id === employee._id);
-                    const isAlreadyAssigned = assignedSalespeople.find(person => person._id === employee._id);
+                    const isAlreadyAssigned = assignedSalespeople?.find(person => person?._id === employee._id);
                     
                     return (
                       <TouchableOpacity
