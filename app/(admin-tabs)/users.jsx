@@ -278,6 +278,22 @@ const Users = () => {
     }
   }, [selectedDate]);
 
+  // Grey out all warehouse items when MAGAZYN is selected (like web app)
+  useEffect(() => {
+    const selectedUserData = users.find(user => user._id === selectedUserId);
+    const isWarehouseUser = selectedUserData && 
+      (selectedUserData.symbol === 'MAGAZYN' || selectedUserData.symbol === 'Magazyn');
+    
+    if (selectedUserId && isWarehouseUser && warehouseItems.length > 0) {
+      // When MAGAZYN is selected, grey out ALL warehouse items
+      const allWarehouseIds = new Set(warehouseItems.map(item => item._id));
+      setGreyedWarehouseItems(allWarehouseIds);
+    } else if (selectedUserId && !isWarehouseUser) {
+      // When non-warehouse user is selected, clear greying
+      setGreyedWarehouseItems(new Set());
+    }
+  }, [selectedUserId, users, warehouseItems]);
+
   // Auto-refresh last transaction every 5 seconds (for cross-app sync)
   useEffect(() => {
     // Initial check
@@ -474,7 +490,11 @@ const Users = () => {
                 size: blueItem.size,
                 barcode: blueItem.barcode
               },
-              warehouseProduct: warehouseItem
+              warehouseProduct: {
+                ...warehouseItem,
+                transfer_to: blueItem.type === 'transfer' ? blueItem.transfer_to : undefined,
+                sellingPoint: blueItem.type === 'sale' ? (blueItem.sellingPoint || blueItem.from) : undefined
+              }
             });
             
             pairedBlueIndexes.add(b);
@@ -1269,8 +1289,8 @@ const Users = () => {
       const warehouseAfterCount = warehouseBeforeCount - totalOrangeFromWarehouse;
       const warehouseProcessedCount = totalOrangeFromWarehouse;
 
-      // Check if user is warehouse
-      const isWarehouse = userSymbol === 'Magazyn';
+      // Check if user is warehouse (support both 'MAGAZYN' and 'Magazyn')
+      const isWarehouse = userSymbol === 'MAGAZYN' || userSymbol === 'Magazyn';
 
       // Show control modal with actual vs expected
       setControlModalData({
@@ -1294,8 +1314,11 @@ const Users = () => {
         isWarehouse
       });
       
-      // Clear greyed items after processing
-      setGreyedWarehouseItems(new Set());
+      // Clear greyed items after processing - BUT NOT for MAGAZYN user (persist grey state)
+      if (!selectedUserData || 
+          (selectedUserData.symbol !== 'MAGAZYN' && selectedUserData.symbol !== 'Magazyn')) {
+        setGreyedWarehouseItems(new Set());
+      }
       setMatchedPairs([]);
       
       // Refresh processing status for all users
@@ -1387,15 +1410,15 @@ const Users = () => {
         // Calculate changes
         const warehouseReturned = warehouseAfterCount - warehouseBeforeCount;
         const stateChange = userStateAfter - userStateBefore;
-        const isWarehouse = userSymbol === 'MAGAZYN';
+        const isWarehouse = userSymbol === 'MAGAZYN' || userSymbol === 'Magazyn';
         
         // Calculate display values based on user type
         let restoredCount, calculation;
         
         if (isWarehouse) {
           // For warehouse: show items removed (negative value)
-          restoredCount = stateChange; // Will be negative
-          calculation = `Cofnięcie: ${Math.abs(stateChange)} produktów zostało usuniętych z magazynu\nStan wraca do: ${userStateAfter}`;
+          restoredCount = -stateChange; // Negative value (opposite of stateChange)
+          calculation = `${userStateBefore} + ${stateChange} (cofnięcie artykułów) = ${userStateAfter}`;
         } else {
           // For selling points: don't show "restored count", only warehouse return
           restoredCount = undefined;
@@ -1419,6 +1442,13 @@ const Users = () => {
         
         // Refresh data
         await fetchItemsToPick();
+        
+        // Restore grey state for MAGAZYN after undo (like web app)
+        if (isWarehouse) {
+          // Wait a bit for state update to complete
+          await new Promise(resolve => setTimeout(resolve, 200));
+          // useEffect will re-apply greying based on updated warehouseItems
+        }
         
         // Refresh processing status for all users
         await checkProcessingStatus();
@@ -1520,7 +1550,7 @@ const Users = () => {
             disabled={isGreyed}
           >
             <Text style={styles.warehouseButtonText}>
-              {isGreyed ? '⚡ Sparowany' : 'Przenieś'}
+              {isGreyed ? 'Zablokowany!' : 'Przenieś'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1549,7 +1579,7 @@ const Users = () => {
               {item.barcode}
             </Text>
             <Text style={styles.transferSize}>
-              MAGAZYN → Sparowany z transferem
+              MAGAZYN → {item.transfer_to || item.sellingPoint || 'N/A'}
             </Text>
           </View>
           
@@ -2316,9 +2346,9 @@ const Users = () => {
                       {controlModalData.isWarehouse ? (
                         <>
                           {controlModalData.restoredCount !== undefined && controlModalData.restoredCount < 0 && (
-                            <View style={styles.statRowRed}>
-                              <Text style={styles.statLabelRed}>↩️ Usunięte z magazynu (cofnięcie)</Text>
-                              <Text style={styles.statValueTextRed}>{controlModalData.restoredCount}</Text>
+                            <View style={styles.warehouseRemovalBox}>
+                              <Text style={styles.warehouseRemovalLabel}>Usunięcie z magazynu</Text>
+                              <Text style={styles.warehouseRemovalValue}>{controlModalData.restoredCount}</Text>
                             </View>
                           )}
                         </>
@@ -2390,86 +2420,117 @@ const Users = () => {
                         </View>
                       )}
 
-                      <View style={styles.statRow}>
-                        <Text style={styles.statLabel}>Stan początkowy</Text>
-                        <View style={styles.statValueBlue}>
-                          <Text style={styles.statValueTextBlue}>{controlModalData.beforeCount}</Text>
-                        </View>
-                      </View>
+                        {/* For MAGAZYN - show state before, yellow transfers, calculation, and expected state */}
+                        {controlModalData.isWarehouse ? (
+                          <>
+                            <View style={styles.statRow}>
+                              <Text style={styles.statLabel}>Stan magazynu przed</Text>
+                              <View style={styles.statValueBlue}>
+                                <Text style={styles.statValueTextBlue}>{controlModalData.beforeCount}</Text>
+                              </View>
+                            </View>
 
-                      {controlModalData.allBlueCount > 0 && (
-                        <View style={styles.statRowRed}>
-                          <Text style={styles.statLabelRed}>🔵 Niebieskie (odpis)</Text>
-                          <Text style={styles.statValueTextRed}>-{controlModalData.allBlueCount}</Text>
-                        </View>
-                      )}
+                            {controlModalData.yellowCount > 0 && (
+                              <View style={styles.statRowYellow}>
+                                <Text style={styles.statLabelYellow}>🟡 Przyjęcia do magazynu</Text>
+                                <Text style={styles.statValueTextYellow}>+{controlModalData.yellowCount}</Text>
+                              </View>
+                            )}
 
-                      {controlModalData.yellowCount > 0 && (
-                        <View style={styles.statRowYellow}>
-                          <Text style={styles.statLabelYellow}>🟡 Żółte transfery (dopis)</Text>
-                          <Text style={styles.statValueTextYellow}>+{controlModalData.yellowCount}</Text>
-                        </View>
-                      )}
+                            <View style={styles.calculationBox}>
+                              <Text style={styles.calculationLabel}>OBLICZENIE</Text>
+                              <Text style={styles.calculationText}>{controlModalData.beforeCount} + {controlModalData.yellowCount} (przyjęcia do magazynu) = {controlModalData.expectedAfterCount}</Text>
+                            </View>
 
-                      {controlModalData.warehouseCount > 0 && (
-                        <View style={styles.statRowGreen}>
-                          <Text style={styles.statLabelGreen}>📦 Magazyn (dopis)</Text>
-                          <Text style={styles.statValueTextGreen}>+{controlModalData.warehouseCount}</Text>
-                        </View>
-                      )}
+                            <View style={styles.resultRow}>
+                              <Text style={styles.resultLabel}>Oczekiwany stan końcowy magazynu</Text>
+                              <View style={styles.resultValue}>
+                                <Text style={styles.resultValueText}>{controlModalData.expectedAfterCount}</Text>
+                              </View>
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            {/* For selling points - show full breakdown */}
+                            <View style={styles.statRow}>
+                              <Text style={styles.statLabel}>Stan początkowy</Text>
+                              <View style={styles.statValueBlue}>
+                                <Text style={styles.statValueTextBlue}>{controlModalData.beforeCount}</Text>
+                              </View>
+                            </View>
 
-                      {controlModalData.greenMatchedCount > 0 && (
-                        <View style={styles.statRowGray}>
-                          <Text style={styles.statLabelGray}>🟢 {controlModalData.greenMatchedCount} par dopasowanych (bilans: 0)</Text>
-                        </View>
-                      )}
+                            {controlModalData.allBlueCount > 0 && (
+                              <View style={styles.statRowRed}>
+                                <Text style={styles.statLabelRed}>🔵 Niebieskie (odpis)</Text>
+                                <Text style={styles.statValueTextRed}>-{controlModalData.allBlueCount}</Text>
+                              </View>
+                            )}
 
-                      <View style={styles.calculationBox}>
-                        <Text style={styles.calculationLabel}>OBLICZENIE</Text>
-                        <Text style={styles.calculationText}>{controlModalData.calculation}</Text>
-                      </View>
+                            {controlModalData.yellowCount > 0 && (
+                              <View style={styles.statRowYellow}>
+                                <Text style={styles.statLabelYellow}>🟡 Żółte transfery (dopis)</Text>
+                                <Text style={styles.statValueTextYellow}>+{controlModalData.yellowCount}</Text>
+                              </View>
+                            )}
 
-                      <View style={styles.resultRow}>
-                        <Text style={styles.resultLabel}>Rzeczywisty stan końcowy</Text>
-                        <View style={styles.resultValue}>
-                          <Text style={styles.resultValueText}>{controlModalData.actualAfterCount || controlModalData.expectedAfterCount}</Text>
-                        </View>
-                      </View>
+                            {controlModalData.warehouseCount > 0 && (
+                              <View style={styles.statRowGreen}>
+                                <Text style={styles.statLabelGreen}>📦 Magazyn (dopis)</Text>
+                                <Text style={styles.statValueTextGreen}>+{controlModalData.warehouseCount}</Text>
+                              </View>
+                            )}
 
-                      {/* Warehouse state display (only for selling points, not for warehouse itself) */}
-                      {!controlModalData.isWarehouse && (
-                        <View style={styles.warehouseStateBox}>
-                          <Text style={styles.warehouseStateTitle}>📦 MAGAZYN</Text>
-                          <View style={styles.warehouseStateRow}>
-                            <Text style={styles.warehouseStateLabel}>Stan przed:</Text>
-                            <Text style={styles.warehouseStateValue}>{controlModalData.warehouseBeforeCount}</Text>
-                          </View>
-                          <View style={styles.warehouseStateRow}>
-                            <Text style={styles.warehouseStateLabel}>Przetworzone:</Text>
-                            <Text style={styles.warehouseStateValue}>-{controlModalData.warehouseProcessedCount}</Text>
-                          </View>
-                          <View style={styles.warehouseStateRow}>
-                            <Text style={styles.warehouseStateLabel}>Stan po:</Text>
-                            <Text style={styles.warehouseStateValue}>{controlModalData.warehouseAfterCount}</Text>
-                          </View>
-                        </View>
-                      )}
+                            {controlModalData.greenMatchedCount > 0 && (
+                              <View style={styles.statRowGray}>
+                                <Text style={styles.statLabelGray}>🟢 {controlModalData.greenMatchedCount} par dopasowanych (bilans: 0)</Text>
+                              </View>
+                            )}
 
-                      {controlModalData.actualAfterCount !== controlModalData.expectedAfterCount && (
-                        <View style={styles.discrepancyBox}>
-                          <Text style={styles.discrepancyText}>
-                            Różnica: {(controlModalData.actualAfterCount || 0) - (controlModalData.expectedAfterCount || 0)}
-                          </Text>
-                          <Text style={styles.discrepancySubtext}>
-                            (Oczekiwano: {controlModalData.expectedAfterCount})
-                          </Text>
-                        </View>
-                      )}
+                            <View style={styles.calculationBox}>
+                              <Text style={styles.calculationLabel}>OBLICZENIE</Text>
+                              <Text style={styles.calculationText}>{controlModalData.calculation}</Text>
+                            </View>
 
-                      {/* Bottom spacing for scrollable content */}
-                      <View style={{ height: 30 }} />
-                    </>
-                  )}
+                            <View style={styles.resultRow}>
+                              <Text style={styles.resultLabel}>Rzeczywisty stan końcowy</Text>
+                              <View style={styles.resultValue}>
+                                <Text style={styles.resultValueText}>{controlModalData.actualAfterCount || controlModalData.expectedAfterCount}</Text>
+                              </View>
+                            </View>
+
+                            {/* Warehouse state display (only for selling points, not for warehouse itself) */}
+                            {!controlModalData.isWarehouse && (
+                              <View style={styles.warehouseStateBox}>
+                                <Text style={styles.warehouseStateTitle}>📦 MAGAZYN</Text>
+                                <View style={styles.warehouseStateRow}>
+                                  <Text style={styles.warehouseStateLabel}>Stan przed:</Text>
+                                  <Text style={styles.warehouseStateValue}>{controlModalData.warehouseBeforeCount}</Text>
+                                </View>
+                                <View style={styles.warehouseStateRow}>
+                                  <Text style={styles.warehouseStateLabel}>Przetworzone:</Text>
+                                  <Text style={styles.warehouseStateValue}>-{controlModalData.warehouseProcessedCount}</Text>
+                                </View>
+                                <View style={styles.warehouseStateRow}>
+                                  <Text style={styles.warehouseStateLabel}>Stan po:</Text>
+                                  <Text style={styles.warehouseStateValue}>{controlModalData.warehouseAfterCount}</Text>
+                                </View>
+                              </View>
+                            )}
+
+                            {controlModalData.actualAfterCount !== controlModalData.expectedAfterCount && (
+                              <View style={styles.discrepancyBox}>
+                                <Text style={styles.discrepancyText}>
+                                  Różnica: {(controlModalData.actualAfterCount || 0) - (controlModalData.expectedAfterCount || 0)}
+                                </Text>
+                                <Text style={styles.discrepancySubtext}>
+                                  (Oczekiwano: {controlModalData.expectedAfterCount})
+                                </Text>
+                              </View>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
                 </ScrollView>
               )}
 
@@ -3098,9 +3159,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   statRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
     backgroundColor: "#242424",
     padding: 12,
     borderRadius: 8,
@@ -3110,17 +3171,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#bbbbbb",
+    marginBottom: 8,
+    textAlign: 'center',
+    width: '100%',
   },
   statValueBlue: {
     backgroundColor: "#1a3a52",
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 6,
+    width: '100%',
+    alignItems: 'center',
   },
   statValueTextBlue: {
     fontSize: 20,
     fontWeight: "700",
     color: "rgb(0, 123, 255)",
+    textAlign: 'center',
   },
   statRowRed: {
     flexDirection: "row",
@@ -3219,6 +3286,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#ff6666",
   },
+  warehouseRemovalBox: {
+    backgroundColor: "#fee2e2",
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 14,
+    borderLeftWidth: 6,
+    borderLeftColor: "#dc2626",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  warehouseRemovalLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#7f1d1d",
+    marginBottom: 8,
+  },
+  warehouseRemovalValue: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#dc2626",
+  },
   calculationBox: {
     backgroundColor: "#1a1a1a",
     padding: 14,
@@ -3240,9 +3328,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   resultRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
     backgroundColor: "#242424",
     padding: 12,
     borderRadius: 8,
@@ -3252,17 +3340,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#bbbbbb",
+    marginBottom: 8,
   },
   resultValue: {
     backgroundColor: "#1a3a52",
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 6,
+    width: '100%',
+    alignItems: 'center',
   },
   resultValueText: {
     fontSize: 20,
     fontWeight: "700",
     color: "rgb(0, 123, 255)",
+    textAlign: 'center',
   },
   discrepancyBox: {
     backgroundColor: "#3a1a1a",
