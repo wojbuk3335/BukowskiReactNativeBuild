@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import "react-native-url-polyfill/auto";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
+import * as NavigationBar from 'expo-navigation-bar';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
 import { GlobalStateProvider } from "../context/GlobalState"; // Import global state provider
@@ -36,9 +37,21 @@ const RootLayout = () => {
   }, [fontsLoaded, error]);
 
   useEffect(() => {
-    if (Platform.OS === 'android') {
-      // Edge-to-edge handles nav bar styling; avoid unsupported calls.
-    }
+    if (Platform.OS !== 'android') return;
+
+    const applyNavigationBar = async () => {
+      try {
+        await NavigationBar.setPositionAsync('absolute');
+        await NavigationBar.setVisibilityAsync('hidden');
+        await NavigationBar.setBehaviorAsync('inset-swipe');
+        await NavigationBar.setBackgroundColorAsync('transparent');
+        await NavigationBar.setButtonStyleAsync('light');
+      } catch (navError) {
+        console.warn('Navigation bar config failed:', navError);
+      }
+    };
+
+    applyNavigationBar();
   }, []);
 
   // Patch global fetch to provide safer JSON parsing with better diagnostics
