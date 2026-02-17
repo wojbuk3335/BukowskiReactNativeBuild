@@ -136,7 +136,7 @@ const CorrectionsList = () => {
     });
   };
 
-  const handleStatusUpdate = async (correctionId, newStatus) => {
+  const handleStatusUpdate = async (correctionId, newStatus, correctionData = null) => {
     try {
       const response = await tokenService.authenticatedFetch(
         getApiUrl(`/corrections/${correctionId}`),
@@ -151,6 +151,33 @@ const CorrectionsList = () => {
       );
 
       if (response.ok) {
+        let responseData = null;
+        try {
+          responseData = await response.json();
+        } catch (error) {
+          responseData = null;
+        }
+
+        if (newStatus === 'PENDING' && responseData?.rollbackSummary) {
+          const summary = responseData.rollbackSummary;
+          const correctionForModal = correctionData || selectedCorrection;
+
+          setSuccessModalData({
+            success: true,
+            title: 'Cofnięcie korekty zakończone pomyślnie',
+            message: `Produkt "${correctionForModal?.fullName || ''}" został przywrócony do stanu w punkcie ${summary.fromSymbol}`,
+            fromSymbol: summary.fromSymbol,
+            productName: correctionForModal?.fullName || '',
+            productSize: correctionForModal?.size || '',
+            sellingPointCountBefore: summary.sellingPointCountBefore,
+            sellingPointCountAfter: summary.sellingPointCountAfter,
+            warehouseCountBefore: summary.warehouseCountBefore,
+            warehouseCountAfter: summary.warehouseCountAfter,
+            operationType: 'rollback'
+          });
+          setShowSuccessModal(true);
+        }
+
         await loadCorrections();
       } else {
         Alert.alert('Błąd', 'Nie udało się zaktualizować statusu korekty');
@@ -238,6 +265,7 @@ const CorrectionsList = () => {
       
       setConfirmModalData({
         productName: selectedCorrection.fullName,
+        productSize: selectedCorrection.size,
         fromSymbol: fromSymbol,
         itemToWriteOff: itemToWriteOff,
         sellingPointCountBefore: sellingPointCountBefore,
@@ -272,21 +300,26 @@ const CorrectionsList = () => {
       );
       
       if (writeOffResponse.ok) {
-        await handleStatusUpdate(selectedCorrection._id, 'RESOLVED');
+        await handleStatusUpdate(selectedCorrection._id, 'RESOLVED', selectedCorrection);
         setShowProductModal(false);
         
         const sellingPointCountAfter = sellingPointCountBefore - 1;
-        const warehouseCountAfter = warehouseCountBefore;
+        const warehouseCountAfter = fromSymbol === 'MAGAZYN'
+          ? warehouseCountBefore - 1
+          : warehouseCountBefore;
         
         setSuccessModalData({
           success: true,
           title: 'Odpisanie zakończone pomyślnie',
-          message: `Produkt "${selectedCorrection.fullName}" został odpisany`,
+          message: `Produkt "${selectedCorrection.fullName}" został odpisany ze stanu w punkcie ${fromSymbol}`,
           fromSymbol: fromSymbol,
+          productName: selectedCorrection.fullName,
+          productSize: selectedCorrection.size,
           sellingPointCountBefore: sellingPointCountBefore,
           sellingPointCountAfter: sellingPointCountAfter,
           warehouseCountBefore: warehouseCountBefore,
-          warehouseCountAfter: warehouseCountAfter
+          warehouseCountAfter: warehouseCountAfter,
+          operationType: 'writeoff'
         });
         setShowSuccessModal(true);
         
@@ -428,14 +461,14 @@ const CorrectionsList = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.resolveButton]}
-                  onPress={() => handleStatusUpdate(correction._id, 'RESOLVED')}
+                  onPress={() => handleStatusUpdate(correction._id, 'RESOLVED', correction)}
                 >
                   <Ionicons name="checkmark-circle" size={14} color="#fff" />
                   <Text style={styles.actionButtonText}>Rozwiązano</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.ignoreButton]}
-                  onPress={() => handleStatusUpdate(correction._id, 'IGNORED')}
+                  onPress={() => handleStatusUpdate(correction._id, 'IGNORED', correction)}
                 >
                   <Ionicons name="close-circle" size={14} color="#fff" />
                   <Text style={styles.actionButtonText}>Zignoruj</Text>
@@ -445,14 +478,14 @@ const CorrectionsList = () => {
               <>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.resolveButton]}
-                  onPress={() => handleStatusUpdate(correction._id, 'RESOLVED')}
+                  onPress={() => handleStatusUpdate(correction._id, 'RESOLVED', correction)}
                 >
                   <Ionicons name="checkmark-circle" size={14} color="#fff" />
                   <Text style={styles.actionButtonText}>Rozwiązano</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.ignoreButton]}
-                  onPress={() => handleStatusUpdate(correction._id, 'IGNORED')}
+                  onPress={() => handleStatusUpdate(correction._id, 'IGNORED', correction)}
                 >
                   <Ionicons name="close-circle" size={14} color="#fff" />
                   <Text style={styles.actionButtonText}>Zignoruj</Text>
@@ -466,7 +499,7 @@ const CorrectionsList = () => {
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={[styles.actionButton, styles.undoButton]}
-              onPress={() => handleStatusUpdate(correction._id, 'PENDING')}
+              onPress={() => handleStatusUpdate(correction._id, 'PENDING', correction)}
             >
               <Ionicons name="arrow-undo" size={16} color="#fff" />
               <Text style={styles.actionButtonText}>Cofnij rozwiązanie</Text>
@@ -478,7 +511,7 @@ const CorrectionsList = () => {
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={[styles.actionButton, styles.undoButton]}
-              onPress={() => handleStatusUpdate(correction._id, 'PENDING')}
+              onPress={() => handleStatusUpdate(correction._id, 'PENDING', correction)}
             >
               <Ionicons name="arrow-undo" size={16} color="#fff" />
               <Text style={styles.actionButtonText}>Przywróć</Text>
@@ -789,7 +822,7 @@ const CorrectionsList = () => {
                 <TouchableOpacity
                   style={[styles.modalButtonFull, styles.applyButton]}
                   onPress={() => {
-                    handleStatusUpdate(selectedCorrection._id, 'RESOLVED');
+                    handleStatusUpdate(selectedCorrection._id, 'RESOLVED', selectedCorrection);
                     setShowProductModal(false);
                   }}
                 >
@@ -827,9 +860,11 @@ const CorrectionsList = () => {
                   </Text>
                 </View>
                 <View style={styles.confirmStatsBox}>
-                  <Text style={styles.confirmStat}>
-                    📊 Stan w punkcie: {confirmModalData.sellingPointCountBefore} szt.
-                  </Text>
+                  {confirmModalData.fromSymbol !== 'MAGAZYN' && (
+                    <Text style={styles.confirmStat}>
+                      📊 Stan w punkcie: {confirmModalData.sellingPointCountBefore} szt.
+                    </Text>
+                  )}
                   <Text style={styles.confirmStat}>
                     📦 Stan w magazynie: {confirmModalData.warehouseCountBefore} szt.
                   </Text>
@@ -875,23 +910,29 @@ const CorrectionsList = () => {
                 
                 {successModalData.success && (
                   <>
-                    <View style={styles.successStatsCard}>
-                      <Text style={styles.successStatsTitle}>
-                        🏪 PUNKT SPRZEDAŻY - {successModalData.fromSymbol}
-                      </Text>
-                      <View style={styles.successStatRow}>
-                        <Text style={styles.successStatLabel}>Stan przed:</Text>
-                        <Text style={styles.successStatValue}>{successModalData.sellingPointCountBefore}</Text>
+                    {successModalData.fromSymbol !== 'MAGAZYN' && (
+                      <View style={styles.successStatsCard}>
+                        <Text style={styles.successStatsTitle}>
+                          🏪 PUNKT SPRZEDAŻY - {successModalData.fromSymbol}
+                        </Text>
+                        <View style={styles.successStatRow}>
+                          <Text style={styles.successStatLabel}>Stan przed:</Text>
+                          <Text style={styles.successStatValue}>{successModalData.sellingPointCountBefore}</Text>
+                        </View>
+                        <View style={styles.successStatRow}>
+                          <Text style={styles.successStatLabel}>
+                            {successModalData.operationType === 'rollback' ? 'Dodano:' : 'Odpisano:'}
+                          </Text>
+                          <Text style={styles.successStatValue}>
+                            {`${successModalData.productName || ''} ${successModalData.productSize || ''}`.trim()} {successModalData.operationType === 'rollback' ? '+1' : '-1'}
+                          </Text>
+                        </View>
+                        <View style={[styles.successStatRow, styles.successStatRowFinal]}>
+                          <Text style={styles.successStatLabelFinal}>Stan końcowy:</Text>
+                          <Text style={styles.successStatValueFinal}>{successModalData.sellingPointCountAfter}</Text>
+                        </View>
                       </View>
-                      <View style={styles.successStatRow}>
-                        <Text style={styles.successStatLabel}>Odpisano:</Text>
-                        <Text style={styles.successStatValue}>-1</Text>
-                      </View>
-                      <View style={[styles.successStatRow, styles.successStatRowFinal]}>
-                        <Text style={styles.successStatLabelFinal}>Stan końcowy:</Text>
-                        <Text style={styles.successStatValueFinal}>{successModalData.sellingPointCountAfter}</Text>
-                      </View>
-                    </View>
+                    )}
 
                     <View style={[styles.successStatsCard, styles.successStatsCardWarehouse]}>
                       <Text style={styles.successStatsTitle}>📦 MAGAZYN</Text>
@@ -899,6 +940,16 @@ const CorrectionsList = () => {
                         <Text style={styles.successStatLabel}>Stan przed:</Text>
                         <Text style={styles.successStatValue}>{successModalData.warehouseCountBefore}</Text>
                       </View>
+                      {successModalData.warehouseCountBefore !== successModalData.warehouseCountAfter && (
+                        <View style={styles.successStatRow}>
+                          <Text style={styles.successStatLabel}>
+                            {successModalData.operationType === 'rollback' ? 'Dodano:' : 'Odpisano:'}
+                          </Text>
+                          <Text style={styles.successStatValue}>
+                            {`${successModalData.productName || ''} ${successModalData.productSize || ''}`.trim()} {successModalData.operationType === 'rollback' ? '+1' : '-1'}
+                          </Text>
+                        </View>
+                      )}
                       <View style={[styles.successStatRow, styles.successStatRowFinal]}>
                         <Text style={styles.successStatLabelFinal}>Stan końcowy:</Text>
                         <Text style={styles.successStatValueFinal}>{successModalData.warehouseCountAfter}</Text>
