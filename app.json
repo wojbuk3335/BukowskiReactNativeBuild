@@ -44,11 +44,6 @@
       },
       "package": "com.bukowski.inventory30.app2026",
       "versionCode": 4,
-      "navigationBar": {
-        "visible": true,
-        "barStyle": "dark-content",
-        "backgroundColor": "#ffffff"
-      },
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "INTERNET",
