@@ -1,7 +1,7 @@
 import axios from "axios"; // Import axios for HTTP requests
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useState } from "react";
-import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { Alert, FlatList, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, KeyboardAvoidingView, Platform } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiUrl, API_CONFIG } from "../config/api";
 import tokenService from "../services/tokenService"; // Import tokenService
@@ -381,145 +381,78 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     );
   }
 
+  // Dynamicznie aktualizuj pole "Sprzedano produkt" podczas wpisywania kodu kreskowego
+  const handleBarcodeChange = async (newBarcode) => {
+    setBarcode(newBarcode);
+    
+    // Jeśli pole puste - pokaż pusty produkt
+    if (!newBarcode || newBarcode.trim() === "") {
+      setModalMessage("");
+      return;
+    }
+
+    // Sprawdź czy kod istnieje w stateData
+    const matchedItems = stateData?.filter(item => item.barcode === newBarcode);
+    
+    if (matchedItems && matchedItems.length > 0) {
+      // Znaleziono w stateData
+      setModalMessage(matchedItems[0].fullName);
+      return;
+    }
+
+    // Spróbuj zbudować nazwę z barcode'a (kurtki, torby, portfele, produkty pozostałe)
+    const builtJacketName = buildJacketNameFromBarcode(newBarcode);
+    if (builtJacketName) {
+      setModalMessage(builtJacketName);
+      return;
+    }
+
+    const builtBagName = buildBagNameFromBarcode(newBarcode);
+    if (builtBagName) {
+      setModalMessage(builtBagName);
+      return;
+    }
+
+    const builtWalletName = buildWalletNameFromBarcode(newBarcode);
+    if (builtWalletName) {
+      setModalMessage(builtWalletName);
+      return;
+    }
+
+    const builtRemainingProductName = await buildRemainingProductNameFromBarcode(newBarcode);
+    if (builtRemainingProductName) {
+      setModalMessage(builtRemainingProductName);
+      return;
+    }
+
+    // Nie znaleziono produktu
+    setModalMessage("❌ Nie znaleziono produktu");
+  };
+
   const handleScan = async ({ data, type }) => {
     if (!scanned) {
       setScanned(true);
-      setBarcode(data); // Set the scanned barcode
-
-      // First, try to build remaining products name from barcode pattern (000 + XX + 00 + XX)
-      const builtRemainingProductName = await buildRemainingProductNameFromBarcode(data);
       
-      if (builtRemainingProductName) {
-        // Use the built remaining product name
-        setModalMessage(builtRemainingProductName);
-        setCurrentProductName(builtRemainingProductName);
-        setCurrentProductSize("-"); // Remaining products don't have size
-        
-        // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-        const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-        if (availableOptions.length > 0) {
-          // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-          const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-          if (currentUserInLocation) {
-            setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-          } else {
-            setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-          }
+      // Użyj handleBarcodeChange aby dynamicznie aktualizć produkt
+      await handleBarcodeChange(data);
+
+      // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
+      const availableOptions = getMatchingSymbols(data);
+      if (availableOptions.length > 0) {
+        // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
+        const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
+        if (currentUserInLocation) {
+          setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
         } else {
-          setSelectedOption(""); // Brak dostępnych opcji
+          setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
         }
       } else {
-        // Second, try to build bag name from barcode pattern (000 + non-zero at position 6)
-        const builtBagName = buildBagNameFromBarcode(data);
-        
-        if (builtBagName) {
-          // Use the built bag name for bag barcodes
-          setModalMessage(builtBagName);
-          setCurrentProductName(builtBagName);
-          setCurrentProductSize("-"); // Bags don't have size
-          
-          // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-          const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-          if (availableOptions.length > 0) {
-            // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-            const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-            if (currentUserInLocation) {
-              setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-            } else {
-              setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-            }
-          } else {
-            setSelectedOption(""); // Brak dostępnych opcji
-          }
-        } else {
-          // Third, try to build wallet name from barcode pattern (000 + 0 at position 6 + non-zero at position 7)
-          const builtWalletName = buildWalletNameFromBarcode(data);
-          
-          if (builtWalletName) {
-            // Use the built wallet name for wallet barcodes
-            setModalMessage(builtWalletName);
-            setCurrentProductName(builtWalletName);
-            setCurrentProductSize("-"); // Wallets don't have size
-            
-            // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-            const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-            if (availableOptions.length > 0) {
-              // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-              const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-              if (currentUserInLocation) {
-                setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-              } else {
-                setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-              }
-            } else {
-              setSelectedOption(""); // Brak dostępnych opcji
-            }
-          } else {
-            // Fourth, try to build jacket name from barcode pattern (four zeros before last digit)
-            const builtJacketName = buildJacketNameFromBarcode(data);
-            
-            if (builtJacketName) {
-              // Use the built jacket name for barcodes with four zeros pattern
-              setModalMessage(builtJacketName);
-              
-              // Extract name and size from jacket name (format: "Name Color Size")
-              const parts = builtJacketName.split(' ');
-              const sizePart = parts[parts.length - 1]; // Last part is size
-              const namePart = parts.slice(0, -1).join(' '); // Rest is name
-              
-              setCurrentProductName(namePart || builtJacketName);
-              setCurrentProductSize(sizePart || "Unknown");
-              
-              // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-              const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-              if (availableOptions.length > 0) {
-                // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-                const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-              if (currentUserInLocation) {
-                setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-              } else {
-                setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-              }
-            } else {
-              setSelectedOption(""); // Brak dostępnych opcji
-            }
-          } else {
-            // Fall back to original logic - match the scanned barcode with the stateData
-            const matchedItem = stateData?.find(item => item.barcode === data);
-
-            if (matchedItem) {
-              setModalMessage(`${matchedItem.fullName + ' ' + matchedItem.size}`);
-              setCurrentProductName(matchedItem.fullName);
-              setCurrentProductSize(matchedItem.size);
-              
-              // Ustaw domyślny punkt sprzedaży na zalogowanego użytkownika
-              const availableOptions = getMatchingSymbols(data); // Przekaż aktualny kod kreskowy
-              if (availableOptions.length > 0) {
-                // Sprawdź czy zalogowany użytkownik jest w tej lokalizacji
-                const currentUserInLocation = availableOptions.find(option => option.symbol === user?.symbol);
-                if (currentUserInLocation) {
-                  setSelectedOption(user.symbol); // Zalogowany użytkownik jest w lokalizacji - ustaw jako domyślny
-                } else {
-                  setSelectedOption(availableOptions[0].symbol); // Fallback - pierwszy z listy
-                }
-              } else {
-                setSelectedOption(matchedItem.symbol); // Fallback na pierwotną logikę
-              }
-            } else {
-              setModalMessage("Nie znaleziono produktu"); // No match found
-              setCurrentProductName("Unknown Product");
-              setCurrentProductSize("Unknown");
-              setSelectedOption(""); // Clear selected option if no match
-            }
-          }
-        }
+        setSelectedOption(""); // Brak dostępnych opcji
       }
+      
+      // Otwórz modal z formularzem
+      setModalVisible(true);
     }
-
-      setModalVisible(true); // Show the modal
-      // Usuwamy automatyczny timeout - reset będzie tylko przy zamykaniu modala
-    }
-    // Usuwamy log o ignorowaniu skanów żeby nie spamować
   };
 
   const toggleCameraFacing = () => {
@@ -653,6 +586,13 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   };
 
   const handleSubmit = async () => {
+    // WALIDACJA: Sprawdź czy kod kreskowy nie jest pusty
+    if (!barcode || barcode.trim() === "") {
+      setErrorMessage("Proszę wpisać lub zeskanować kod kreskowy.");
+      setErrorModalVisible(true);
+      return;
+    }
+
     const matchedItems = stateData?.filter(item => item.barcode === barcode);
     
     let fullName, size, symbol;
@@ -695,10 +635,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
         }
         symbol = selectedOption || "Generated";
       } else {
-        // Fallback dla nieznanych produktów
-        fullName = modalMessage || "Unknown Product";
-        size = (isBag || isWallet || isRemainingProduct) ? "-" : "Unknown"; // For bags, wallets and remaining products, send "-" instead of empty
-        symbol = selectedOption || "Unknown";
+        // ❌ WALIDACJA: Produkt nie został znaleziony
+        setErrorMessage(`Nie znaleziono produktu o kodzie kreskowym: ${barcode}. Sprawdź kod i spróbuj ponownie.`);
+        setErrorModalVisible(true);
+        return;
       }
     }
 
@@ -876,7 +816,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       </View>
 
       {modalVisible && (
-        <View style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }}
+        >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <ScrollView contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(120, insets.bottom + 120) }]}>
               <View style={[styles.modalContent, { flex: 1, backgroundColor: "black", width: "100%", height: "100%", justifyContent: "flex-start", alignItems: "center", zIndex: 5 }]}>
@@ -899,7 +842,16 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                 >
                   <Text style={styles.closeButtonText}>X</Text>
                 </Pressable>
-                <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano produkt:</Text>
+                <Text style={{ fontSize: 16, color: "white", marginBottom: 8, marginTop: 16, fontWeight: "bold" }}>Kod kreskowy</Text>
+                <TextInput
+                  style={styles.inputField}
+                  value={barcode}
+                  onChangeText={handleBarcodeChange}
+                  editable={true}
+                  placeholder="Wpisz lub zeskanuj kod kreskowy"
+                  autoFocus={true}
+                />
+                <Text style={{ fontSize: 16, color: "white", marginBottom: 8, marginTop: 16 }}>Sprzedano produkt:</Text>
                 <TextInput
                   style={styles.inputField}
                   value={modalMessage}
@@ -911,13 +863,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                   value={user?.sellingPoint || "Unknown"}
                   editable={false}
                   placeholder="Selling Point"
-                />
-                <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Kod kreskowy</Text>
-                <TextInput
-                  style={styles.inputField}
-                  value={barcode}
-                  editable={false}
-                  placeholder="Barcode"
                 />
                 <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano od:</Text>
                 <View
@@ -1240,7 +1185,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
               </View>
             </ScrollView>
           </TouchableWithoutFeedback>
-        </View>
+        </KeyboardAvoidingView>
       )}
       
       {/* Error Modal */}
