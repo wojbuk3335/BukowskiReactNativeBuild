@@ -2,10 +2,14 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 // Mock expo-camera
-jest.mock('expo-camera', () => ({
-  CameraView: () => null,
-  useCameraPermissions: () => [{ granted: true }, jest.fn()]
-}));
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    CameraView: (props) => <View testID="camera-view" {...props} />,
+    useCameraPermissions: () => [{ granted: true }, jest.fn()]
+  };
+});
 
 // Mock react-native-safe-area-context
 jest.mock('react-native-safe-area-context', () => ({
@@ -67,101 +71,107 @@ describe('QRScanner - Dynamiczne aktualizowanie produktu', () => {
     isActive: true
   };
 
+  const openModalAndGetBarcodeInput = async (utils, initialBarcode = '1234567890') => {
+    const cameraView = utils.getByTestId('camera-view');
+    fireEvent(cameraView, 'onBarcodeScanned', { data: initialBarcode, type: 'code128' });
+    return await waitFor(() => utils.getByPlaceholderText('Wpisz lub zeskanuj kod kreskowy'));
+  };
+
   // ✅ TEST 1: Znalezienie produktu w stateData
   test('Powinno wyświetlić nazwę produktu gdy kod istnieje w stateData', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
     // Symuluj wpisanie kodu kreskowego
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     fireEvent.changeText(barcodeInput, '1234567890');
     
     await waitFor(() => {
       // Sprawdź czy pole "Sprzedano produkt" zawiera nazwę produktu
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
   });
 
   // ❌ TEST 2: Nie znaleziono produktu
   test('Powinno wyświetlić "Nie znaleziono produktu" gdy kod nie istnieje', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
-    fireEvent.changeText(barcodeInput, '0000000000'); // Kod który nie istnieje
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
+    fireEvent.changeText(barcodeInput, '1111111111'); // Kod który nie istnieje i nie pasuje do wzorców 000
     
     await waitFor(() => {
-      expect(queryByText('❌ Nie znaleziono produktu')).toBeTruthy();
+      expect(queryByDisplayValue('❌ Nie znaleziono produktu')).toBeTruthy();
     });
   });
 
   // 📝 TEST 3: Puste pole - puste produktu
   test('Powinno wyczyścić "Sprzedano produkt" gdy pole kodu jest puste', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     fireEvent.changeText(barcodeInput, '1234567890');
     
     // Najpierw sprawdź że pojawiła się nazwa
     await waitFor(() => {
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
     
     // Potem wyczyść
     fireEvent.changeText(barcodeInput, '');
     
     await waitFor(() => {
-      expect(queryByText('Kurtka Czarna')).toBeFalsy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeFalsy();
     });
   });
 
   // 🔄 TEST 4: Dynamiczna zmiana produktu
   test('Powinno zmienić produkt gdy wpiszesz inny kod', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     
     // Pierwszy kod
     fireEvent.changeText(barcodeInput, '1234567890');
     await waitFor(() => {
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
     
     // Zmień na drugi kod
     fireEvent.changeText(barcodeInput, '9876543210');
     await waitFor(() => {
-      expect(queryByText('Spodnie Niebieskie')).toBeTruthy();
-      expect(queryByText('Kurtka Czarna')).toBeFalsy();
+      expect(queryByDisplayValue('Spodnie Niebieskie')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeFalsy();
     });
   });
 
   // ⚠️ TEST 5: Częściowy kod kreskowy
   test('Powinno pokazać "Nie znaleziono" dla niekompletnego kodu', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     fireEvent.changeText(barcodeInput, '12345'); // Za krótki kod
     
     await waitFor(() => {
-      expect(queryByText('❌ Nie znaleziono produktu')).toBeTruthy();
+      expect(queryByDisplayValue('❌ Nie znaleziono produktu')).toBeTruthy();
     });
   });
 
   // 🔤 TEST 6: Kod z białymi znakami
   test('Powinno obsługiwać kod z białymi znakami na początku/końcu', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     fireEvent.changeText(barcodeInput, '  1234567890  '); // Spacje dookoła
     
     await waitFor(() => {
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
   });
 
   // 🚀 TEST 7: Wielokrotne zmiany (szybkie wpisywanie)
   test('Powinno obsługiwać szybkie zmiany kodu bez błędów', async () => {
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     
     // Symuluj szybkie wpisywanie
     fireEvent.changeText(barcodeInput, '1');
@@ -170,7 +180,7 @@ describe('QRScanner - Dynamiczne aktualizowanie produktu', () => {
     fireEvent.changeText(barcodeInput, '1234567890');
     
     await waitFor(() => {
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
   });
 
@@ -181,21 +191,24 @@ describe('QRScanner - Dynamiczne aktualizowanie produktu', () => {
       stateData: null
     };
     
-    const { getByDisplayValue } = render(<QRScanner {...propsWithoutStateData} />);
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const { getByPlaceholderText, getByTestId } = render(<QRScanner {...propsWithoutStateData} />);
+    const barcodeInputPromise = openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     
     // Powinno nie crashować
-    fireEvent.changeText(barcodeInput, '1234567890');
-    expect(barcodeInput).toBeTruthy();
+    return barcodeInputPromise.then((barcodeInput) => {
+      fireEvent.changeText(barcodeInput, '1234567890');
+      expect(barcodeInput).toBeTruthy();
+    });
   });
 
   // 🎯 TEST 9: Autofocus na polu kodu kreskowego
   test('Pole kodu kreskowego powinno mieć autofocus', () => {
-    const { getByDisplayValue } = render(<QRScanner {...mockProps} />);
+    const { getByPlaceholderText, getByTestId } = render(<QRScanner {...mockProps} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
-    // Sprawdzenie że inputa ma autoFocus attribute
-    expect(barcodeInput.props.autoFocus).toBe(true);
+    return openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText }).then((barcodeInput) => {
+      // Sprawdzenie że inputa ma autoFocus attribute
+      expect(barcodeInput.props.autoFocus).toBe(true);
+    });
   });
 
   // 📌 TEST 10: Dwa produkty znalezione
@@ -214,14 +227,14 @@ describe('QRScanner - Dynamiczne aktualizowanie produktu', () => {
       ]
     };
     
-    const { getByDisplayValue, queryByText } = render(<QRScanner {...propsWithDuplicate} />);
+    const { getByPlaceholderText, getByTestId, queryByDisplayValue } = render(<QRScanner {...propsWithDuplicate} />);
     
-    const barcodeInput = getByDisplayValue('Wpisz lub zeskanuj kod kreskowy');
+    const barcodeInput = await openModalAndGetBarcodeInput({ getByTestId, getByPlaceholderText });
     fireEvent.changeText(barcodeInput, '1234567890');
     
     await waitFor(() => {
       // Powinno zwrócić pierwszy znaleziony
-      expect(queryByText('Kurtka Czarna')).toBeTruthy();
+      expect(queryByDisplayValue('Kurtka Czarna')).toBeTruthy();
     });
   });
 });
