@@ -66,6 +66,7 @@ const WarehouseMobile = () => {
 
   const productInputRef = useRef(null);
   const sizeInputRef = useRef(null);
+  const listRef = useRef(null);
 
   // Fetch initial data
   useEffect(() => {
@@ -414,7 +415,10 @@ const WarehouseMobile = () => {
       
       // Refresh table and refocus on product input
       await fetchTableData();
+      
+      // Scroll to top to show newly added product
       setTimeout(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
         productInputRef.current?.focus();
       }, 100);
     } catch (error) {
@@ -878,6 +882,13 @@ const WarehouseMobile = () => {
         }
         style={styles.content}
       >
+        {/* Product Counter */}
+        <View style={styles.productCounter}>
+          <Ionicons name="cube-outline" size={24} color="#0D6EFD" />
+          <Text style={styles.productCounterText}>
+            Produktów w magazynie: <Text style={styles.productCounterNumber}>{tableData.length}</Text>
+          </Text>
+        </View>
 
         {/* Input Form */}
         <View style={styles.formContainer}>
@@ -1006,6 +1017,7 @@ const WarehouseMobile = () => {
 
         {/* Products List as Cards */}
         <FlatList
+          ref={listRef}
           data={tableData}
           renderItem={renderTableRow}
           keyExtractor={(item, idx) => item._id || idx.toString()}
@@ -1200,6 +1212,27 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 15,
+  },
+  productCounter: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#0D6EFD",
+    gap: 12,
+  },
+  productCounterText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  productCounterNumber: {
+    color: "#0D6EFD",
+    fontSize: 18,
+    fontWeight: "bold",
   },
   formContainer: {
     backgroundColor: "#1a1a1a",
