@@ -24,6 +24,14 @@ const Various = () => {
 
   const menuItems = [
     {
+      id: "warehouse",
+      title: "Magazyn",
+      subtitle: "Zarządzaj produktami w magazynie",
+      icon: "archive",
+      route: "/warehouse-mobile",
+      color: "#DC2626",
+    },
+    {
       id: "products",
       title: "Lista produktów",
       subtitle: "Zarządzaj produktami w systemie",

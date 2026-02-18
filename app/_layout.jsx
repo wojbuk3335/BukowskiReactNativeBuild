@@ -104,6 +104,7 @@ const RootLayout = () => {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(admin-tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="products-list" options={{ headerShown: false }} />
+            <Stack.Screen name="warehouse-mobile" options={{ headerShown: false }} />
             <Stack.Screen name="cenniki" options={{ headerShown: false }} />
             <Stack.Screen name="sales-view" options={{ headerShown: false }} />
             <Stack.Screen name="stock-list" options={{ headerShown: false }} />

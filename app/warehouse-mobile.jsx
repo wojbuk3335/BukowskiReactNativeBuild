@@ -16,13 +16,13 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import axios from "axios";
+import tokenService from "../services/tokenService";
 import { getApiUrl, API_CONFIG } from "../config/api";
 import { GlobalStateContext } from "../context/GlobalState";
 
 const WarehouseMobile = () => {
   const insets = useSafeAreaInsets();
-  const { user, isLoggedIn, getValidAccessToken } = useContext(GlobalStateContext);
+  const { user, isLoggedIn } = useContext(GlobalStateContext);
 
   // State management
   const [goods, setGoods] = useState([]);
@@ -49,6 +49,8 @@ const WarehouseMobile = () => {
   const [editDate, setEditDate] = useState(new Date());
   const [editSize, setEditSize] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showEditProductDropdown, setShowEditProductDropdown] = useState(false);
+  const [filteredEditProducts, setFilteredEditProducts] = useState([]);
 
   // Notification Modal states
   const [notificationModal, setNotificationModal] = useState({
@@ -74,13 +76,10 @@ const WarehouseMobile = () => {
     const initializeFetch = async () => {
       setLoading(true);
       try {
-        // Get fresh token for API calls
-        const accessToken = await getValidAccessToken();
-        
         await Promise.all([
-          fetchGoods(accessToken),
-          fetchSizes(accessToken),
-          fetchTableData(accessToken),
+          fetchGoods(),
+          fetchSizes(),
+          fetchTableData(),
         ]);
       } catch (error) {
         console.error("❌ Error during initial fetch:", error.message);
@@ -90,17 +89,16 @@ const WarehouseMobile = () => {
     };
 
     initializeFetch();
-  }, [isLoggedIn, getValidAccessToken]);
+  }, [isLoggedIn]);
 
-  const fetchGoods = async (token) => {
+  const fetchGoods = async () => {
     try {
       
       // Step 1: Fetch all users to find MAGAZYN
       const usersUrl = getApiUrl("/user");
-      const usersResponse = await axios.get(usersUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const magazynUser = usersResponse.data?.users?.find(u => u.symbol === 'MAGAZYN');
+      const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+      const usersData = await usersResponse.json();
+      const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
       const magazynUserId = magazynUser?._id;
       
       // Step 2: Fetch dedykowany cennik if MAGAZYN user exists
@@ -108,10 +106,9 @@ const WarehouseMobile = () => {
       if (magazynUserId) {
         try {
           const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
-          const priceListResponse = await axios.get(priceListUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          priceList = priceListResponse.data?.priceList || [];
+          const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
+          const priceListData = await priceListResponse.json();
+          priceList = priceListData?.priceList || [];
         } catch (error) {
           // Continue without dedykowany cennik
         }
@@ -119,13 +116,12 @@ const WarehouseMobile = () => {
       
       // Step 3: Fetch base goods
       const url = getApiUrl("/excel/goods/get-all-goods");
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await tokenService.authenticatedFetch(url);
+      const data = await response.json();
       
-      if (response.data?.goods && Array.isArray(response.data.goods)) {
+      if (data?.goods && Array.isArray(data.goods)) {
         // Step 4: Merge with dedykowany cennik prices
-        const mergedGoods = response.data.goods.map(good => {
+        const mergedGoods = data.goods.map(good => {
           let finalPrice = good.price;
           let finalDiscountPrice = good.discount_price;
           
@@ -157,48 +153,49 @@ const WarehouseMobile = () => {
         setGoods(validGoods);
         setFilteredProducts(validGoods);
       } else {
-        console.warn("⚠️ No goods array found in response, response.data:", response.data);
+        console.warn("⚠️ No goods array found in response, data:", data);
       }
     } catch (error) {
       console.error("❌ Error fetching goods:", error.message);
-      console.error("🔴 Error response status:", error.response?.status);
-      console.error("🔴 Error response data:", error.response?.data);
     }
   };
 
-  const fetchSizes = async (token) => {
+  const fetchSizes = async () => {
     try {
       const url = getApiUrl("/excel/size/get-all-sizes");
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.data?.sizes) {
-        setSizes(response.data.sizes);
-        setFilteredSizes(response.data.sizes);
+      const response = await tokenService.authenticatedFetch(url);
+      const data = await response.json();
+      if (data?.sizes) {
+        setSizes(data.sizes);
+        setFilteredSizes(data.sizes);
       }
     } catch (error) {
       console.error("❌ Error fetching sizes:", error);
     }
   };
 
-  const fetchTableData = async (token) => {
+  const fetchTableData = async () => {
     try {
-      // Step 1: Fetch dedykowany cennik
+      // Step 1: Fetch current goods prices (to match backend populate behavior)
+      const goodsUrl = getApiUrl("/excel/goods/get-all-goods");
+      const goodsResponse = await tokenService.authenticatedFetch(goodsUrl);
+      const goodsData = await goodsResponse.json();
+      const currentGoods = goodsData?.goods || [];
+      
+      // Step 2: Fetch dedykowany cennik
       let fetchedPriceList = null;
       try {
         const usersUrl = getApiUrl("/user");
-        const usersResponse = await axios.get(usersUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const magazynUser = usersResponse.data?.users?.find(u => u.symbol === 'MAGAZYN');
+        const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+        const usersData = await usersResponse.json();
+        const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
         const magazynUserId = magazynUser?._id;
         
         if (magazynUserId) {
           const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
-          const priceListResponse = await axios.get(priceListUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          fetchedPriceList = priceListResponse.data?.priceList || [];
+          const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
+          const priceListData = await priceListResponse.json();
+          fetchedPriceList = priceListData?.priceList || [];
         }
       } catch (error) {
         // Continue without dedykowany cennik
@@ -206,14 +203,48 @@ const WarehouseMobile = () => {
       
       setPriceList(fetchedPriceList || []);
       
-      // Step 2: Fetch state data
+      // Step 3: Fetch state data
       const url = getApiUrl("/state");
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.data) {
+      const response = await tokenService.authenticatedFetch(url);
+      const data = await response.json();
+      if (data) {
+        // Update prices with current goods prices (mimicking backend populate)
+        const updatedData = data.map(item => {
+          // Get fullName as string
+          const fullNameStr = typeof item.fullName === 'object' ? item.fullName.fullName : item.fullName;
+          
+          // Find matching good by fullName
+          const matchingGood = currentGoods.find(g => g.fullName === fullNameStr);
+          
+          if (matchingGood) {
+            let finalPrice = matchingGood.price;
+            let finalDiscountPrice = matchingGood.discount_price;
+            
+            // Check if dedykowany cennik overrides this price
+            if (fetchedPriceList && fetchedPriceList.length > 0) {
+              const priceListItem = fetchedPriceList.find(p =>
+                (p.originalGoodId && p.originalGoodId === matchingGood._id) ||
+                p.fullName === matchingGood.fullName
+              );
+              
+              if (priceListItem) {
+                finalPrice = priceListItem.price !== undefined ? priceListItem.price : finalPrice;
+                finalDiscountPrice = priceListItem.discountPrice !== undefined ? priceListItem.discountPrice : finalDiscountPrice;
+              }
+            }
+            
+            // Update item with current prices, keep fullName structure as-is
+            return {
+              ...item,
+              price: `${finalPrice};${finalDiscountPrice || 0}`
+            };
+          }
+          
+          return item;
+        });
+        
         // Sort by createdAt descending (newest first)
-        const sortedData = [...response.data].sort((a, b) => {
+        const sortedData = [...updatedData].sort((a, b) => {
           const dateA = new Date(a.createdAt || a.date || 0);
           const dateB = new Date(b.createdAt || b.date || 0);
           return dateB - dateA;
@@ -228,8 +259,7 @@ const WarehouseMobile = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      const accessToken = await getValidAccessToken();
-      await fetchTableData(accessToken);
+      await fetchTableData();
     } catch (error) {
       console.error("Error during refresh:", error);
     } finally {
@@ -305,9 +335,6 @@ const WarehouseMobile = () => {
 
     setLoading(true);
     try {
-      // Get fresh token before making request
-      const accessToken = await getValidAccessToken();
-
       const selectedGood = goods.find((g) => g.fullName === productName);
       if (!selectedGood) {
         console.error("Product not found. Searching for:", productName);
@@ -328,19 +355,17 @@ const WarehouseMobile = () => {
       try {
         // Fetch users to find MAGAZYN ID dynamically
         const usersUrl = getApiUrl("/user");
-        const usersResponse = await axios.get(usersUrl, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const magazynUser = usersResponse.data?.users?.find(u => u.symbol === 'MAGAZYN');
+        const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+        const usersData = await usersResponse.json();
+        const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
         const magazynUserId = magazynUser?._id;
         
         if (magazynUserId) {
           const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
-          const priceListResponse = await axios.get(priceListUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
+          const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
+          const priceListData = await priceListResponse.json();
           
-          const priceList = priceListResponse.data?.priceList || [];
+          const priceList = priceListData?.priceList || [];
           
           if (priceList && priceList.length > 0) {
             const priceListItem = priceList.find(item =>
@@ -373,8 +398,12 @@ const WarehouseMobile = () => {
       const quantityNum = parseInt(quantity) || 1;
       const url = getApiUrl("/state");
       for (let i = 0; i < quantityNum; i++) {
-        await axios.post(url, dataToSend, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        await tokenService.authenticatedFetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(dataToSend),
         });
       }
       
@@ -384,15 +413,15 @@ const WarehouseMobile = () => {
       setQuantity("1");
       
       // Refresh table and refocus on product input
-      await fetchTableData(accessToken);
+      await fetchTableData();
       setTimeout(() => {
         productInputRef.current?.focus();
       }, 100);
     } catch (error) {
-      console.error("❌ Error adding product to warehouse:", error.response?.data || error.message);
+      console.error("❌ Error adding product to warehouse:", error.message);
       showNotification({
         title: "Błąd",
-        message: error.response?.data?.message || error.message,
+        message: error.message,
         type: "error",
       });
     } finally {
@@ -415,15 +444,14 @@ const WarehouseMobile = () => {
       cancelText: "Anuluj",
       onConfirm: async () => {
         try {
-          const accessToken = await getValidAccessToken();
           const deleteUrl = getApiUrl(`/state/${id}`);
-          await axios.delete(deleteUrl, {
+          await tokenService.authenticatedFetch(deleteUrl, {
+            method: "DELETE",
             headers: { 
-              Authorization: `Bearer ${accessToken}`,
               "is-correction": isCorrection ? "true" : "false"
             },
           });
-          await fetchTableData(accessToken);
+          await fetchTableData();
           showNotification({
             title: "Sukces",
             message: "Produkt usunięty",
@@ -452,10 +480,36 @@ const WarehouseMobile = () => {
   // Handle edit button click
   const handleEditClick = (item) => {
     setEditingItem(item);
-    setEditFullName(item.fullName);
+    const fullNameStr = typeof item.fullName === "string"
+      ? item.fullName
+      : (item.fullName?.fullName || "");
+    setEditFullName(fullNameStr);
     setEditDate(new Date(item.date));
     setEditSize(item.size);
     setShowEditModal(true);
+    setShowEditProductDropdown(false);
+    setFilteredEditProducts([]);
+  };
+
+  // Handle edit product name change
+  const handleEditProductNameChange = (text) => {
+    setEditFullName(text);
+    if (text.trim()) {
+      const filtered = goods.filter((good) =>
+        good.fullName.toLowerCase().includes(text.toLowerCase())
+      );
+      setFilteredEditProducts(filtered);
+      setShowEditProductDropdown(true);
+    } else {
+      setFilteredEditProducts([]);
+      setShowEditProductDropdown(false);
+    }
+  };
+
+  // Select product from edit dropdown
+  const selectEditProduct = (product) => {
+    setEditFullName(product.fullName);
+    setShowEditProductDropdown(false);
   };
 
   // Save edited product
@@ -470,46 +524,170 @@ const WarehouseMobile = () => {
     }
 
     try {
-      const accessToken = await getValidAccessToken();
       const updateUrl = getApiUrl(`/state/${editingItem.id || editingItem._id}`);
-      await axios.put(updateUrl, {
-        fullName: editFullName,
-        date: editDate.toISOString(),
-        size: editSize,
-      }, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      await tokenService.authenticatedFetch(updateUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: editFullName,
+          date: editDate.toISOString(),
+          size: editSize,
+        }),
       });
       
       setShowEditModal(false);
-      await fetchTableData(accessToken);
+      await fetchTableData();
     } catch (error) {
       showNotification({
         title: "Błąd",
-        message: error.response?.data?.message || error.message,
+        message: error.message,
         type: "error",
       });
     }
   };
 
-  // Handle print button
+  // Generate ZPL code for Zebra printer
+  const generateZplCode = (item, priceValue) => {
+    try {
+      const fullNameStr = typeof item.fullName === "string"
+        ? item.fullName
+        : (item.fullName?.fullName || "N/A");
+      
+      const sizeStr = typeof item.size === "object" 
+        ? (item.size?.Roz_Opis || item.size || "-")
+        : (item.size || "-");
+      
+      const barcode = item.barcode || "NO-BARCODE";
+      const symbol = "02"; // MAGAZYN = 02
+      
+      const safeName = fullNameStr.replace(/[^\x00-\x7F]/g, '?');
+      const safeSize = sizeStr.replace(/[^\x00-\x7F]/g, '?');
+      const safePrice = priceValue ? priceValue.toString().replace(/[^\x00-\x7F]/g, '?') : 'N/A';
+      
+      return `^XA
+^MMT
+^PW450
+^LL0400
+^LS0
+^FT3,50^A0N,40,40^FD${safeName}^FS
+^FT320,55^A0N,40,40^FDCena:^FS
+^FT320,105^A0N,55,55^FD${safePrice} zl^FS
+
+^FT3,120^A0N,38,38^FDRozmiar: ${safeSize}^FS
+^FT3,150^A0N,25,25^FDPunkt: ${symbol}^FS
+^BY2,3,85^FT80,238^BCN,,N,N
+^FD${barcode}^FS
+^FT125,280^A0N,28,28^FB200,1,0,C,0^FD${barcode}^FS
+^XZ`;
+    } catch (error) {
+      console.error('Error generating ZPL:', error);
+      return null;
+    }
+  };
+
+  // Send ZPL to Zebra printer
+  const sendZplToPrinter = async (zplCode) => {
+    const printerIP = '192.168.1.25';
+    const printerPort = 9100;
+    const printerUrl = `http://${printerIP}:${printerPort}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300);
+
+    try {
+      await fetch(printerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: zplCode,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      return true;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        return true; // Timeout is OK for Zebra printers
+      }
+      return false;
+    }
+  };
+
+  // Handle print button - implements same price priority logic as web/print-labels
   const handlePrintLabel = async (item) => {
     try {
-      // For mobile, we'll simulate printing by sharing the data
-      // In a real app, you'd send to a Zebra printer API or print service
-      const labelData = `${item.fullName}\nRozmiar: ${item.size}\nData: ${new Date(item.date).toLocaleDateString("pl-PL")}\nBarcode: ${item.barcode || "N/A"}`;
+      const fullNameStr = typeof item.fullName === "string"
+        ? item.fullName
+        : (item.fullName?.fullName || "N/A");
       
-      // Show success notification
-      showNotification({
-        title: "Drukuj",
-        message: "Drukowanie etykiety (Integracja z drukarką Zebra - w pełnej wersji)",
-        type: "success",
-        confirmText: "OK",
-        onConfirm: () => {},
+      const sizeStr = typeof item.size === "object" 
+        ? (item.size?.Roz_Opis || item.size)
+        : item.size;
+      
+      // Parse price string "price;discount_price"
+      let standardPrice = 0;
+      let discountPrice = 0;
+      if (typeof item.price === "string" && item.price.includes(";")) {
+        const [p, dp] = item.price.split(";");
+        standardPrice = parseFloat(p) || 0;
+        discountPrice = parseFloat(dp) || 0;
+      } else {
+        standardPrice = parseFloat(item.price) || 0;
+      }
+      
+      // Find matching good to get priceExceptions
+      const matchingGood = goods.find(g => g.fullName === fullNameStr);
+      const priceExceptions = matchingGood?.priceExceptions || [];
+      
+      // **PRIORITY 1**: Check if there's a price exception for this size
+      const priceException = priceExceptions.find(ex => {
+        const exceptionSize = typeof ex.size === 'object' 
+          ? (ex.size?.Roz_Opis || ex.size?.name) 
+          : ex.size;
+        return exceptionSize === sizeStr;
       });
+      
+      let printCount = 0;
+      
+      if (priceException) {
+        // Print 1 label with exception price
+        const zpl = generateZplCode(item, priceException.value);
+        if (zpl) {
+          const success = await sendZplToPrinter(zpl);
+          if (success) printCount = 1;
+        }
+      } else if (discountPrice > 0) {
+        // Print 2 labels - discount and standard
+        const discountZpl = generateZplCode(item, discountPrice);
+        const regularZpl = generateZplCode(item, standardPrice);
+        
+        if (discountZpl && regularZpl) {
+          const success1 = await sendZplToPrinter(discountZpl);
+          const success2 = await sendZplToPrinter(regularZpl);
+          if (success1 && success2) printCount = 2;
+        }
+      } else {
+        // Print 1 label with standard price
+        const zpl = generateZplCode(item, standardPrice);
+        if (zpl) {
+          const success = await sendZplToPrinter(zpl);
+          if (success) printCount = 1;
+        }
+      }
+      
+      // Silent printing - no success modal
+      if (printCount === 0) {
+        showNotification({
+          title: "Błąd",
+          message: "Nie udało się wysłać etykiety do drukarki. Sprawdź połączenie z drukarką Zebra (192.168.1.25:9100)",
+          type: "error",
+        });
+      }
     } catch (error) {
       showNotification({
         title: "Błąd",
-        message: "Nie udało się drukować etykiety",
+        message: "Nie udało się drukować etykiety: " + error.message,
         type: "error",
       });
     }
@@ -851,13 +1029,34 @@ const WarehouseMobile = () => {
 
             <ScrollView style={styles.modalContent}>
               <Text style={styles.label}>Nazwa produktu</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Nazwa produktu"
-                placeholderTextColor="#666"
-                value={editFullName}
-                onChangeText={setEditFullName}
-              />
+              <View style={styles.dropdownContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Wpisz nazwę produktu"
+                  placeholderTextColor="#666"
+                  value={editFullName}
+                  onChangeText={handleEditProductNameChange}
+                />
+                {showEditProductDropdown && filteredEditProducts.length > 0 && (
+                  <ScrollView
+                    style={styles.dropdownMenu}
+                    nestedScrollEnabled={true}
+                    scrollEnabled={filteredEditProducts.length > 5}
+                  >
+                    {filteredEditProducts.slice(0, 10).map((product, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.dropdownItem}
+                        onPress={() => selectEditProduct(product)}
+                      >
+                        <Text style={styles.dropdownItemText}>
+                          {product.fullName}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
 
               <Text style={styles.label}>Rozmiar</Text>
               <TextInput
@@ -1032,23 +1231,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#0D6EFD",
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    padding: 8,
+    marginBottom: 10,
   },
   checkboxContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 6,
   },
   checkbox: {
-    width: 24,
-    height: 24,
+    width: 20,
+    height: 20,
     borderWidth: 2,
     borderColor: "#0D6EFD",
     borderRadius: 4,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 10,
+    marginRight: 8,
     backgroundColor: "transparent",
   },
   checkboxChecked: {
@@ -1056,19 +1255,19 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: "white",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "bold",
   },
   correctionLabel: {
     color: "white",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "bold",
   },
   correctionInfo: {
     color: "#ccc",
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 5,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
   },
   dropdownContainer: {
     position: "relative",
