@@ -427,6 +427,71 @@ describe('🔥 CRITICAL MOBILE: Warehouse - Price Synchronization & Data Fetchin
       expect(sortedData[0].price).toBe('200;180'); // Price preserved after sort
     });
 
+    test('✅ Zmiana ceny w PriceList → automatyczna aktualizacja w State', () => {
+      // 🎯 SCENARIUSZ: Admin zmienia cenę w PriceList → użytkownik odświeża panel
+      // 📝 OCZEKIWANIE: Wszystkie produkty w State mają NOWĄ cenę z PriceList
+      
+      const mockGoods = [
+        { _id: 'g1', fullName: 'Kurtka skórzana', price: 299, discount_price: 249 }
+      ];
+
+      const mockState = [
+        { _id: 's1', fullName: 'Kurtka skórzana', price: '299;249' }, // Stara cena z Goods
+        { _id: 's2', fullName: 'Kurtka skórzana', price: '299;249' }, // Stara cena z Goods
+        { _id: 's3', fullName: 'Kurtka skórzana', price: '299;249' }  // Stara cena z Goods
+      ];
+
+      // BEFORE: brak PriceList
+      let priceList = [];
+
+      let updatedData = mockState.map(item => {
+        const matchingGood = mockGoods.find(g => g.fullName === item.fullName);
+        let finalPrice = matchingGood.price;
+        let finalDiscountPrice = matchingGood.discount_price;
+
+        const priceListItem = priceList.find(p => p.fullName === matchingGood.fullName);
+        if (priceListItem) {
+          finalPrice = priceListItem.price !== undefined ? priceListItem.price : finalPrice;
+          finalDiscountPrice = priceListItem.discountPrice !== undefined ? priceListItem.discountPrice : finalDiscountPrice;
+        }
+
+        return { ...item, price: `${finalPrice};${finalDiscountPrice || 0}` };
+      });
+
+      // Sprawdzenie przed zmianą
+      expect(updatedData[0].price).toBe('299;249'); // Cena z Goods
+      expect(updatedData[1].price).toBe('299;249');
+      expect(updatedData[2].price).toBe('299;249');
+
+      // ZMIANA: Admin dodaje cenę do PriceList
+      priceList = [
+        { originalGoodId: 'g1', fullName: 'Kurtka skórzana', price: 350, discountPrice: 320 }
+      ];
+
+      // AFTER: Użytkownik odświeża panel (fetchTableData ponownie)
+      updatedData = mockState.map(item => {
+        const matchingGood = mockGoods.find(g => g.fullName === item.fullName);
+        let finalPrice = matchingGood.price;
+        let finalDiscountPrice = matchingGood.discount_price;
+
+        const priceListItem = priceList.find(p =>
+          p.originalGoodId === matchingGood._id || p.fullName === matchingGood.fullName
+        );
+
+        if (priceListItem) {
+          finalPrice = priceListItem.price !== undefined ? priceListItem.price : finalPrice;
+          finalDiscountPrice = priceListItem.discountPrice !== undefined ? priceListItem.discountPrice : finalDiscountPrice;
+        }
+
+        return { ...item, price: `${finalPrice};${finalDiscountPrice || 0}` };
+      });
+
+      // ✅ Wszystkie 3 produkty mają NOWĄ cenę z PriceList
+      expect(updatedData[0].price).toBe('350;320'); // Cena z PriceList
+      expect(updatedData[1].price).toBe('350;320'); // Cena z PriceList
+      expect(updatedData[2].price).toBe('350;320'); // Cena z PriceList
+    });
+
   });
 
 });

@@ -15,14 +15,23 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import tokenService from "../services/tokenService";
 import { getApiUrl, API_CONFIG } from "../config/api";
 import { GlobalStateContext } from "../context/GlobalState";
 
 const WarehouseMobile = () => {
   const insets = useSafeAreaInsets();
-  const { user, isLoggedIn } = useContext(GlobalStateContext);
+    const { user, isLoggedIn } = useContext(GlobalStateContext);
+    const isFocused = useIsFocused();
+  const params = useLocalSearchParams();
+  const normalizeParam = (value) => (Array.isArray(value) ? value[0] : value);
+  const paramUserId = normalizeParam(params.userId);
+  const paramUserName = normalizeParam(params.userName);
+  const paramSymbol = normalizeParam(params.symbol);
+  const paramRole = normalizeParam(params.role);
+  const paramAllStates = normalizeParam(params.allStates);
 
   // State management
   const [goods, setGoods] = useState([]);
@@ -31,6 +40,11 @@ const WarehouseMobile = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isCorrection, setIsCorrection] = useState(false); // Correction mode state
+  const [targetUserId, setTargetUserId] = useState(paramUserId || null);
+  const [targetUserName, setTargetUserName] = useState(paramUserName || null);
+  const [targetUserRole, setTargetUserRole] = useState(paramRole || null);
+  const [targetSymbol, setTargetSymbol] = useState(paramSymbol || (paramUserId ? "" : "MAGAZYN"));
+  const [isAllStatesMode, setIsAllStatesMode] = useState(paramAllStates === "true");
 
   const [productName, setProductName] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
@@ -68,6 +82,128 @@ const WarehouseMobile = () => {
   const sizeInputRef = useRef(null);
   const listRef = useRef(null);
 
+  const isStatesMode = Boolean(paramUserId || paramSymbol || paramAllStates);
+  const headerTitle = isAllStatesMode
+    ? "Wszystkie stany"
+    : (isStatesMode ? (targetUserName || "Stany") : "Magazyn");
+  const counterLabel = isAllStatesMode
+    ? "Produktów we wszystkich stanach"
+    : (isStatesMode ? "Produktów w stanie" : "Produktów w magazynie");
+  const resolveCurrentSymbol = () => {
+    if (targetUserRole && targetUserRole.toLowerCase() === "magazyn") {
+      return "MAGAZYN";
+    }
+    if (isAllStatesMode) {
+      return null;
+    }
+    if (isStatesMode && !targetSymbol) {
+      return null;
+    }
+    return targetSymbol || "MAGAZYN";
+  };
+
+  useEffect(() => {
+    setTargetUserId(paramUserId || null);
+    setTargetUserName(paramUserName || null);
+    setTargetUserRole(paramRole || null);
+    setIsAllStatesMode(paramAllStates === "true");
+
+    if (paramSymbol) {
+      const normalizedSymbol = paramRole && paramRole.toLowerCase() === "magazyn"
+        ? "MAGAZYN"
+        : paramSymbol;
+      setTargetSymbol(normalizedSymbol || "MAGAZYN");
+      return;
+    }
+
+    if (!paramUserId && paramAllStates !== "true") {
+      setTargetSymbol("MAGAZYN");
+    } else if (!paramSymbol) {
+      setTargetSymbol("");
+    }
+  }, [paramUserId, paramUserName, paramRole, paramSymbol, paramAllStates]);
+
+  useEffect(() => {
+    const fetchTargetUser = async () => {
+      if (!paramUserId || paramSymbol || paramAllStates === "true") {
+        return;
+      }
+
+      try {
+        const userUrl = getApiUrl(`/user/${paramUserId}`);
+        const response = await tokenService.authenticatedFetch(userUrl);
+        const data = await response.json();
+        const userData = data?.user;
+        if (userData) {
+          const normalizedSymbol = userData.role && userData.role.toLowerCase() === "magazyn"
+            ? "MAGAZYN"
+            : userData.symbol;
+          setTargetSymbol(normalizedSymbol || "MAGAZYN");
+          setTargetUserName(userData.name || userData.symbol || paramUserName || "Punkt sprzedaży");
+          setTargetUserRole(userData.role || null);
+        }
+      } catch (error) {
+        console.error("❌ Error fetching target user:", error.message);
+      }
+    };
+
+    fetchTargetUser();
+  }, [paramUserId, paramSymbol, paramUserName]);
+
+  useEffect(() => {
+    if (isStatesMode) {
+      setIsCorrection(true);
+    }
+  }, [isStatesMode]);
+
+  // Refresh goods when switching between selling points
+  useEffect(() => {
+    if (!isLoggedIn || !isStatesMode || isAllStatesMode) {
+      return;
+    }
+
+    if (!targetUserId && !paramSymbol) {
+      return;
+    }
+
+    fetchGoods();
+  }, [isLoggedIn, isStatesMode, isAllStatesMode, targetUserId, paramSymbol]);
+
+  // Refresh state data after params are resolved (avoids needing manual pull-to-refresh)
+  useEffect(() => {
+    if (!isLoggedIn || !isStatesMode) {
+      return;
+    }
+
+    if (isAllStatesMode) {
+      fetchTableData();
+      return;
+    }
+
+    const currentSymbol = resolveCurrentSymbol();
+    if (!currentSymbol) {
+      return;
+    }
+
+    fetchTableData();
+  }, [isLoggedIn, isStatesMode, isAllStatesMode, targetSymbol, targetUserRole, targetUserId]);
+
+  // Ensure data loads on screen focus for both magazyn and stany
+  useEffect(() => {
+    if (!isLoggedIn || !isFocused) {
+      return;
+    }
+
+    if (isStatesMode && !isAllStatesMode) {
+      const currentSymbol = resolveCurrentSymbol();
+      if (!currentSymbol) {
+        return;
+      }
+    }
+
+    fetchTableData();
+  }, [isLoggedIn, isFocused, isStatesMode, isAllStatesMode, targetSymbol, targetUserRole, targetUserId]);
+
   // Fetch initial data
   useEffect(() => {
     if (!isLoggedIn) {
@@ -95,18 +231,21 @@ const WarehouseMobile = () => {
   const fetchGoods = async () => {
     try {
       
-      // Step 1: Fetch all users to find MAGAZYN
-      const usersUrl = getApiUrl("/user");
-      const usersResponse = await tokenService.authenticatedFetch(usersUrl);
-      const usersData = await usersResponse.json();
-      const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
-      const magazynUserId = magazynUser?._id;
+      // Step 1: Resolve user for dedykowany cennik
+      let priceListUserId = targetUserId;
+      if (!priceListUserId) {
+        const usersUrl = getApiUrl("/user");
+        const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+        const usersData = await usersResponse.json();
+        const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
+        priceListUserId = magazynUser?._id;
+      }
       
-      // Step 2: Fetch dedykowany cennik if MAGAZYN user exists
+      // Step 2: Fetch dedykowany cennik if user exists
       let priceList = null;
-      if (magazynUserId) {
+      if (priceListUserId) {
         try {
-          const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
+          const priceListUrl = getApiUrl(`/pricelists/${priceListUserId}`);
           const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
           const priceListData = await priceListResponse.json();
           priceList = priceListData?.priceList || [];
@@ -177,23 +316,26 @@ const WarehouseMobile = () => {
 
   const fetchTableData = async () => {
     try {
-      // Step 1: Fetch current goods prices (to match backend populate behavior)
+      // Step 1: Fetch fresh goods prices
       const goodsUrl = getApiUrl("/excel/goods/get-all-goods");
       const goodsResponse = await tokenService.authenticatedFetch(goodsUrl);
       const goodsData = await goodsResponse.json();
-      const currentGoods = goodsData?.goods || [];
+      setGoods(goodsData?.goods || []);
       
-      // Step 2: Fetch dedykowany cennik
+      // Step 2: Fetch dedykowany cennik once for all states
       let fetchedPriceList = null;
       try {
-        const usersUrl = getApiUrl("/user");
-        const usersResponse = await tokenService.authenticatedFetch(usersUrl);
-        const usersData = await usersResponse.json();
-        const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
-        const magazynUserId = magazynUser?._id;
+        let priceListUserId = targetUserId;
+        if (!priceListUserId) {
+          const usersUrl = getApiUrl("/user");
+          const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+          const usersData = await usersResponse.json();
+          const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
+          priceListUserId = magazynUser?._id;
+        }
         
-        if (magazynUserId) {
-          const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
+        if (priceListUserId) {
+          const priceListUrl = getApiUrl(`/pricelists/${priceListUserId}`);
           const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
           const priceListData = await priceListResponse.json();
           fetchedPriceList = priceListData?.priceList || [];
@@ -204,48 +346,27 @@ const WarehouseMobile = () => {
       
       setPriceList(fetchedPriceList || []);
       
-      // Step 3: Fetch state data
+      // Step 3: Fetch state data - NO price transformation here
+      // renderTableRow will handle all price lookup and display
       const url = getApiUrl("/state");
       const response = await tokenService.authenticatedFetch(url);
       const data = await response.json();
       if (data) {
-        // Update prices with current goods prices (mimicking backend populate)
-        const updatedData = data.map(item => {
-          // Get fullName as string
-          const fullNameStr = typeof item.fullName === 'object' ? item.fullName.fullName : item.fullName;
-          
-          // Find matching good by fullName
-          const matchingGood = currentGoods.find(g => g.fullName === fullNameStr);
-          
-          if (matchingGood) {
-            let finalPrice = matchingGood.price;
-            let finalDiscountPrice = matchingGood.discount_price;
-            
-            // Check if dedykowany cennik overrides this price
-            if (fetchedPriceList && fetchedPriceList.length > 0) {
-              const priceListItem = fetchedPriceList.find(p =>
-                (p.originalGoodId && p.originalGoodId === matchingGood._id) ||
-                p.fullName === matchingGood.fullName
-              );
-              
-              if (priceListItem) {
-                finalPrice = priceListItem.price !== undefined ? priceListItem.price : finalPrice;
-                finalDiscountPrice = priceListItem.discountPrice !== undefined ? priceListItem.discountPrice : finalDiscountPrice;
-              }
-            }
-            
-            // Update item with current prices, keep fullName structure as-is
-            return {
-              ...item,
-              price: `${finalPrice};${finalDiscountPrice || 0}`
-            };
-          }
-          
-          return item;
-        });
+        // Filter by current symbol if in states mode
+        const currentSymbol = resolveCurrentSymbol();
+        const filteredData = isStatesMode && !isAllStatesMode && currentSymbol
+          ? data.filter((item) => {
+              const itemSymbol = typeof item.symbol === 'string'
+                ? item.symbol
+                : typeof item.sellingPoint === 'object'
+                  ? item.sellingPoint.symbol
+                  : item.sellingPoint;
+              return itemSymbol === currentSymbol;
+            })
+          : data;
         
         // Sort by createdAt descending (newest first)
-        const sortedData = [...updatedData].sort((a, b) => {
+        const sortedData = [...filteredData].sort((a, b) => {
           const dateA = new Date(a.createdAt || a.date || 0);
           const dateB = new Date(b.createdAt || b.date || 0);
           return dateB - dateA;
@@ -316,6 +437,14 @@ const WarehouseMobile = () => {
 
   // Add product to warehouse
   const addProduct = async (sizeValue) => {
+    if (isAllStatesMode) {
+      showNotification({
+        title: "Błąd",
+        message: "Nie mozna dodawac produktow w widoku wszystkich stanow",
+        type: "error",
+      });
+      return;
+    }
     if (!productName.trim()) {
       showNotification({
         title: "Błąd",
@@ -349,20 +478,22 @@ const WarehouseMobile = () => {
         return;
       }
       
-      // For MAGAZYN (warehouse), get price from dedicated price list
+      // Use dedicated price list for selected selling point
       let finalPrice = selectedGood.price;
       let finalDiscountPrice = selectedGood.discount_price || 0;
       
       try {
-        // Fetch users to find MAGAZYN ID dynamically
-        const usersUrl = getApiUrl("/user");
-        const usersResponse = await tokenService.authenticatedFetch(usersUrl);
-        const usersData = await usersResponse.json();
-        const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
-        const magazynUserId = magazynUser?._id;
+        let priceListUserId = targetUserId;
+        if (!priceListUserId) {
+          const usersUrl = getApiUrl("/user");
+          const usersResponse = await tokenService.authenticatedFetch(usersUrl);
+          const usersData = await usersResponse.json();
+          const magazynUser = usersData?.users?.find(u => u.symbol === 'MAGAZYN');
+          priceListUserId = magazynUser?._id;
+        }
         
-        if (magazynUserId) {
-          const priceListUrl = getApiUrl(`/pricelists/${magazynUserId}`);
+        if (priceListUserId) {
+          const priceListUrl = getApiUrl(`/pricelists/${priceListUserId}`);
           const priceListResponse = await tokenService.authenticatedFetch(priceListUrl);
           const priceListData = await priceListResponse.json();
           
@@ -384,12 +515,22 @@ const WarehouseMobile = () => {
         // If price list fetch fails, fall back to product price
       }
 
+      const currentSymbol = isStatesMode ? resolveCurrentSymbol() : "MAGAZYN";
+      if (isStatesMode && !currentSymbol) {
+        showNotification({
+          title: "Błąd",
+          message: "Nie udało się ustalić punktu sprzedaży",
+          type: "error",
+        });
+        setLoading(false);
+        return;
+      }
       const dataToSend = {
         fullName: productName,
         size: sizeValue,
         plec: selectedGood.gender || "Unisex",
         date: selectedDate.toISOString(),
-        sellingPoint: "MAGAZYN",
+        sellingPoint: currentSymbol,
         // Backend expects price in "price;discount_price" format as string
         price: `${finalPrice};${finalDiscountPrice || 0}`,
         isCorrection: isCorrection, // Add correction mode flag
@@ -872,7 +1013,7 @@ const WarehouseMobile = () => {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Magazyn</Text>
+        <Text style={styles.headerTitle}>{headerTitle}</Text>
         <View style={styles.backButton} />
       </View>
 
@@ -886,37 +1027,48 @@ const WarehouseMobile = () => {
         <View style={styles.productCounter}>
           <Ionicons name="cube-outline" size={24} color="#0D6EFD" />
           <Text style={styles.productCounterText}>
-            Produktów w magazynie: <Text style={styles.productCounterNumber}>{tableData.length}</Text>
+            {counterLabel}: <Text style={styles.productCounterNumber}>{tableData.length}</Text>
           </Text>
         </View>
 
         {/* Input Form */}
         <View style={styles.formContainer}>
-          {/* Correction Mode Info Alert with Checkbox */}
-          <View style={styles.correctionAlert}>
-            <Pressable
-              style={styles.checkboxContainer}
-              onPress={() => setIsCorrection(!isCorrection)}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  isCorrection && styles.checkboxChecked,
-                ]}
+          {/* Correction Mode Info */}
+          {isStatesMode ? (
+            <View style={styles.correctionAlert}>
+              <Text style={styles.correctionInfo}>
+                ℹ️ <Text style={{ fontWeight: "bold" }}>Panel korekt:</Text> Ten panel jest
+                przeznaczony dla korekt inwentaryzacyjnych. Wszystkie operacje
+                dodawania i usuwania produktów{" "}
+                <Text style={{ fontWeight: "bold" }}>będą uwzględniane w raportach</Text>.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.correctionAlert}>
+              <Pressable
+                style={styles.checkboxContainer}
+                onPress={() => setIsCorrection(!isCorrection)}
               >
-                {isCorrection && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
-              </View>
-              <Text style={styles.correctionLabel}>Tryb korekty</Text>
-            </Pressable>
-            <Text style={styles.correctionInfo}>
-              ℹ️ <Text style={{ fontWeight: "bold" }}>Informacja:</Text> Checkbox
-              jest przeznaczony dla korekt inwentaryzacyjnych. Wszystkie operacje
-              dodawania i usuwania produktów{" "}
-              <Text style={{ fontWeight: "bold" }}>będą uwzględniane w raportach</Text>.
-            </Text>
-          </View>
+                <View
+                  style={[
+                    styles.checkbox,
+                    isCorrection && styles.checkboxChecked,
+                  ]}
+                >
+                  {isCorrection && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </View>
+                <Text style={styles.correctionLabel}>Tryb korekty</Text>
+              </Pressable>
+              <Text style={styles.correctionInfo}>
+                ℹ️ <Text style={{ fontWeight: "bold" }}>Informacja:</Text> Checkbox
+                jest przeznaczony dla korekt inwentaryzacyjnych. Wszystkie operacje
+                dodawania i usuwania produktów{" "}
+                <Text style={{ fontWeight: "bold" }}>będą uwzględniane w raportach</Text>.
+              </Text>
+            </View>
+          )}
 
           <Text style={styles.label}>Ilość</Text>
           <TextInput

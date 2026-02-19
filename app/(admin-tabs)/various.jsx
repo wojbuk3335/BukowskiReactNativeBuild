@@ -24,6 +24,14 @@ const Various = () => {
 
   const menuItems = [
     {
+      id: "states",
+      title: "Stany",
+      subtitle: "Wybierz punkt sprzedaży i zarządzaj stanami",
+      icon: "layers",
+      route: "/states-list",
+      color: "#0EA5E9",
+    },
+    {
       id: "warehouse",
       title: "Magazyn",
       subtitle: "Zarządzaj produktami w magazynie",
