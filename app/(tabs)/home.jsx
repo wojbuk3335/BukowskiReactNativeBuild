@@ -50,6 +50,20 @@ const Home = () => {
   const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
   
+  // Currency rates modal state
+  const [currencyRatesModalVisible, setCurrencyRatesModalVisible] = useState(false); // State for currency rates modal
+  const [currencyRates, setCurrencyRates] = useState([]); // State for currency rates data
+  const [loadingCurrencyRates, setLoadingCurrencyRates] = useState(false); // Loading state for currency rates
+  
+  // Currency calculator modal state
+  const [calculatorModalVisible, setCalculatorModalVisible] = useState(false); // State for currency calculator modal
+  const [calculatorAmount, setCalculatorAmount] = useState(""); // Amount to convert
+  const [calculatorFromCurrency, setCalculatorFromCurrency] = useState("PLN"); // Source currency
+  const [calculatorToCurrency, setCalculatorToCurrency] = useState("HUF"); // Target currency
+  const [calculatorResult, setCalculatorResult] = useState(null); // Conversion result
+  const [fromCurrencyModalVisible, setFromCurrencyModalVisible] = useState(false); // Modal for selecting FROM currency
+  const [toCurrencyModalVisible, setToCurrencyModalVisible] = useState(false); // Modal for selecting TO currency
+  
   // States for "Dopisz kwotę" (Add Amount) - identical functionality
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false); // State for add amount modal
   const [addAmountAmount, setAddAmountAmount] = useState(""); // State for add amount amount
@@ -211,6 +225,111 @@ const Home = () => {
     } catch (error) {
       // Silent error handling
     }
+  };
+
+  // Function to fetch currency rates
+  const fetchCurrencyRates = async () => {
+    try {
+      setLoadingCurrencyRates(true);
+      const response = await tokenService.authenticatedFetch(getApiUrl('/currency-rates'));
+      
+      if (!response || !response.ok) {
+        throw new Error('Failed to fetch currency rates');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setCurrencyRates(data.data);
+      } else {
+        setCurrencyRates([]);
+      }
+    } catch (error) {
+      Logger.error('Error fetching currency rates:', error);
+      Alert.alert('Błąd', 'Nie udało się pobrać kursów walut');
+      setCurrencyRates([]);
+    } finally {
+      setLoadingCurrencyRates(false);
+    }
+  };
+
+  const convertCurrency = () => {
+    const amount = parseFloat(calculatorAmount);
+    
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Błąd', 'Wprowadź prawidłową kwotę');
+      return;
+    }
+
+    if (currencyRates.length === 0) {
+      Alert.alert('Błąd', 'Brak dostępnych kursów walut');
+      return;
+    }
+
+    // Helper function to check if currency uses "per 100" multiplier
+    const getMultiplier = (rate) => {
+      if (!rate) return 1;
+      // Check if currency name contains "(za 100)" or similar pattern
+      const name = rate.currency?.name || '';
+      if (name.includes('(za 100)') || name.includes('za 100')) {
+        return 100;
+      }
+      return 1;
+    };
+
+    // If converting from PLN
+    if (calculatorFromCurrency === 'PLN') {
+      const toRate = currencyRates.find(rate => rate.currency.code === calculatorToCurrency);
+      if (!toRate) {
+        Alert.alert('Błąd', 'Nie znaleziono kursu dla wybranej waluty');
+        return;
+      }
+      const multiplier = getMultiplier(toRate);
+      // Use BUY rate - klient płaci walutą, później sprzedajesz ją kantorowi po kursie KUPNA
+      // If rate is per 100 units, multiply result by 100
+      const result = (amount / toRate.buyRate) * multiplier;
+      setCalculatorResult(result.toFixed(2));
+    }
+    // If converting to PLN
+    else if (calculatorToCurrency === 'PLN') {
+      const fromRate = currencyRates.find(rate => rate.currency.code === calculatorFromCurrency);
+      if (!fromRate) {
+        Alert.alert('Błąd', 'Nie znaleziono kursu dla wybranej waluty');
+        return;
+      }
+      const multiplier = getMultiplier(fromRate);
+      // Use BUY rate - ile dostaniesz PLN za walutę obcą w kantorze (kantor KUPUJE od Ciebie)
+      // If rate is per 100 units, divide amount by 100 first
+      const result = (amount / multiplier) * fromRate.buyRate;
+      setCalculatorResult(result.toFixed(2));
+    }
+    // If converting between two foreign currencies
+    else {
+      const fromRate = currencyRates.find(rate => rate.currency.code === calculatorFromCurrency);
+      const toRate = currencyRates.find(rate => rate.currency.code === calculatorToCurrency);
+      
+      if (!fromRate || !toRate) {
+        Alert.alert('Błąd', 'Nie znaleziono kursu dla wybranych walut');
+        return;
+      }
+      
+      const fromMultiplier = getMultiplier(fromRate);
+      const toMultiplier = getMultiplier(toRate);
+      
+      // Obie operacje po kursie KUPNA - sprzedajesz walutę źródłową, ustalasz cenę w walucje docelowej
+      const plnAmount = (amount / fromMultiplier) * fromRate.buyRate;
+      const result = (plnAmount / toRate.buyRate) * toMultiplier;
+      setCalculatorResult(result.toFixed(2));
+    }
+  };
+
+  const swapCurrencies = () => {
+    // Zamień waluty miejscami
+    const temp = calculatorFromCurrency;
+    setCalculatorFromCurrency(calculatorToCurrency);
+    setCalculatorToCurrency(temp);
+    // Wyczyść wynik po zamianie
+    setCalculatorResult(null);
   };
 
   const fetchItemData = async (id) => {
@@ -406,6 +525,20 @@ const Home = () => {
   useEffect(() => {
     fetchAssignedSalespeople();
   }, []);
+
+  // Fetch currency rates when modal opens
+  useEffect(() => {
+    if (currencyRatesModalVisible) {
+      fetchCurrencyRates();
+    }
+  }, [currencyRatesModalVisible]);
+
+  // Fetch currency rates when calculator modal opens
+  useEffect(() => {
+    if (calculatorModalVisible && currencyRates.length === 0) {
+      fetchCurrencyRates();
+    }
+  }, [calculatorModalVisible]);
 
   const fetchTransferredItems = async () => {
     try {
@@ -2317,65 +2450,30 @@ const Home = () => {
                   </View>
                 </View>
                 
-                {/* Buttons for deductions - above Sprzedaż section */}
+                {/* Button for adding salespersons - kept at top for quick access */}
                 <View style={{ 
-                  flexDirection: "row", 
-                  justifyContent: "center", 
+                  flexDirection: "column", 
                   marginBottom: 10,
-                  gap: 10,
-                  flexWrap: "wrap"
                 }}>
-                  <TouchableOpacity
-                    testID="deduct-amount-button"
-                    style={{
-                      backgroundColor: '#dc3545',
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: 'white',
-                    }}
-                    onPress={() => setDeductionModalVisible(true)}
-                  >
-                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                      Odpisz kwotę
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    testID="add-amount-button"
-                    style={{
-                      backgroundColor: '#28a745',
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: 'white',
-                    }}
-                    onPress={() => setAddAmountModalVisible(true)}
-                  >
-                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                      Dopisz kwotę
-                    </Text>
-                  </TouchableOpacity>
-                  
                   <TouchableOpacity
                     testID="add-salesperson-button"
                     style={{
                       backgroundColor: '#007bff',
-                      paddingVertical: 8,
+                      paddingVertical: 12,
                       paddingHorizontal: 16,
                       borderRadius: 6,
                       borderWidth: 1,
                       borderColor: 'white',
+                      width: '100%',
+                      marginBottom: 8,
+                      alignItems: 'center',
                     }}
                     onPress={() => setSalespersonModalVisible(true)}
                   >
-                    <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
                       Dodaj sprzedawców
                     </Text>
                   </TouchableOpacity>
-                  
                 </View>
                 
                 {/* Available funds display */}
@@ -2918,6 +3016,93 @@ const Home = () => {
                     </View>
                   );
                 })()}
+                
+                {/* Utility buttons moved to bottom of page */}
+                <View style={{ 
+                  flexDirection: "column", 
+                  marginTop: 24,
+                  marginBottom: 20,
+                  paddingHorizontal: 16,
+                }}>
+                  <TouchableOpacity
+                    testID="deduct-amount-button"
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                      width: '100%',
+                      marginBottom: 8,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setDeductionModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                      Odpisz kwotę
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    testID="add-amount-button"
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                      width: '100%',
+                      marginBottom: 8,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setAddAmountModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                      Dopisz kwotę
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    testID="currency-rates-button"
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                      width: '100%',
+                      marginBottom: 8,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setCurrencyRatesModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                      Aktualne kursy walut
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    testID="currency-calculator-button"
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: 'white',
+                      width: '100%',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setCalculatorModalVisible(true)}
+                  >
+                    <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                      Kalkulator walut
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           }}
@@ -5896,6 +6081,515 @@ const Home = () => {
             )}
           </View>
         </Modal>
+
+        {/* Currency Rates Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={currencyRatesModalVisible}
+          onRequestClose={() => setCurrencyRatesModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+            <View style={{
+              backgroundColor: '#1f2937',
+              borderRadius: 10,
+              padding: 20,
+              width: '90%',
+              maxHeight: '80%',
+            }}>
+              <Text style={{
+                fontSize: 20,
+                fontWeight: 'bold',
+                color: 'white',
+                marginBottom: 15,
+                textAlign: 'center',
+              }}>
+                Aktualne kursy walut
+              </Text>
+
+              {loadingCurrencyRates ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: 'white' }}>Ładowanie...</Text>
+                </View>
+              ) : currencyRates.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: 'white', marginBottom: 15 }}>Brak dostępnych kursów walut</Text>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 10,
+                      paddingHorizontal: 20,
+                      borderRadius: 6,
+                    }}
+                    onPress={fetchCurrencyRates}
+                  >
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>Pobierz kursy</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView style={{ maxHeight: 400 }}>
+                  <View style={{
+                    flexDirection: 'row',
+                    backgroundColor: '#374151',
+                    padding: 10,
+                    borderRadius: 5,
+                    marginBottom: 5,
+                  }}>
+                    <Text style={{ color: 'white', fontWeight: 'bold', flex: 1 }}>Waluta</Text>
+                    <Text style={{ color: 'white', fontWeight: 'bold', flex: 1, textAlign: 'right' }}>Kupno</Text>
+                    <Text style={{ color: 'white', fontWeight: 'bold', flex: 1, textAlign: 'right' }}>Sprzedaż</Text>
+                  </View>
+                  {currencyRates.map((rate, index) => (
+                    <View
+                      key={index}
+                      style={{
+                        flexDirection: 'row',
+                        padding: 10,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#374151',
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>
+                          {rate.currency.code}
+                        </Text>
+                        <Text style={{ color: '#9ca3af', fontSize: 12 }}>
+                          {rate.currency.name}
+                        </Text>
+                      </View>
+                      <Text style={{ color: 'white', flex: 1, textAlign: 'right' }}>
+                        {rate.buyRate.toFixed(4)} PLN
+                      </Text>
+                      <Text style={{ color: 'white', flex: 1, textAlign: 'right' }}>
+                        {rate.sellRate.toFixed(4)} PLN
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginTop: 20,
+                gap: 10,
+              }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#007bff',
+                    paddingVertical: 12,
+                    borderRadius: 6,
+                    alignItems: 'center',
+                  }}
+                  onPress={fetchCurrencyRates}
+                >
+                  <Text style={{ color: 'white', fontWeight: 'bold' }}>Odśwież</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#6c757d',
+                    paddingVertical: 12,
+                    borderRadius: 6,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setCurrencyRatesModalVisible(false)}
+                >
+                  <Text style={{ color: 'white', fontWeight: 'bold' }}>Zamknij</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Currency Calculator Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={calculatorModalVisible}
+          onRequestClose={() => setCalculatorModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+            <View style={{
+              backgroundColor: '#1f2937',
+              borderRadius: 10,
+              padding: 20,
+              width: '90%',
+            }}>
+              <Text style={{
+                fontSize: 20,
+                fontWeight: 'bold',
+                color: 'white',
+                marginBottom: 20,
+                textAlign: 'center',
+              }}>
+                Kalkulator walut
+              </Text>
+
+              {loadingCurrencyRates ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: 'white' }}>Ładowanie kursów...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Amount Input */}
+                  <View style={{ marginBottom: 15 }}>
+                    <Text style={{ color: 'white', marginBottom: 5, fontWeight: 'bold' }}>
+                      Kwota:
+                    </Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: '#374151',
+                        color: 'white',
+                        padding: 12,
+                        borderRadius: 6,
+                        fontSize: 16,
+                      }}
+                      placeholder="Wprowadź kwotę"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                      value={calculatorAmount}
+                      onChangeText={setCalculatorAmount}
+                    />
+                  </View>
+
+                  {/* From Currency Picker */}
+                  <View style={{ marginBottom: 15 }}>
+                    <Text style={{ color: 'white', marginBottom: 5, fontWeight: 'bold' }}>
+                      Z waluty:
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#374151',
+                        borderRadius: 6,
+                        padding: 15,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                      onPress={() => setFromCurrencyModalVisible(true)}
+                    >
+                      <Text style={{ color: 'white', fontSize: 16 }}>
+                        {calculatorFromCurrency === 'PLN' 
+                          ? 'PLN - Polski złoty'
+                          : `${calculatorFromCurrency} - ${currencyRates.find(r => r.currency.code === calculatorFromCurrency)?.currency.name || calculatorFromCurrency}`
+                        }
+                      </Text>
+                      <Text style={{ color: 'white', fontSize: 18 }}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Swap Button */}
+                  <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#007bff',
+                        width: 50,
+                        height: 50,
+                        borderRadius: 25,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderWidth: 2,
+                        borderColor: 'white',
+                      }}
+                      onPress={swapCurrencies}
+                    >
+                      <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>
+                        ⇅
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* To Currency Picker */}
+                  <View style={{ marginBottom: 15 }}>
+                    <Text style={{ color: 'white', marginBottom: 5, fontWeight: 'bold' }}>
+                      Na walutę:
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#374151',
+                        borderRadius: 6,
+                        padding: 15,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                      onPress={() => setToCurrencyModalVisible(true)}
+                    >
+                      <Text style={{ color: 'white', fontSize: 16 }}>
+                        {calculatorToCurrency === 'PLN' 
+                          ? 'PLN - Polski złoty'
+                          : `${calculatorToCurrency} - ${currencyRates.find(r => r.currency.code === calculatorToCurrency)?.currency.name || calculatorToCurrency}`
+                        }
+                      </Text>
+                      <Text style={{ color: 'white', fontSize: 18 }}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Convert Button */}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#007bff',
+                      paddingVertical: 12,
+                      borderRadius: 6,
+                      alignItems: 'center',
+                      marginBottom: 15,
+                    }}
+                    onPress={convertCurrency}
+                  >
+                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+                      Przelicz
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Result Display */}
+                  {calculatorResult !== null && (
+                    <View style={{
+                      backgroundColor: '#374151',
+                      padding: 15,
+                      borderRadius: 6,
+                      marginBottom: 15,
+                      alignItems: 'center',
+                    }}>
+                      <Text style={{ color: '#9ca3af', fontSize: 14, marginBottom: 5 }}>
+                        Wynik:
+                      </Text>
+                      <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>
+                        {calculatorResult} {calculatorToCurrency}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* Close Button */}
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6c757d',
+                  paddingVertical: 12,
+                  borderRadius: 6,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setCalculatorModalVisible(false);
+                  setCalculatorAmount("");
+                  setCalculatorResult(null);
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* From Currency Selection Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={fromCurrencyModalVisible}
+          onRequestClose={() => setFromCurrencyModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+            <View style={{
+              backgroundColor: '#1f2937',
+              borderRadius: 10,
+              padding: 20,
+              width: '90%',
+              maxHeight: '70%',
+            }}>
+              <Text style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: 'white',
+                marginBottom: 15,
+                textAlign: 'center',
+              }}>
+                Wybierz walutę źródłową
+              </Text>
+
+              <ScrollView style={{ maxHeight: 400 }}>
+                {/* PLN Option */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: calculatorFromCurrency === 'PLN' ? '#007bff' : '#374151',
+                    padding: 15,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                  }}
+                  onPress={() => {
+                    setCalculatorFromCurrency('PLN');
+                    setFromCurrencyModalVisible(false);
+                    setCalculatorResult(null);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                    PLN
+                  </Text>
+                  <Text style={{ color: '#9ca3af', fontSize: 14 }}>
+                    Polski złoty
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Foreign Currencies */}
+                {currencyRates.map((rate) => (
+                  <TouchableOpacity
+                    key={rate.currency.code}
+                    style={{
+                      backgroundColor: calculatorFromCurrency === rate.currency.code ? '#007bff' : '#374151',
+                      padding: 15,
+                      borderRadius: 6,
+                      marginBottom: 8,
+                    }}
+                    onPress={() => {
+                      setCalculatorFromCurrency(rate.currency.code);
+                      setFromCurrencyModalVisible(false);
+                      setCalculatorResult(null);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                      {rate.currency.code}
+                    </Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 14 }}>
+                      {rate.currency.name}
+                    </Text>
+                    <Text style={{ color: '#60a5fa', fontSize: 12, marginTop: 4 }}>
+                      Kupno: {rate.buyRate.toFixed(4)} PLN
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6c757d',
+                  paddingVertical: 12,
+                  borderRadius: 6,
+                  alignItems: 'center',
+                  marginTop: 15,
+                }}
+                onPress={() => setFromCurrencyModalVisible(false)}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Anuluj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* To Currency Selection Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={toCurrencyModalVisible}
+          onRequestClose={() => setToCurrencyModalVisible(false)}
+        >
+          <View style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}>
+            <View style={{
+              backgroundColor: '#1f2937',
+              borderRadius: 10,
+              padding: 20,
+              width: '90%',
+              maxHeight: '70%',
+            }}>
+              <Text style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: 'white',
+                marginBottom: 15,
+                textAlign: 'center',
+              }}>
+                Wybierz walutę docelową
+              </Text>
+
+              <ScrollView style={{ maxHeight: 400 }}>
+                {/* PLN Option */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: calculatorToCurrency === 'PLN' ? '#007bff' : '#374151',
+                    padding: 15,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                  }}
+                  onPress={() => {
+                    setCalculatorToCurrency('PLN');
+                    setToCurrencyModalVisible(false);
+                    setCalculatorResult(null);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                    PLN
+                  </Text>
+                  <Text style={{ color: '#9ca3af', fontSize: 14 }}>
+                    Polski złoty
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Foreign Currencies */}
+                {currencyRates.map((rate) => (
+                  <TouchableOpacity
+                    key={rate.currency.code}
+                    style={{
+                      backgroundColor: calculatorToCurrency === rate.currency.code ? '#007bff' : '#374151',
+                      padding: 15,
+                      borderRadius: 6,
+                      marginBottom: 8,
+                    }}
+                    onPress={() => {
+                      setCalculatorToCurrency(rate.currency.code);
+                      setToCurrencyModalVisible(false);
+                      setCalculatorResult(null);
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                      {rate.currency.code}
+                    </Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 14 }}>
+                      {rate.currency.name}
+                    </Text>
+                    <Text style={{ color: '#60a5fa', fontSize: 12, marginTop: 4 }}>
+                      Kupno: {rate.buyRate.toFixed(4)} PLN
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6c757d',
+                  paddingVertical: 12,
+                  borderRadius: 6,
+                  alignItems: 'center',
+                  marginTop: 15,
+                }}
+                onPress={() => setToCurrencyModalVisible(false)}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Anuluj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
       </SafeAreaView>
     </>
   );
