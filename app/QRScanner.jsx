@@ -7,7 +7,7 @@ import { getApiUrl, API_CONFIG } from "../config/api";
 import tokenService from "../services/tokenService"; // Import tokenService
 import Logger from "../services/logger"; // Import logger service
 
-const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, getFilteredSellingPoints, isActive }) => {
+const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags, wallets, currencyRates, getFilteredSellingPoints, isActive }) => {
   const insets = useSafeAreaInsets(); // Get safe area insets
   const [facing, setFacing] = useState("back");
   const [permission, requestPermission] = useCameraPermissions();
@@ -31,7 +31,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   const [currentProductSize, setCurrentProductSize] = useState(""); // Rozmiar aktualnego produktu
   
   const [sellingPointMenuVisible, setSellingPointMenuVisible] = useState(false); // State for "Sprzedano od" popup
-  const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"];
+  // Get available currencies from currencyRates
+  const availableCurrencies = currencyRates && currencyRates.length > 0 
+    ? currencyRates.map(rate => ({ code: rate.currency.code, name: rate.currency.name, buyRate: rate.buyRate }))
+    : ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"].map(code => ({ code, name: code, buyRate: '-' })); // Fallback dla starych przypadków
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false); // State for currency modal
   const [currentCurrencyPairIndex, setCurrentCurrencyPairIndex] = useState(null); // Track the index of the pair being edited
   const [cameraActive, setCameraActive] = useState(true); // Zarządzanie aktywnością kamery - rozpoczynamy z aktywną kamerą
@@ -867,13 +870,40 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                 <Text style={{ fontSize: 16, color: "white", marginBottom: 8 }}>Sprzedano od:</Text>
                 <View
                   style={{
-                    borderWidth: 1,
-                    borderColor: "white",
+                    backgroundColor: '#8B0000',
+                    padding: 12,
+                    borderRadius: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text style={{ 
+                    color: '#FFD700', 
+                    fontSize: 14, 
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    marginBottom: 5,
+                  }}>
+                    ⚠️ UWAGA ⚠️
+                  </Text>
+                  <Text style={{ 
+                    color: 'white', 
+                    fontSize: 13, 
+                    textAlign: 'center',
+                    lineHeight: 18,
+                  }}>
+                    To jest bardzo ważne pole. Proszę o przemyślany wybór!
+                  </Text>
+                </View>
+                <View
+                  style={{
                     borderRadius: 5,
                     paddingHorizontal: 10,
                     paddingVertical: 5,
                     marginBottom: 20,
                     width: "100%",
+                    backgroundColor: "#8B0000",
+                    borderWidth: 3,
+                    borderColor: "#FFA500",
                   }}
                 >
                   <TouchableOpacity
@@ -881,12 +911,12 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                       height: 40,
                       justifyContent: "center",
                       alignItems: "center",
-                      backgroundColor: "black",
+                      backgroundColor: "#8B0000",
                       borderRadius: 5,
                     }}
                     onPress={openSellingPointModal}
                   >
-                    <Text style={{ color: "white" }}>
+                    <Text style={{ color: "white", fontWeight: '500' }}>
                       {selectedOption || "Wybierz punkt sprzedaży"}
                     </Text>
                   </TouchableOpacity>
@@ -1074,11 +1104,15 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                         <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
                           {availableCurrencies.map((item) => (
                             <TouchableOpacity
-                              key={item}
+                              key={item.code}
                               style={styles.currencyModalItem}
-                              onPress={() => selectCurrencyFromModal(item)}
+                              onPress={() => selectCurrencyFromModal(item.code)}
                             >
-                              <Text style={styles.currencyModalItemText}>{item}</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={[styles.currencyModalItemText, { width: 60 }]}>{item.code}</Text>
+                                <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>{item.name}</Text>
+                                <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '500', marginLeft: 10 }}>{item.buyRate}</Text>
+                              </View>
                             </TouchableOpacity>
                           ))}
                         </ScrollView>

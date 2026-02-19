@@ -73,7 +73,7 @@ const Home = () => {
   
   // New states for reason selection
   const [reasonType, setReasonType] = useState(""); // "product" or "other"
-  const [productType, setProductType] = useState("custom"); // "standard" or "custom" - default to custom (non-standard products)
+  const [productType, setProductType] = useState("standard"); // "standard" only in add amount flow
   const [customProductName, setCustomProductName] = useState(""); // Custom product name for non-standard products
   
   // Custom product selection states (for non-standard products)
@@ -157,10 +157,31 @@ const Home = () => {
   const [showAddAmountRateInput, setShowAddAmountRateInput] = useState(false); // Show rate input for add amount
 
   // States for product currency rate input
-  const [productSaleCurrencyRate, setProductSaleCurrencyRate] = useState(""); // Rate input for product currency
+  const [productSaleCurrencyRate, setProductSaleCurrencyRate] = useState(""); // Rate for product currency
   const [showProductRateInput, setShowProductRateInput] = useState(false); // Show rate input for product currency
   
   const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
+  const currencyOptions = (() => {
+    if (!currencyRates || currencyRates.length === 0) {
+      return availableCurrencies.map(code => ({
+        code,
+        name: code,
+        buyRate: code === "PLN" ? 1 : null
+      }));
+    }
+
+    const mapped = currencyRates.map(rate => ({
+      code: rate.currency.code,
+      name: rate.currency.name,
+      buyRate: rate.buyRate
+    }));
+
+    if (!mapped.some(item => item.code === "PLN")) {
+      mapped.unshift({ code: "PLN", name: "Polski zloty", buyRate: 1 });
+    }
+
+    return mapped;
+  })();
 
   // Funkcja identyczna z QRScanner - filtruje użytkowników z tej samej lokalizacji
   const getMatchingSymbols = () => {
@@ -275,7 +296,7 @@ const Home = () => {
         return 100;
       }
       return 1;
-    };
+    }
 
     // If converting from PLN
     if (calculatorFromCurrency === 'PLN') {
@@ -524,6 +545,13 @@ const Home = () => {
   // Load assigned salespeople on component mount
   useEffect(() => {
     fetchAssignedSalespeople();
+  }, []);
+
+  // Load currency rates on component mount for PLN turnover
+  useEffect(() => {
+    if (currencyRates.length === 0) {
+      fetchCurrencyRates();
+    }
   }, []);
 
   // Fetch currency rates when modal opens
@@ -1511,66 +1539,11 @@ const Home = () => {
     }
     
     if (reasonType === 'product') {
-      // Validate product type selection
-      if (!productType) {
-        setErrorMessage("Proszę wybrać typ produktu.");
-        setErrorModalVisible(true);
-        return;
-      }
-      
-      // Validate product selection based on type
-      if (productType === 'standard' && !selectedProduct) {
+      // Validate standard product selection
+      if (!selectedProduct) {
         setErrorMessage("Proszę wybrać produkt z listy.");
         setErrorModalVisible(true);
         return;
-      }
-      
-      if (productType === 'custom') {
-        // Auto-select if there's exactly one match
-        if (!selectedStock && stockSearchQuery.trim()) {
-          if (filteredStocks.length === 1) {
-            setSelectedStock(filteredStocks[0]._id || filteredStocks[0].id);
-          } else {
-            setErrorMessage("Proszę wybrać asortyment z listy (kliknij na wybrany element).");
-            setErrorModalVisible(true);
-            return;
-          }
-        }
-        if (!selectedColor && colorSearchQuery.trim()) {
-          if (filteredColors.length === 1) {
-            setSelectedColor(filteredColors[0]._id || filteredColors[0].id);
-          } else {
-            setErrorMessage("Proszę wybrać kolor z listy (kliknij na wybrany element).");
-            setErrorModalVisible(true);
-            return;
-          }
-        }
-        if (!selectedSize && sizeSearchQuery.trim()) {
-          if (filteredSizes.length === 1) {
-            setSelectedSize(filteredSizes[0]._id || filteredSizes[0].id);
-          } else {
-            setErrorMessage("Proszę wybrać rozmiar z listy (kliknij na wybrany element).");
-            setErrorModalVisible(true);
-            return;
-          }
-        }
-        
-        // Final validation - make sure all are selected
-        if (!selectedStock || !stockSearchQuery.trim()) {
-          setErrorMessage("Proszę wybrać asortyment z listy.");
-          setErrorModalVisible(true);
-          return;
-        }
-        if (!selectedColor || !colorSearchQuery.trim()) {
-          setErrorMessage("Proszę wybrać kolor z listy.");
-          setErrorModalVisible(true);
-          return;
-        }
-        if (!selectedSize || !sizeSearchQuery.trim()) {
-          setErrorMessage("Proszę wybrać rozmiar z listy.");
-          setErrorModalVisible(true);
-          return;
-        }
       }
       
       if (!productFinalPrice || parseFloat(productFinalPrice) <= 0) {
@@ -1608,28 +1581,14 @@ const Home = () => {
       let productName = ''; // Define productName at function scope
       
       if (reasonType === 'product') {
-        // Determine product name based on product type
-        if (productType === 'custom') {
-          // Build product name from selected stock, color, and size
-          const stockObj = stocks?.find(s => (s._id || s.id) === selectedStock);
-          const colorObj = colors?.find(c => (c._id || c.id) === selectedColor);
-          const sizeObj = sizes?.find(s => (s._id || s.id) === selectedSize);
-          
-          const stockName = stockObj?.Tow_Opis || stockObj?.name || 'Nieznany asortyment';
-          const colorName = colorObj?.Kol_Opis || colorObj?.name || 'Nieznany kolor';
-          const sizeName = sizeObj?.Roz_Opis || sizeObj?.name || 'Nieznany rozmiar';
-          
-          productName = `${stockName} ${colorName} ${sizeName}`;
-        } else {
-          // Search by 'id' field (stateData uses 'id', not '_id')
-          const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct) ||
-                                      stateData?.find(p => (p.id || p._id) === selectedProduct);
-          productName = selectedProductObj?.fullName || selectedProductObj?.Tow_Opis || selectedProductObj?.code || selectedProductObj?.Tow_Kod || 'Nieznany produkt';
-          
-          // Add size to product name if selected for standard product
-          if (sizeSearchQuery) {
-            productName += ` ${sizeSearchQuery}`;
-          }
+        // Standard product name (search by 'id' field; stateData uses 'id', not '_id')
+        const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct) ||
+                                    stateData?.find(p => (p.id || p._id) === selectedProduct);
+        productName = selectedProductObj?.fullName || selectedProductObj?.Tow_Opis || selectedProductObj?.code || selectedProductObj?.Tow_Kod || 'Nieznany produkt';
+        
+        // Add size to product name if selected
+        if (sizeSearchQuery) {
+          productName += ` ${sizeSearchQuery}`;
         }
         
         if (productFinalPrice) {
@@ -1717,7 +1676,7 @@ const Home = () => {
 
       // Add product-related data if it's a product transaction
       if (reasonType === 'product') {
-        if (productType === 'standard' && selectedProduct) {
+        if (selectedProduct) {
           let productFullName;
           
           console.log('🔍 Looking for product:', selectedProduct);
@@ -1750,9 +1709,6 @@ const Home = () => {
           operationData.productId = selectedProduct;
           operationData.productName = productFullName;
           operationData.productSize = sizeSearchQuery || null; // Store size separately
-        } else if (productType === 'custom') {
-          // Custom product - use the built productName
-          operationData.productName = productName; // This was built earlier from stock + color + size
         } else {
           operationData.productName = 'Produkt do wyboru';
         }
@@ -1787,7 +1743,7 @@ const Home = () => {
       setAddAmountCurrency("PLN");
       setAddAmountReason("");
       setReasonType("");
-      setProductType("custom"); // Reset to custom (default)
+      setProductType("standard"); // Reset to standard
       setCustomProductName(""); // Clear custom product name
       setSelectedStock(""); // Clear selected stock
       setSelectedColor(""); // Clear selected color
@@ -2058,10 +2014,15 @@ const Home = () => {
     } else {
       // Show rate input for non-PLN currencies
       setShowAddAmountRateInput(true);
-      // Load current rate from storage as default
+      // Load current rate from currency table as default
       try {
-        const currentRate = await CurrencyService.getCurrencyRate(currency);
-        setAddAmountCurrencyRate(currentRate.toString());
+        const tableRate = currencyRates.find(rate => rate.currency.code === currency);
+        if (tableRate && tableRate.buyRate) {
+          setAddAmountCurrencyRate(tableRate.buyRate.toString());
+        } else {
+          const currentRate = await CurrencyService.getCurrencyRate(currency);
+          setAddAmountCurrencyRate(currentRate.toString());
+        }
       } catch (error) {
         Logger.error('Error loading currency rate:', error);
         setAddAmountCurrencyRate("1.0");
@@ -2100,17 +2061,22 @@ const Home = () => {
       setShowProductRateInput(false);
       setProductSaleCurrencyRate("");
     } else {
-      // Show rate input for non-PLN currencies
+      // Show rate text for non-PLN currencies
       setShowProductRateInput(true);
       // Load current rate from storage as default
       try {
-        const currentRate = await CurrencyService.getCurrencyRate(currency);
-        setProductSaleCurrencyRate(currentRate.toString());
+        const tableRate = currencyRates.find(rate => rate.currency.code === currency);
+        if (tableRate && tableRate.buyRate) {
+          setProductSaleCurrencyRate(tableRate.buyRate.toString());
+        } else {
+          const currentRate = await CurrencyService.getCurrencyRate(currency);
+          setProductSaleCurrencyRate(currentRate.toString());
+        }
         
         // Update local exchangeRates state immediately
         setExchangeRates(prev => ({
           ...prev,
-          [currency]: currentRate
+          [currency]: tableRate && tableRate.buyRate ? tableRate.buyRate : currentRate
         }));
         
       } catch (error) {
@@ -2141,7 +2107,7 @@ const Home = () => {
       }
       
       try {
-        // Get rate from manual input or storage
+        // Get rate from table (cached in state)
         let rate = null;
         
         if (currency === productSaleCurrency && productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0) {
@@ -2241,7 +2207,7 @@ const Home = () => {
         return;
       }
 
-      // Use manual rate if available, otherwise fall back to stored rates
+      // Use rate from table (cached in state)
       let rate = null;
       if (productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0) {
         rate = parseFloat(productSaleCurrencyRate);
@@ -2807,6 +2773,19 @@ const Home = () => {
                       const currency = item.currency;
                       operationsTotals[currency] = (operationsTotals[currency] || 0) + item.amount;
                     });
+
+                  // Calculate total additions in PLN (use agreed final price for turnover)
+                  const additionsTotals = {};
+                  deductionsData
+                    .filter(item => item.date && item.date.startsWith(today) && item.type === 'addition')
+                    .forEach(item => {
+                      const agreedPln = item.finalPricePLN || item.finalPrice;
+                      if (!agreedPln || Number.isNaN(parseFloat(agreedPln))) {
+                        return;
+                      }
+                      const amountPln = parseFloat(agreedPln);
+                      additionsTotals.PLN = (additionsTotals.PLN || 0) + amountPln;
+                    });
                   
                   // Calculate final totals by currency (CASH + advances + operations)
                   const allCurrencies = new Set([
@@ -2830,6 +2809,25 @@ const Home = () => {
                     // Płatności kartą = tylko płatności kartą (zamknięcie terminala)
                     finalCardTotals[currency] = card;
                   });
+
+                  const getRateToPln = (currency) => {
+                    if (!currency || currency === 'PLN') {
+                      return 1;
+                    }
+                    const rate = currencyRates.find(item => item.currency.code === currency);
+                    return rate && rate.buyRate ? rate.buyRate : 1;
+                  };
+
+                  const totalTurnoverPln = Object.entries(cashTotals).reduce(
+                    (sum, [currency, total]) => sum + total * getRateToPln(currency),
+                    0
+                  ) + Object.entries(cardTotals).reduce(
+                    (sum, [currency, total]) => sum + total * getRateToPln(currency),
+                    0
+                  ) + Object.entries(additionsTotals).reduce(
+                    (sum, [currency, total]) => sum + total * getRateToPln(currency),
+                    0
+                  );
                   
                   return allCurrencies.size > 0 && (
                     <View style={{ 
@@ -3011,6 +3009,41 @@ const Home = () => {
                           fontStyle: "italic" 
                         }}>
                           Kwota płatności kartą (terminal na koniec dnia)
+                        </Text>
+                      </View>
+
+                      {/* Total Turnover in PLN */}
+                      <View style={{
+                        marginTop: 16,
+                        paddingTop: 12,
+                        borderTopWidth: 1,
+                        borderTopColor: "#fbbf24"
+                      }}>
+                        <Text style={{
+                          fontSize: 15,
+                          color: "#fbbf24",
+                          fontWeight: "bold",
+                          marginBottom: 6,
+                          textAlign: "center"
+                        }}>
+                          📊 OBRÓT DNIA (PLN):
+                        </Text>
+                        <Text style={{
+                          fontSize: 16,
+                          color: "#fbbf24",
+                          fontWeight: "bold",
+                          textAlign: "center"
+                        }}>
+                          {totalTurnoverPln.toFixed(2)} PLN
+                        </Text>
+                        <Text style={{
+                          fontSize: 11,
+                          color: "#9ca3af",
+                          textAlign: "center",
+                          marginTop: 8,
+                          fontStyle: "italic"
+                        }}>
+                          Suma sprzedaży gotówką, kartą i uzgodnionych cen z zaliczek
                         </Text>
                       </View>
                     </View>
@@ -4057,42 +4090,14 @@ const Home = () => {
               {/* Currency rate input - show only for non-PLN currencies */}
               {showAddAmountRateInput && addAmountCurrency !== 'PLN' && (
                 <View style={{ width: '100%', marginBottom: 20 }}>
-                  <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
-                    Kurs {addAmountCurrency} (1 {addAmountCurrency} = ? PLN):
+                  <Text style={{
+                    color: '#4ecdc4',
+                    fontSize: 14,
+                    textAlign: 'center',
+                    fontWeight: 'bold'
+                  }}>
+                    1 {addAmountCurrency} = {addAmountCurrencyRate ? parseFloat(addAmountCurrencyRate).toFixed(2) : '?'} PLN
                   </Text>
-                  <TextInput
-                    style={{
-                      backgroundColor: '#1a1a1a',
-                      borderRadius: 8,
-                      padding: 12,
-                      fontSize: 16,
-                      color: 'white',
-                      borderWidth: 2,
-                      borderColor: '#f39c12',
-                      textAlign: 'center',
-                    }}
-                    placeholder="0.00"
-                    placeholderTextColor="#666"
-                    value={addAmountCurrencyRate}
-                    onChangeText={(value) => {
-                      setAddAmountCurrencyRate(value);
-                      // Save rate to storage when user types
-                      if (value && parseFloat(value) > 0) {
-                        CurrencyService.updateCurrencyRate(addAmountCurrency, parseFloat(value)).catch(Logger.error);
-                      }
-                    }}
-                    keyboardType="decimal-pad"
-                  />
-                  {addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
-                    <Text style={{
-                      color: '#4ecdc4',
-                      fontSize: 12,
-                      textAlign: 'center',
-                      marginTop: 5
-                    }}>
-                      1 {addAmountCurrency} = {parseFloat(addAmountCurrencyRate).toFixed(2)} PLN
-                    </Text>
-                  )}
                 </View>
               )}
               
@@ -4111,6 +4116,7 @@ const Home = () => {
                     onPress={() => {
                       Logger.debug('Selected product radio');
                       setReasonType('product');
+                      setProductType('standard');
                       setAddAmountReason('');
                       setShowProductDropdown(false);
                     }}
@@ -4154,496 +4160,205 @@ const Home = () => {
                 {/* Conditional product search */}
                 {reasonType === 'product' && (
                   <View style={{ marginBottom: 15 }}>
-                    {/* Product Type Selection */}
-                    <Text style={{ color: '#fff', fontSize: 12, marginBottom: 8 }}>Typ produktu:</Text>
-                    <View style={{ marginBottom: 15 }}>
-                      {/* Custom Product Radio - FIRST */}
+                    {/* Standard Product Selection */}
+                    <View>
+                      <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Produkt standardowy:</Text>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}
-                        onPress={() => {
-                          setProductType('custom');
-                          setSelectedProduct('');
-                          setProductSearchQuery('');
-                          setShowProductDropdown(false);
+                        style={{
+                          backgroundColor: '#0d6efd',
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          borderWidth: 1,
+                          borderColor: 'white',
+                          marginBottom: 10,
                         }}
-                      >
-                        <View style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          borderWidth: 2,
-                          borderColor: '#0d6efd',
-                          backgroundColor: productType === 'custom' ? '#0d6efd' : 'transparent',
-                          marginRight: 10,
-                        }} />
-                        <Text style={{ color: '#fff', fontSize: 14 }}>Produkt niestandardowy</Text>
-                      </TouchableOpacity>
-
-                      {/* Standard Product Radio - SECOND */}
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
                         onPress={() => {
                           setProductType('standard');
-                          setCustomProductName('');
-                          setSelectedStock(''); // Clear custom product selections
-                          setSelectedColor('');
-                          setSelectedSize('');
-                          setStockSearchQuery(''); // Clear custom product search fields
-                          setColorSearchQuery('');
-                          setSizeSearchQuery('');
-                          setShowStockDropdown(false);
-                          setShowColorDropdown(false);
-                          setShowSizeDropdown(false);
-                          // Automatycznie otwórz skaner po wyborze produktu standardowego
                           setQrScannerVisible(true);
                           setScanned(false);
                         }}
                       >
-                        <View style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          borderWidth: 2,
-                          borderColor: '#0d6efd',
-                          backgroundColor: productType === 'standard' ? '#0d6efd' : 'transparent',
-                          marginRight: 10,
-                        }} />
-                        <Text style={{ color: '#fff', fontSize: 14 }}>Produkt standardowy</Text>
+                        <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>
+                          Skanuj produkt
+                        </Text>
                       </TouchableOpacity>
-                    </View>
 
-                    {/* Standard Product Search */}
-                    {productType === 'standard' && (
-                      <View>
-                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz produkt:</Text>
-                        
-                        {/* Search input */}
-                        <TextInput
-                          style={{
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            color: 'white',
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}
-                          placeholder="Wpisz nazwę lub kod produktu..."
-                          placeholderTextColor="#ccc"
-                          value={productSearchQuery}
-                          onChangeText={(text) => {
-                            setProductSearchQuery(text);
-                            setShowProductDropdown(true); // Show dropdown when typing
-                            setProductScanned(false); // Reset scanned flag when manually typing
-                          }}
-                          onFocus={() => {
-                            if (productSearchQuery && !selectedProduct) {
-                              setShowProductDropdown(true);
-                            }
-                          }}
-                        />
+                      <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz produkt:</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: 'black',
+                          borderRadius: 8,
+                          padding: 12,
+                          fontSize: 14,
+                          color: 'white',
+                          borderWidth: 1,
+                          borderColor: '#0d6efd',
+                          marginBottom: 10,
+                        }}
+                        placeholder="Wpisz nazwę lub kod produktu..."
+                        placeholderTextColor="#ccc"
+                        value={productSearchQuery}
+                        onChangeText={(text) => {
+                          setProductSearchQuery(text);
+                          setShowProductDropdown(true);
+                          setProductScanned(false);
+                        }}
+                        onFocus={() => {
+                          if (productSearchQuery && !selectedProduct) {
+                            setShowProductDropdown(true);
+                          }
+                        }}
+                      />
 
-                        {/* Product Dropdown - zaraz pod polem input */}
-                        {showProductDropdown && productSearchQuery && (
-                          <View style={{
-                            maxHeight: 200,
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 15,
-                          }}>
-                            <TouchableOpacity
-                              style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 10,
-                                zIndex: 1,
-                                backgroundColor: '#333',
-                                borderRadius: 10,
-                                width: 20,
-                                height: 20,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                              onPress={() => setShowProductDropdown(false)}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>×</Text>
-                            </TouchableOpacity>
-                            
-                            <ScrollView nestedScrollEnabled={true}>
-                              {filteredProducts.length > 0 ? (
-                                filteredProducts.slice(0, 10).map(product => (
-                                  <TouchableOpacity
-                                    key={product.id || product._id}
-                                    style={{
-                                      padding: 12,
-                                      borderBottomWidth: 1,
-                                      borderBottomColor: '#333',
-                                      backgroundColor: selectedProduct === (product.id || product._id) ? '#0d6efd' : 'transparent',
-                                    }}
-                                    onPress={() => {
-                                      setSelectedProduct(product.id || product._id);
-                                      setProductSearchQuery(product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Produkt');
-                                      setShowProductDropdown(false);
-                                    }}
-                                  >
-                                    <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Nieznany produkt'}
-                                    </Text>
-                                    {(product.code || product.Tow_Kod) && (product.fullName || product.Tow_Opis) && (
-                                      <Text style={{ color: '#ccc', fontSize: 11 }}>
-                                        Kod: {product.code || product.Tow_Kod}
-                                      </Text>
-                                    )}
-                                  </TouchableOpacity>
-                                ))
-                              ) : (
-                                <View style={{ padding: 12 }}>
-                                  <Text style={{ color: '#ccc', fontSize: 13, textAlign: 'center' }}>
-                                    Brak produktów pasujących do wyszukiwania
+                      {showProductDropdown && productSearchQuery && (
+                        <View style={{
+                          maxHeight: 200,
+                          backgroundColor: 'black',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#0d6efd',
+                          marginBottom: 15,
+                        }}>
+                          <TouchableOpacity
+                            style={{
+                              position: 'absolute',
+                              top: 5,
+                              right: 10,
+                              zIndex: 1,
+                              backgroundColor: '#333',
+                              borderRadius: 10,
+                              width: 20,
+                              height: 20,
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                            onPress={() => setShowProductDropdown(false)}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>×</Text>
+                          </TouchableOpacity>
+                          <ScrollView nestedScrollEnabled={true}>
+                            {filteredProducts.length > 0 ? (
+                              filteredProducts.slice(0, 10).map(product => (
+                                <TouchableOpacity
+                                  key={product.id || product._id}
+                                  style={{
+                                    padding: 12,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: '#333',
+                                    backgroundColor: selectedProduct === (product.id || product._id) ? '#0d6efd' : 'transparent',
+                                  }}
+                                  onPress={() => {
+                                    setSelectedProduct(product.id || product._id);
+                                    setProductSearchQuery(product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Produkt');
+                                    setShowProductDropdown(false);
+                                  }}
+                                >
+                                  <Text style={{ color: '#fff', fontSize: 13 }}>
+                                    {product.fullName || product.Tow_Opis || product.code || product.Tow_Kod || product.name || 'Nieznany produkt'}
                                   </Text>
-                                </View>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
-
-                        {/* Size Selection for Standard Product - tylko gdy produkt nie był skanowany */}
-                        {!productScanned && (
-                          <>
-                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5, marginTop: 10 }}>Wybierz rozmiar:</Text>
-                        <TextInput
-                          style={{
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            color: 'white',
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}
-                          placeholder="Wpisz rozmiar..."
-                          placeholderTextColor="#ccc"
-                          value={sizeSearchQuery}
-                          onChangeText={(text) => {
-                            setSizeSearchQuery(text);
-                            setShowSizeDropdown(true);
-                          }}
-                          onFocus={() => setShowSizeDropdown(true)}
-                        />
-
-                        {/* Size Dropdown */}
-                        {showSizeDropdown && sizeSearchQuery && (
-                          <View style={{
-                            maxHeight: 150,
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}>
-                            <TouchableOpacity
-                              style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 10,
-                                zIndex: 1,
-                                backgroundColor: '#333',
-                                borderRadius: 10,
-                                width: 20,
-                                height: 20,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                              onPress={() => setShowSizeDropdown(false)}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
-                            </TouchableOpacity>
-                            <ScrollView>
-                              {filteredSizes.length > 0 ? (
-                                filteredSizes.slice(0, 10).map((size) => (
-                                  <TouchableOpacity
-                                    key={size._id || size.id}
-                                    style={{
-                                      padding: 12,
-                                      borderBottomWidth: 1,
-                                      borderBottomColor: '#333',
-                                      backgroundColor: selectedSize === (size._id || size.id) ? '#0d6efd' : 'transparent',
-                                    }}
-                                    onPress={() => {
-                                      setSelectedSize(size._id || size.id);
-                                      setSizeSearchQuery(size.Roz_Opis || size.name || '');
-                                      setShowSizeDropdown(false);
-                                    }}
-                                  >
-                                    <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {size.Roz_Opis || size.name || 'Nieznany rozmiar'}
+                                  {(product.code || product.Tow_Kod) && (product.fullName || product.Tow_Opis) && (
+                                    <Text style={{ color: '#ccc', fontSize: 11 }}>
+                                      Kod: {product.code || product.Tow_Kod}
                                     </Text>
-                                  </TouchableOpacity>
-                                ))
-                              ) : (
-                                <Text style={{ color: '#ccc', fontSize: 12, padding: 12, textAlign: 'center' }}>
-                                  Brak rozmiarów pasujących do "{sizeSearchQuery}"
+                                  )}
+                                </TouchableOpacity>
+                              ))
+                            ) : (
+                              <View style={{ padding: 12 }}>
+                                <Text style={{ color: '#ccc', fontSize: 13, textAlign: 'center' }}>
+                                  Brak produktów pasujących do wyszukiwania
                                 </Text>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
-                          </>
-                        )}
-                      </View>
-                    )}
+                              </View>
+                            )}
+                          </ScrollView>
+                        </View>
+                      )}
 
-                    {/* Custom Product Selection (Stock, Color, Size) */}
-                    {productType === 'custom' && (
-                      <View>
-                        {/* Stock/Assortment Selection */}
-                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz asortyment:</Text>
-                        <TextInput
-                          style={{
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            color: 'white',
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}
-                          placeholder="Wpisz nazwę asortymentu..."
-                          placeholderTextColor="#ccc"
-                          value={stockSearchQuery}
-                          onChangeText={(text) => {
-                            setStockSearchQuery(text);
-                            setShowStockDropdown(true);
-                          }}
-                          onFocus={() => setShowStockDropdown(true)}
-                        />
-                        
-                        {/* Stock Dropdown */}
-                        {showStockDropdown && stockSearchQuery && (
-                          <View style={{
-                            maxHeight: 150,
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}>
-                            <TouchableOpacity
-                              style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 10,
-                                zIndex: 1,
-                                backgroundColor: '#333',
-                                borderRadius: 10,
-                                width: 20,
-                                height: 20,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                              onPress={() => setShowStockDropdown(false)}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
-                            </TouchableOpacity>
-                            <ScrollView>
-                              {filteredStocks.length > 0 ? (
-                                filteredStocks.slice(0, 10).map((stock) => (
-                                  <TouchableOpacity
-                                    key={stock._id || stock.id}
-                                    style={{
-                                      padding: 12,
-                                      borderBottomWidth: 1,
-                                      borderBottomColor: '#333',
-                                      backgroundColor: selectedStock === (stock._id || stock.id) ? '#0d6efd' : 'transparent',
-                                    }}
-                                    onPress={() => {
-                                      setSelectedStock(stock._id || stock.id);
-                                      setStockSearchQuery(stock.Tow_Opis || stock.name || '');
-                                      setShowStockDropdown(false);
-                                    }}
-                                  >
-                                    <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {stock.Tow_Opis || stock.name || 'Nieznany asortyment'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                ))
-                              ) : (
-                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
-                                  Brak wyników
-                                </Text>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
+                      {!productScanned && (
+                        <>
+                          <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5, marginTop: 10 }}>Wybierz rozmiar:</Text>
+                          <TextInput
+                            style={{
+                              backgroundColor: 'black',
+                              borderRadius: 8,
+                              padding: 12,
+                              fontSize: 14,
+                              color: 'white',
+                              borderWidth: 1,
+                              borderColor: '#0d6efd',
+                              marginBottom: 10,
+                            }}
+                            placeholder="Wpisz rozmiar..."
+                            placeholderTextColor="#ccc"
+                            value={sizeSearchQuery}
+                            onChangeText={(text) => {
+                              setSizeSearchQuery(text);
+                              setShowSizeDropdown(true);
+                            }}
+                            onFocus={() => setShowSizeDropdown(true)}
+                          />
 
-                        {/* Color Selection */}
-                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz kolor:</Text>
-                        <TextInput
-                          style={{
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            color: 'white',
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}
-                          placeholder="Wpisz nazwę koloru..."
-                          placeholderTextColor="#ccc"
-                          value={colorSearchQuery}
-                          onChangeText={(text) => {
-                            setColorSearchQuery(text);
-                            setShowColorDropdown(true);
-                          }}
-                          onFocus={() => setShowColorDropdown(true)}
-                        />
-                        
-                        {/* Color Dropdown */}
-                        {showColorDropdown && colorSearchQuery && (
-                          <View style={{
-                            maxHeight: 150,
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}>
-                            <TouchableOpacity
-                              style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 10,
-                                zIndex: 1,
-                                backgroundColor: '#333',
-                                borderRadius: 10,
-                                width: 20,
-                                height: 20,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                              onPress={() => setShowColorDropdown(false)}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
-                            </TouchableOpacity>
-                            <ScrollView>
-                              {filteredColors.length > 0 ? (
-                                filteredColors.slice(0, 10).map((color) => (
-                                  <TouchableOpacity
-                                    key={color._id || color.id}
-                                    style={{
-                                      padding: 12,
-                                      borderBottomWidth: 1,
-                                      borderBottomColor: '#333',
-                                      backgroundColor: selectedColor === (color._id || color.id) ? '#0d6efd' : 'transparent',
-                                    }}
-                                    onPress={() => {
-                                      setSelectedColor(color._id || color.id);
-                                      setColorSearchQuery(color.Kol_Opis || color.name || '');
-                                      setShowColorDropdown(false);
-                                    }}
-                                  >
-                                    <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {color.Kol_Opis || color.name || 'Nieznany kolor'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                ))
-                              ) : (
-                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
-                                  Brak wyników
-                                </Text>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
-
-                        {/* Size Selection */}
-                        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 5 }}>Wybierz rozmiar:</Text>
-                        <TextInput
-                          style={{
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            color: 'white',
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}
-                          placeholder="Wpisz rozmiar..."
-                          placeholderTextColor="#ccc"
-                          value={sizeSearchQuery}
-                          onChangeText={(text) => {
-                            setSizeSearchQuery(text);
-                            setShowSizeDropdown(true);
-                          }}
-                          onFocus={() => setShowSizeDropdown(true)}
-                        />
-                        
-                        {/* Size Dropdown */}
-                        {showSizeDropdown && sizeSearchQuery && (
-                          <View style={{
-                            maxHeight: 150,
-                            backgroundColor: 'black',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#0d6efd',
-                            marginBottom: 10,
-                          }}>
-                            <TouchableOpacity
-                              style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 10,
-                                zIndex: 1,
-                                backgroundColor: '#333',
-                                borderRadius: 10,
-                                width: 20,
-                                height: 20,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                              onPress={() => setShowSizeDropdown(false)}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
-                            </TouchableOpacity>
-                            <ScrollView>
-                              {filteredSizes.length > 0 ? (
-                                filteredSizes.slice(0, 10).map((size) => (
-                                  <TouchableOpacity
-                                    key={size._id || size.id}
-                                    style={{
-                                      padding: 12,
-                                      borderBottomWidth: 1,
-                                      borderBottomColor: '#333',
-                                      backgroundColor: selectedSize === (size._id || size.id) ? '#0d6efd' : 'transparent',
-                                    }}
-                                    onPress={() => {
-                                      setSelectedSize(size._id || size.id);
-                                      setSizeSearchQuery(size.Roz_Opis || size.name || '');
-                                      setShowSizeDropdown(false);
-                                    }}
-                                  >
-                                    <Text style={{ color: '#fff', fontSize: 13 }}>
-                                      {size.Roz_Opis || size.name || 'Nieznany rozmiar'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                ))
-                              ) : (
-                                <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
-                                  Brak wyników
-                                </Text>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
-                      </View>
-                    )}
+                          {showSizeDropdown && sizeSearchQuery && (
+                            <View style={{
+                              maxHeight: 150,
+                              backgroundColor: 'black',
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: '#0d6efd',
+                              marginBottom: 10,
+                            }}>
+                              <TouchableOpacity
+                                style={{
+                                  position: 'absolute',
+                                  top: 5,
+                                  right: 10,
+                                  zIndex: 1,
+                                  backgroundColor: '#333',
+                                  borderRadius: 10,
+                                  width: 20,
+                                  height: 20,
+                                  justifyContent: 'center',
+                                  alignItems: 'center',
+                                }}
+                                onPress={() => setShowSizeDropdown(false)}
+                              >
+                                <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
+                              </TouchableOpacity>
+                              <ScrollView>
+                                {filteredSizes.length > 0 ? (
+                                  filteredSizes.slice(0, 10).map((size) => (
+                                    <TouchableOpacity
+                                      key={size._id || size.id}
+                                      style={{
+                                        padding: 12,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: '#333',
+                                        backgroundColor: selectedSize === (size._id || size.id) ? '#0d6efd' : 'transparent',
+                                      }}
+                                      onPress={() => {
+                                        setSelectedSize(size._id || size.id);
+                                        setSizeSearchQuery(size.Roz_Opis || size.name || '');
+                                        setShowSizeDropdown(false);
+                                      }}
+                                    >
+                                      <Text style={{ color: '#fff', fontSize: 13 }}>
+                                        {size.Roz_Opis || size.name || 'Nieznany rozmiar'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ))
+                                ) : (
+                                  <Text style={{ color: '#ccc', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                                    Brak rozmiarów pasujących do "{sizeSearchQuery}"
+                                  </Text>
+                                )}
+                              </ScrollView>
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </View>
                     
                     {/* Product final price input - when product advance is selected */}
                     {reasonType === 'product' && (
@@ -4698,57 +4413,17 @@ const Home = () => {
                           </TouchableOpacity>
                         </View>
 
-                        {/* Currency rate input for product - show only for non-PLN currencies */}
+                        {/* Currency rate for product - show only for non-PLN currencies */}
                         {showProductRateInput && productSaleCurrency !== 'PLN' && (
                           <View style={{ width: '100%', marginTop: 15 }}>
-                            <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>
-                              Kurs {productSaleCurrency} (1 {productSaleCurrency} = ? PLN):
+                            <Text style={{
+                              color: '#4ecdc4',
+                              fontSize: 14,
+                              textAlign: 'center',
+                              fontWeight: 'bold'
+                            }}>
+                              1 {productSaleCurrency} = {productSaleCurrencyRate ? parseFloat(productSaleCurrencyRate).toFixed(2) : '?'} PLN
                             </Text>
-                            <TextInput
-                              style={{
-                                backgroundColor: '#1a1a1a',
-                                borderRadius: 8,
-                                padding: 12,
-                                fontSize: 16,
-                                color: 'white',
-                                borderWidth: 2,
-                                borderColor: '#0d6efd',
-                                textAlign: 'center',
-                              }}
-                              placeholder="0.00"
-                              placeholderTextColor="#666"
-                              value={productSaleCurrencyRate}
-                              onChangeText={(value) => {
-                                setProductSaleCurrencyRate(value);
-                                // Save rate to storage when user types
-                                if (value && parseFloat(value) > 0) {
-                                  const newRate = parseFloat(value);
-                                  CurrencyService.updateCurrencyRate(productSaleCurrency, newRate).catch(Logger.error);
-                                  
-                                  // Update local exchangeRates state immediately
-                                  setExchangeRates(prev => ({
-                                    ...prev,
-                                    [productSaleCurrency]: newRate
-                                  }));
-                                  
-                                  // Trigger price conversion with new rate
-                                  if (productFinalPrice) {
-                                    convertProductPrice(parseFloat(productFinalPrice), productSaleCurrency);
-                                  }
-                                }
-                              }}
-                              keyboardType="decimal-pad"
-                            />
-                            {productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0 && (
-                              <Text style={{
-                                color: '#4ecdc4',
-                                fontSize: 12,
-                                textAlign: 'center',
-                                marginTop: 5
-                              }}>
-                                1 {productSaleCurrency} = {parseFloat(productSaleCurrencyRate).toFixed(2)} PLN
-                              </Text>
-                            )}
                           </View>
                         )}
 
@@ -4813,31 +4488,15 @@ const Home = () => {
                               {addAmountCurrency !== 'PLN' && (
                                 <Text style={{ color: '#ccc', fontSize: 11 }}>
                                   {' '}(≈ {(() => {
-                                    // Use manual rate if provided, otherwise use stored rate
-                                    const rate = addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 
-                                      ? parseFloat(addAmountCurrencyRate)
-                                      : exchangeRates[addAmountCurrency] || 1;
+                                      // Use rate from table (cached in state)
+                                      const rate = addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0
+                                        ? parseFloat(addAmountCurrencyRate)
+                                        : exchangeRates[addAmountCurrency] || 1;
                                     return (parseFloat(addAmountAmount || 0) * rate).toFixed(2);
                                   })()} PLN)
-                                  {addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
-                                    <Text style={{ color: '#f39c12', fontWeight: 'bold' }}> *</Text>
-                                  )}
                                 </Text>
                               )}
                             </Text>
-                            
-                            {/* Show rate info if manual rate is used */}
-                            {addAmountCurrency !== 'PLN' && addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 && (
-                              <Text style={{ 
-                                color: '#f39c12', 
-                                fontSize: 10, 
-                                textAlign: 'center', 
-                                marginTop: 2,
-                                fontStyle: 'italic'
-                              }}>
-                                * Używa wprowadzonego kursu: 1 {addAmountCurrency} = {parseFloat(addAmountCurrencyRate).toFixed(2)} PLN
-                              </Text>
-                            )}
                             
                             {/* Product Price */}
                             <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center', marginTop: 3 }}>
@@ -4877,9 +4536,14 @@ const Home = () => {
                                 const remainingPLN = pricePLN - advanceInPLN;
                                 
                                 // Convert remaining to display currency
+                                const displayRate = productSaleCurrency === 'PLN'
+                                  ? 1
+                                  : (productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0
+                                    ? parseFloat(productSaleCurrencyRate)
+                                    : exchangeRates[productSaleCurrency] || 1);
                                 const remainingInDisplayCurrency = productSaleCurrency === 'PLN'
                                   ? remainingPLN
-                                  : remainingPLN / (exchangeRates[productSaleCurrency] || 1);
+                                  : remainingPLN / displayRate;
                                 
                                 return (
                                   <>
@@ -5569,29 +5233,32 @@ const Home = () => {
               <Text style={styles.modalTitle}>Wybierz walutę</Text>
               
               <FlatList
-                data={availableCurrencies}
-                keyExtractor={(item) => item}
+                data={currencyOptions}
+                keyExtractor={(item) => item.code}
                 style={{ width: '100%', marginVertical: 20 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={{
-                      backgroundColor: addAmountCurrency === item ? '#0d6efd' : 'transparent',
+                      backgroundColor: addAmountCurrency === item.code ? '#0d6efd' : 'transparent',
                       padding: 15,
                       borderRadius: 8,
                       marginBottom: 8,
                       borderWidth: 1,
-                      borderColor: addAmountCurrency === item ? 'white' : '#444',
-                      alignItems: 'center',
+                      borderColor: addAmountCurrency === item.code ? 'white' : '#444',
                     }}
-                    onPress={() => selectCurrencyForAddAmount(item)}
+                    onPress={() => selectCurrencyForAddAmount(item.code)}
                   >
-                    <Text style={{ 
-                      color: addAmountCurrency === item ? 'white' : '#ccc', 
-                      fontSize: 16, 
-                      fontWeight: addAmountCurrency === item ? 'bold' : 'normal' 
-                    }}>
-                      {item}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: addAmountCurrency === item.code ? 'white' : '#ccc', fontSize: 16, width: 60 }}>
+                        {item.code}
+                      </Text>
+                      <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>
+                        {item.name}
+                      </Text>
+                      <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '500', marginLeft: 10 }}>
+                        {item.buyRate !== null && item.buyRate !== undefined ? item.buyRate : '-'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 )}
               />
@@ -5668,30 +5335,33 @@ const Home = () => {
               
               <FlatList
                 testID="product-currency-flatlist"
-                data={availableCurrencies}
-                keyExtractor={(item) => item}
+                data={currencyOptions}
+                keyExtractor={(item) => item.code}
                 style={{ width: '100%', marginVertical: 20 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    testID={`product-currency-option-${item}`}
+                    testID={`product-currency-option-${item.code}`}
                     style={{
-                      backgroundColor: productSaleCurrency === item ? '#0d6efd' : 'transparent',
+                      backgroundColor: productSaleCurrency === item.code ? '#0d6efd' : 'transparent',
                       padding: 15,
                       borderRadius: 8,
                       marginBottom: 8,
                       borderWidth: 1,
-                      borderColor: productSaleCurrency === item ? 'white' : '#444',
-                      alignItems: 'center',
+                      borderColor: productSaleCurrency === item.code ? 'white' : '#444',
                     }}
-                    onPress={() => selectProductCurrency(item)}
+                    onPress={() => selectProductCurrency(item.code)}
                   >
-                    <Text style={{ 
-                      color: productSaleCurrency === item ? 'white' : '#ccc', 
-                      fontSize: 16, 
-                      fontWeight: productSaleCurrency === item ? 'bold' : 'normal' 
-                    }}>
-                      {item}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: productSaleCurrency === item.code ? 'white' : '#ccc', fontSize: 16, width: 60 }}>
+                        {item.code}
+                      </Text>
+                      <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>
+                        {item.name}
+                      </Text>
+                      <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '500', marginLeft: 10 }}>
+                        {item.buyRate !== null && item.buyRate !== undefined ? item.buyRate : '-'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 )}
               />

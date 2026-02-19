@@ -252,7 +252,7 @@ const Payroll = () => {
 
   const formatAmount = (amount) => {
     const value = Number(amount || 0);
-    return `${value.toFixed(2)} zł`;
+    return `${value.toFixed(3)} zł`;
   };
 
   const getSelectedEmployeeName = () => {
@@ -337,7 +337,7 @@ const Payroll = () => {
 
   const handlePaymentClick = () => {
     if (summary && summary.finalPay > 0) {
-      setPaymentAmount(summary.finalPay.toFixed(2));
+      setPaymentAmount(Number(summary.finalPay || 0).toFixed(3));
       setShowPaymentModal(true);
     }
   };

@@ -90,6 +90,11 @@ const Profile = () => {
   const [depositCurrency, setDepositCurrency] = useState('PLN'); // Waluta zaliczki
   const [totalPriceFocused, setTotalPriceFocused] = useState(false);
   const [depositFocused, setDepositFocused] = useState(false);
+  const [depositCurrencyModalVisible, setDepositCurrencyModalVisible] = useState(false);
+  const [currencyRates, setCurrencyRates] = useState([]);
+  const [loadingCurrencyRates, setLoadingCurrencyRates] = useState(false);
+  const [remainingCurrency, setRemainingCurrency] = useState('PLN'); // Waluta dopłaty
+  const [remainingCurrencyModalVisible, setRemainingCurrencyModalVisible] = useState(false);
 
   // Invoice/Receipt states
   const [documentType, setDocumentType] = useState('receipt'); // 'receipt' or 'invoice'
@@ -210,10 +215,174 @@ const Profile = () => {
     return price.toFixed(2) + ' zł';
   };
 
+  const fetchCurrencyRates = async () => {
+    try {
+      setLoadingCurrencyRates(true);
+      const response = await tokenService.authenticatedFetch(getApiUrl('/currency-rates'));
+      if (!response || !response.ok) {
+        throw new Error('Failed to fetch currency rates');
+      }
+      const data = await response.json();
+      if (data.success && data.data) {
+        setCurrencyRates(data.data);
+      } else {
+        setCurrencyRates([]);
+      }
+    } catch (error) {
+      Logger.error('Error fetching currency rates:', error);
+      setCurrencyRates([]);
+    } finally {
+      setLoadingCurrencyRates(false);
+    }
+  };
+
+  const currencyOptions = (() => {
+    if (!currencyRates || currencyRates.length === 0) {
+      return [
+        { code: 'PLN', name: 'Polski zloty', buyRate: 1 },
+        { code: 'EUR', name: 'Euro', buyRate: null },
+        { code: 'USD', name: 'Dolar amerykanski', buyRate: null },
+      ];
+    }
+    const mapped = currencyRates.map(rate => ({
+      code: rate.currency.code,
+      name: rate.currency.name,
+      buyRate: rate.buyRate
+    }));
+    if (!mapped.some(item => item.code === 'PLN')) {
+      mapped.unshift({ code: 'PLN', name: 'Polski zloty', buyRate: 1 });
+    }
+    return mapped;
+  })();
+
+  const getDepositRateInfo = (currency) => {
+    if (!currency || currency === 'PLN') {
+      return { rate: 1, multiplier: 1 };
+    }
+    const rate = currencyRates.find(item => item.currency.code === currency);
+    if (!rate) {
+      return { rate: 1, multiplier: 1 };
+    }
+    const name = rate.currency?.name || '';
+    const multiplier = name.includes('(za 100)') || name.includes('za 100') ? 100 : 1;
+    return { rate: rate.buyRate || 1, multiplier };
+  };
+
+  const getDepositRateLabel = (currency) => {
+    if (!currency || currency === 'PLN') {
+      return null;
+    }
+    const { rate, multiplier } = getDepositRateInfo(currency);
+    if (!rate) {
+      return `Brak kursu dla ${currency}`;
+    }
+    return `Kurs: ${multiplier} ${currency} = ${rate.toFixed(4)} PLN`;
+  };
+
+  const renderCurrencyOption = ({ item }) => {
+    const name = item.name || item.code;
+    const multiplier = name.includes('(za 100)') || name.includes('za 100') ? 100 : 1;
+    const rateLabel = item.code === 'PLN'
+      ? '1 PLN'
+      : item.buyRate
+        ? `${multiplier} ${item.code} = ${item.buyRate.toFixed(4)} PLN`
+        : 'Brak kursu';
+
+    return (
+      <TouchableOpacity
+        style={styles.currencyOptionItem}
+        onPress={() => {
+          setDepositCurrency(item.code);
+          setDepositCurrencyModalVisible(false);
+        }}
+      >
+        <View style={styles.currencyOptionRow}>
+          <Text style={styles.currencyOptionCode}>{item.code}</Text>
+          <Text style={styles.currencyOptionName}>{name}</Text>
+        </View>
+        <Text style={styles.currencyOptionRate}>{rateLabel}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderRemainingCurrencyOption = ({ item }) => {
+    const name = item.name || item.code;
+    const multiplier = name.includes('(za 100)') || name.includes('za 100') ? 100 : 1;
+    const rateLabel = item.code === 'PLN'
+      ? '1 PLN'
+      : item.buyRate
+        ? `${multiplier} ${item.code} = ${item.buyRate.toFixed(4)} PLN`
+        : 'Brak kursu';
+
+    return (
+      <TouchableOpacity
+        style={styles.currencyOptionItem}
+        onPress={() => {
+          setRemainingCurrency(item.code);
+          setRemainingCurrencyModalVisible(false);
+        }}
+      >
+        <View style={styles.currencyOptionRow}>
+          <Text style={styles.currencyOptionCode}>{item.code}</Text>
+          <Text style={styles.currencyOptionName}>{name}</Text>
+        </View>
+        <Text style={styles.currencyOptionRate}>{rateLabel}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const getRemainingRateInfo = (currency) => {
+    if (!currency || currency === 'PLN') {
+      return { rate: 1, multiplier: 1 };
+    }
+    const rate = currencyRates.find(item => item.currency.code === currency);
+    if (!rate) {
+      return { rate: 1, multiplier: 1 };
+    }
+    const name = rate.currency?.name || '';
+    const multiplier = name.includes('(za 100)') || name.includes('za 100') ? 100 : 1;
+    return { rate: rate.buyRate || 1, multiplier };
+  };
+
+  const getRemainingRateLabel = (currency) => {
+    if (!currency || currency === 'PLN') {
+      return null;
+    }
+    const { rate, multiplier } = getRemainingRateInfo(currency);
+    if (!rate) {
+      return `Brak kursu dla ${currency}`;
+    }
+    return `Kurs: ${multiplier} ${currency} = ${rate.toFixed(4)} PLN`;
+  };
+
+  const calculateRemainingInSelectedCurrency = () => {
+    const remainingInPln = calculateCashOnDelivery();
+    if (remainingInPln <= 0) return 0;
+    
+    if (remainingCurrency === 'PLN') {
+      return remainingInPln;
+    }
+    
+    const { rate, multiplier } = getRemainingRateInfo(remainingCurrency);
+    if (!rate || rate === 0) return 0;
+    
+    // Convert PLN to selected currency
+    const amountInCurrency = (remainingInPln / rate) * multiplier;
+    return amountInCurrency;
+  };
+
+  const formatRemainingAmount = () => {
+    const amount = calculateRemainingInSelectedCurrency();
+    if (amount === 0) return '0.00';
+    return amount.toFixed(2);
+  };
+
   const calculateCashOnDelivery = () => {
     const total = parsePrice(totalPrice);
     const depositAmount = parsePrice(deposit);
-    const remaining = total - depositAmount;
+    const { rate, multiplier } = getDepositRateInfo(depositCurrency);
+    const depositInPln = depositCurrency === 'PLN' ? depositAmount : (depositAmount / multiplier) * rate;
+    const remaining = total - depositInPln;
     
     if (remaining <= 0) return 0;
     
@@ -487,6 +656,7 @@ const Profile = () => {
     setTotalPrice('');
     setDeposit('');
     setDepositCurrency('PLN'); // Reset waluty zaliczki do PLN
+    setRemainingCurrency('PLN'); // Reset waluty dopłaty do PLN
     setDocumentType('receipt');
     setNip('');
     setRealizationDate(new Date());
@@ -526,6 +696,22 @@ const Profile = () => {
 
     fetchOrderData();
   }, []);
+
+  useEffect(() => {
+    fetchCurrencyRates();
+  }, []);
+
+  useEffect(() => {
+    if (depositCurrencyModalVisible) {
+      fetchCurrencyRates();
+    }
+  }, [depositCurrencyModalVisible]);
+
+  useEffect(() => {
+    if (remainingCurrencyModalVisible) {
+      fetchCurrencyRates();
+    }
+  }, [remainingCurrencyModalVisible]);
 
   // Get today's date in Polish format
   const getTodayDate = () => {
@@ -1134,7 +1320,7 @@ const Profile = () => {
                   
                   {/* Total Price Field */}
                   <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>Cena całkowita:</Text>
+                    <Text style={styles.fieldLabel}>Cena całkowita (PLN):</Text>
                     <TextInput
                       style={[styles.input, totalPriceFocused && styles.inputFocused]}
                       placeholder="np. 800 zł"
@@ -1152,7 +1338,7 @@ const Profile = () => {
                     <Text style={styles.fieldLabel}>Zaliczka:</Text>
                     <TextInput
                       style={[styles.input, depositFocused && styles.inputFocused]}
-                      placeholder="np. 200 zł"
+                      placeholder="Wprowadź kwotę"
                       value={deposit}
                       onChangeText={handleDepositChange}
                       onFocus={() => setDepositFocused(true)}
@@ -1162,23 +1348,77 @@ const Profile = () => {
                     />
                   </View>
 
-                  {/* Cash on Delivery (Calculated) */}
+                  {/* Deposit Currency Selection */}
                   <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>
-                      Kwota pobrania {deliveryOption === 'shipping' ? '(z przesyłką +20 zł)' : ''}:
-                    </Text>
-                    <View style={[styles.input, styles.calculatedField]}>
-                      <Text style={styles.calculatedFieldText}>
-                        {calculateCashOnDelivery() > 0 ? formatPrice(calculateCashOnDelivery()) : '0.00 zł'}
+                    <Text style={styles.fieldLabel}>Waluta zaliczki:</Text>
+                    <TouchableOpacity
+                      style={styles.currencySelect}
+                      onPress={() => setDepositCurrencyModalVisible(true)}
+                    >
+                      <Text style={styles.currencySelectText}>
+                        {depositCurrency}
+                      </Text>
+                    </TouchableOpacity>
+                    {getDepositRateLabel(depositCurrency) && (
+                      <Text style={styles.currencyRateText}>
+                        {getDepositRateLabel(depositCurrency)}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Cash on Delivery / Remaining Payment (Calculated) */}
+                  {deliveryOption === 'shipping' ? (
+                    /* For shipping - always PLN */
+                    <View style={styles.fieldContainer}>
+                      <Text style={styles.fieldLabel}>
+                        Kwota pobrania (PLN) (z przesyłką +20 zł):
+                      </Text>
+                      <View style={[styles.input, styles.calculatedField]}>
+                        <Text style={styles.calculatedFieldText}>
+                          {calculateCashOnDelivery() > 0 ? formatPrice(calculateCashOnDelivery()) : '0.00 zł'}
+                        </Text>
+                      </View>
+                      <Text style={styles.helperText}>
+                        Obliczane automatycznie: (Cena - Zaliczka) + 20 zł za przesyłkę
                       </Text>
                     </View>
-                    <Text style={styles.helperText}>
-                      Obliczane automatycznie: (Cena - Zaliczka) 
-                      {deliveryOption === 'shipping' ? ' + 20 zł za przesyłkę' : ''}
-                      {deliveryOption === 'delivery' ? ' (bez kosztów przesyłki)' : ''}
-                      {deliveryOption === 'pickup' ? ' (odbiór osobisty)' : ''}
-                    </Text>
-                  </View>
+                  ) : (
+                    /* For delivery and pickup - allow currency selection */
+                    <>
+                      <View style={styles.fieldContainer}>
+                        <Text style={styles.fieldLabel}>
+                          Kwota dopłaty:
+                        </Text>
+                        <View style={[styles.input, styles.calculatedField]}>
+                          <Text style={styles.calculatedFieldText}>
+                            {formatRemainingAmount()} {remainingCurrency}
+                          </Text>
+                        </View>
+                        <Text style={styles.helperText}>
+                          Obliczane automatycznie: (Cena - Zaliczka)
+                          {deliveryOption === 'pickup' ? ' (odbiór osobisty)' : ' (dostawa)'}
+                        </Text>
+                      </View>
+
+                      {/* Remaining Currency Selection */}
+                      <View style={styles.fieldContainer}>
+                        <Text style={styles.fieldLabel}>Waluta dopłaty:</Text>
+                        <TouchableOpacity
+                          style={styles.currencySelect}
+                          onPress={() => setRemainingCurrencyModalVisible(true)}
+                        >
+                          <Text style={styles.currencySelectText}>
+                            {remainingCurrency}
+                          </Text>
+                        </TouchableOpacity>
+                        {getRemainingRateLabel(remainingCurrency) && (
+                          <Text style={styles.currencyRateText}>
+                            {getRemainingRateLabel(remainingCurrency)}
+                          </Text>
+                        )}
+                      </View>
+                    </>
+                  )}
 
                   {/* Document Type Selection */}
                   <View style={styles.fieldContainer}>
@@ -1306,6 +1546,74 @@ const Profile = () => {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      {/* Deposit Currency Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={depositCurrencyModalVisible}
+        onRequestClose={() => setDepositCurrencyModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.currencyModalOverlay}
+          activeOpacity={1}
+          onPress={() => setDepositCurrencyModalVisible(false)}
+        >
+          <View style={styles.currencyModalContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.currencyModalTitle}>Wybierz walutę zaliczki</Text>
+            {loadingCurrencyRates ? (
+              <ActivityIndicator size="large" color="#0d6efd" style={{marginVertical: 40}} />
+            ) : (
+              <FlatList
+                data={currencyOptions}
+                keyExtractor={(item) => item.code}
+                renderItem={renderCurrencyOption}
+                style={styles.currencyList}
+              />
+            )}
+            <TouchableOpacity
+              style={styles.currencyModalCloseButton}
+              onPress={() => setDepositCurrencyModalVisible(false)}
+            >
+              <Text style={styles.currencyModalCloseText}>Zamknij</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Remaining Currency Selection Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={remainingCurrencyModalVisible}
+        onRequestClose={() => setRemainingCurrencyModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.currencyModalOverlay}
+          activeOpacity={1}
+          onPress={() => setRemainingCurrencyModalVisible(false)}
+        >
+          <View style={styles.currencyModalContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.currencyModalTitle}>Wybierz walutę dopłaty</Text>
+            {loadingCurrencyRates ? (
+              <ActivityIndicator size="large" color="#0d6efd" style={{marginVertical: 40}} />
+            ) : (
+              <FlatList
+                data={currencyOptions}
+                keyExtractor={(item) => item.code}
+                renderItem={renderRemainingCurrencyOption}
+                style={styles.currencyList}
+              />
+            )}
+            <TouchableOpacity
+              style={styles.currencyModalCloseButton}
+              onPress={() => setRemainingCurrencyModalVisible(false)}
+            >
+              <Text style={styles.currencyModalCloseText}>Zamknij</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </>
   );
@@ -1630,5 +1938,90 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-});
-
+  // Currency Selection Styles
+  currencySelect: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingHorizontal: 12,
+    paddingVertical: 15,
+    height: 50,
+    justifyContent: 'center',
+  },
+  currencySelectText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  currencyRateText: {
+    color: '#0d6efd',
+    fontSize: 13,
+    marginTop: 5,
+    marginLeft: 5,
+  },
+  // Currency Modal Styles
+  currencyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  currencyModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  currencyModalTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  currencyList: {
+    flexGrow: 0,
+  },
+  currencyOptionItem: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  currencyOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  currencyOptionCode: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginRight: 12,
+    minWidth: 50,
+  },
+  currencyOptionName: {
+    color: '#ccc',
+    fontSize: 14,
+    flex: 1,
+  },
+  currencyOptionRate: {
+    color: '#0d6efd',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  currencyModalCloseButton: {
+    backgroundColor: '#0d6efd',
+    borderRadius: 8,
+    paddingVertical: 14,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  currencyModalCloseText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },});

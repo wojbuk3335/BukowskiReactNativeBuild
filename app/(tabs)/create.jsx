@@ -4,6 +4,9 @@ import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react
 import { GlobalStateContext } from "../../context/GlobalState";
 import QRScanner from "../QRScanner";
 import LogoutButton from "../../components/LogoutButton";
+import tokenService from "../../services/tokenService";
+import { getApiUrl } from "../../config/api";
+import Logger from "../../services/logger";
 
 export default function Create() {
   const { 
@@ -31,6 +34,7 @@ export default function Create() {
   const [isLoading, setIsLoading] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [currencyRates, setCurrencyRates] = useState([]);
   
   // Animacje dla kropek ładowania
   const dot1Anim = useRef(new Animated.Value(0)).current;
@@ -106,6 +110,21 @@ export default function Create() {
     });
     
     try {
+      // Fetch currency rates
+      const fetchCurrencyRates = async () => {
+        try {
+          const response = await tokenService.authenticatedFetch(getApiUrl('/currency-rates'));
+          if (response && response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              setCurrencyRates(data.data);
+            }
+          }
+        } catch (error) {
+          Logger.error('Error fetching currency rates:', error);
+        }
+      };
+
       // Race between data fetching and timeout
       const dataPromise = Promise.all([
         fetchSizes(),
@@ -115,7 +134,8 @@ export default function Create() {
         fetchState(),
         fetchUsers(),
         fetchBags(),
-        fetchWallets()
+        fetchWallets(),
+        fetchCurrencyRates()
       ]);
       
       const result = await Promise.race([
@@ -243,6 +263,7 @@ export default function Create() {
           users={users}
           bags={bags}
           wallets={wallets}
+          currencyRates={currencyRates}
           getFilteredSellingPoints={getFilteredSellingPoints}
           isActive={isFocused}
         />
