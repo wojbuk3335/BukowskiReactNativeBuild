@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bukowski.inventory30.mobile2026",
+      "bundleIdentifier": "com.bukowski.inventory31.mobile2026",
       "buildNumber": "10",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -42,7 +42,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory30.app2026",
+      "package": "com.bukowski.inventory31.app2026",
       "versionCode": 4,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
