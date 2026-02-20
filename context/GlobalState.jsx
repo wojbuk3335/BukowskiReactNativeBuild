@@ -268,6 +268,10 @@ export const GlobalStateProvider = ({ children }) => {
             }
 
             const data = await response.json();
+
+            if (data?.requiresVerification) {
+                return data;
+            }
             
             // Store tokens using tokenService
             if (data.token || data.accessToken) {

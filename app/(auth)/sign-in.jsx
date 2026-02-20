@@ -68,16 +68,28 @@ const SignIn = () => {
     try {
       setError(""); // Clear any previous errors
       const response = await bukowski_login(form.email, form.password, navigation, isAdminPanel);
+
+      if (response?.requiresVerification) {
+        router.push({
+          pathname: "/(auth)/two-factor",
+          params: {
+            userId: response.userId,
+            email: response.email,
+            step: response.step || "2fa_verification",
+          },
+        });
+        return;
+      }
       
       // Check if user role matches the selected panel
-      if (isAdminPanel && response.role !== 'admin') {
+      if (isAdminPanel && response?.role && response.role !== 'admin') {
         setError("To konto nie ma uprawnień administratora");
         await AsyncStorage.removeItem("user");
         setUser(null);
         return;
       }
       
-      if (!isAdminPanel && response.role === 'admin') {
+      if (!isAdminPanel && response?.role === 'admin') {
         setError("Konto administratora nie może zalogować się do panelu użytkownika");
         await AsyncStorage.removeItem("user");
         setUser(null);
