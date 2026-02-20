@@ -32,9 +32,24 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
   
   const [sellingPointMenuVisible, setSellingPointMenuVisible] = useState(false); // State for "Sprzedano od" popup
   // Get available currencies from currencyRates
-  const availableCurrencies = currencyRates && currencyRates.length > 0 
-    ? currencyRates.map(rate => ({ code: rate.currency.code, name: rate.currency.name, buyRate: rate.buyRate }))
-    : ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"].map(code => ({ code, name: code, buyRate: '-' })); // Fallback dla starych przypadków
+  const availableCurrencies = (() => {
+    if (!currencyRates || currencyRates.length === 0) {
+      return ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"].map(code => ({ code, name: code, buyRate: '-' }));
+    }
+    
+    const currencies = currencyRates.map(rate => ({ 
+      code: rate.currency.code, 
+      name: rate.currency.name, 
+      buyRate: rate.buyRate 
+    }));
+    
+    // Add PLN at the beginning if not already present
+    if (!currencies.some(c => c.code === 'PLN')) {
+      currencies.unshift({ code: 'PLN', name: 'Polski złoty', buyRate: 1 });
+    }
+    
+    return currencies;
+  })();
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false); // State for currency modal
   const [currentCurrencyPairIndex, setCurrentCurrencyPairIndex] = useState(null); // Track the index of the pair being edited
   const [cameraActive, setCameraActive] = useState(true); // Zarządzanie aktywnością kamery - rozpoczynamy z aktywną kamerą
@@ -315,13 +330,18 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
   };
 
-  const openCurrencyModal = (index) => {
-    setCurrentCurrencyPairIndex(index);
+  const openCurrencyModal = (index, type) => {
+    setCurrentCurrencyIndex(index);
+    setCurrentCurrencyType(type);
     setCurrencyModalVisible(true);
   };
 
   const selectCurrencyFromModal = (currency) => {
-    handleCashPairChange(currentCurrencyPairIndex, "currency", currency);
+    if (currentCurrencyType === "cash") {
+      handleCashPairChange(currentCurrencyIndex, "currency", currency);
+    } else if (currentCurrencyType === "card") {
+      handleCardPairChange(currentCurrencyIndex, "currency", currency);
+    }
     setCurrencyModalVisible(false);
   };
 
@@ -696,26 +716,10 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
     }
 
     try {
-      Logger.debug('\n📝 === DODAWANIE SPRZEDAŻY (FRONTEND) ===');
-      Logger.debug('📦 Payload:', {
-        fullName: payload.fullName,
-        size: payload.size,
-        barcode: payload.barcode,
-        sellingPoint: payload.sellingPoint,
-        from: payload.from,
-        cashTotal: payload.cash?.reduce((sum, item) => sum + parseFloat(item.price || 0), 0),
-        cardTotal: payload.card?.reduce((sum, item) => sum + parseFloat(item.price || 0), 0),
-        isPickup: payload.isPickup,
-        employeeId: payload.employeeId,
-        timestamp: new Date().toLocaleString('pl-PL')
-      });
-      
       const response = await tokenService.authenticatedFetch(getApiUrl("/sales/save-sales"), {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-      
-      Logger.debug('📥 Response status:', response.status);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -724,7 +728,6 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
       }
       
       const responseData = await response.json();
-      Logger.debug('✅ Sprzedaż zapisana:', responseData?.sales?._id);
       
       // Backend już automatycznie przeliczył prowizje po dodaniu sprzedaży
       
@@ -1061,7 +1064,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                           borderWidth: 1,
                           borderRadius: 5,
                         }}
-                        onPress={() => openCurrencyModal(index)}
+                        onPress={() => openCurrencyModal(index, "cash")}
                       >
                         <Text style={{ color: "white" }}>{pair.currency || "PLN"}</Text>
                       </TouchableOpacity>
@@ -1182,7 +1185,7 @@ const QRScanner = ({ stateData, user, sizes, colors, goods, stocks, users, bags,
                           borderWidth: 1,
                           borderRadius: 5,
                         }}
-                        onPress={() => openCurrencyModal(index)}
+                        onPress={() => openCurrencyModal(index, "card")}
                       >
                         <Text style={{ color: "white" }}>{pair.currency}</Text>
                       </TouchableOpacity>

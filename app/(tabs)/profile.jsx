@@ -582,14 +582,6 @@ const Profile = () => {
         createdBy: user?.symbol || user?.email // Symbol punktu sprzedaży dla operacji finansowych
       };
 
-      // Debug: sprawdź co jest w obiekcie user
-      Logger.debug('🔍 DEBUG USER OBJECT:', {
-        hasUser: !!user,
-        symbol: user?.symbol,
-        email: user?.email,
-        createdBy: orderData.createdBy
-      });
-
       // Save to database
       const response = await tokenService.authenticatedFetch(getApiUrl('/orders'), {
         method: 'POST',
@@ -603,11 +595,6 @@ const Profile = () => {
         const result = await response.json();
         const backendOrderId = result.orderId; // Use orderId from backend
         
-        Logger.debug('✅ Zamówienie zapisane, ID:', backendOrderId);
-
-        // Email is sent automatically by backend in createOrder function
-        Logger.debug('📧 Email wysyłany automatycznie przez backend');
-
         // Set success message and show modal
         setOrderNumber(backendOrderId);
         setSuccessMessage(

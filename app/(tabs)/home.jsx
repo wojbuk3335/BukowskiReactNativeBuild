@@ -49,6 +49,8 @@ const Home = () => {
   const [selectedEmployeeForAdvance, setSelectedEmployeeForAdvance] = useState(null); // Wybrany pracownik dla zaliczki
   const [cancelDeductionModalVisible, setCancelDeductionModalVisible] = useState(false); // State for cancel deduction modal
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
+  const [operationOptionsVisible, setOperationOptionsVisible] = useState(false); // State for operation options modal
+  const [selectedOperationItem, setSelectedOperationItem] = useState(null); // Selected operation item for options
   
   // Currency rates modal state
   const [currencyRatesModalVisible, setCurrencyRatesModalVisible] = useState(false); // State for currency rates modal
@@ -70,6 +72,9 @@ const Home = () => {
   const [addAmountCurrency, setAddAmountCurrency] = useState("PLN"); // State for add amount currency
   const [addAmountCurrencyModalVisible, setAddAmountCurrencyModalVisible] = useState(false); // State for add amount currency selection modal
   const [addAmountReason, setAddAmountReason] = useState(""); // State for add amount reason
+  const [isEditingAddAmount, setIsEditingAddAmount] = useState(false); // Edit mode for add amount
+  const [editingOperationId, setEditingOperationId] = useState(null); // Operation id being edited
+  const [editingOperationDate, setEditingOperationDate] = useState(null); // Preserve original date for edits
   
   // New states for reason selection
   const [reasonType, setReasonType] = useState(""); // "product" or "other"
@@ -160,10 +165,33 @@ const Home = () => {
   const [productSaleCurrencyRate, setProductSaleCurrencyRate] = useState(""); // Rate for product currency
   const [showProductRateInput, setShowProductRateInput] = useState(false); // Show rate input for product currency
   
-  const availableCurrencies = ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"]; // Available currencies
+  // Get available currencies from currencyRates (dynamic from database)
+  const availableCurrencies = (() => {
+    if (!currencyRates || currencyRates.length === 0) {
+      return ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"].map(code => ({ 
+        code, 
+        name: code, 
+        buyRate: code === "PLN" ? 1 : '-' 
+      }));
+    }
+    
+    const currencies = currencyRates.map(rate => ({ 
+      code: rate.currency.code, 
+      name: rate.currency.name, 
+      buyRate: rate.buyRate 
+    }));
+    
+    // Add PLN at the beginning if not already present
+    if (!currencies.some(c => c.code === 'PLN')) {
+      currencies.unshift({ code: 'PLN', name: 'Polski złoty', buyRate: 1 });
+    }
+    
+    return currencies;
+  })();
+
   const currencyOptions = (() => {
     if (!currencyRates || currencyRates.length === 0) {
-      return availableCurrencies.map(code => ({
+      return ["PLN", "HUF", "GBP", "ILS", "USD", "EUR", "CAN"].map(code => ({
         code,
         name: code,
         buyRate: code === "PLN" ? 1 : null
@@ -182,6 +210,20 @@ const Home = () => {
 
     return mapped;
   })();
+
+  // Helper function to check if currency uses "per 100" multiplier (HUF, JPY)
+  const getMultiplier = (currencyCode) => {
+    if (!currencyCode) return 1;
+    // Find currency in currencyRates to check its name
+    const currencyData = currencyRates.find(rate => rate.currency.code === currencyCode);
+    if (currencyData) {
+      const name = currencyData.currency?.name || '';
+      if (name.includes('(za 100)') || name.includes('za 100')) {
+        return 100;
+      }
+    }
+    return 1;
+  };
 
   // Funkcja identyczna z QRScanner - filtruje użytkowników z tej samej lokalizacji
   const getMatchingSymbols = () => {
@@ -1524,6 +1566,147 @@ const Home = () => {
     }
   };
 
+  const resetAddAmountForm = () => {
+    setAddAmountModalVisible(false);
+    setAddAmountAmount("");
+    setAddAmountCurrency("PLN");
+    setAddAmountReason("");
+    setReasonType("");
+    setProductType("standard");
+    setCustomProductName("");
+    setSelectedStock("");
+    setSelectedColor("");
+    setSelectedSize("");
+    setSelectedProduct("");
+    setProductSearchQuery("");
+    setShowProductDropdown(false);
+    setProductFinalPrice("");
+    setStockSearchQuery("");
+    setColorSearchQuery("");
+    setSizeSearchQuery("");
+    setShowStockDropdown(false);
+    setShowColorDropdown(false);
+    setShowSizeDropdown(false);
+    setShowAddAmountRateInput(false);
+    setAddAmountCurrencyRate("");
+    setProductSaleCurrency("PLN");
+    setProductPriceInCurrency("");
+    setShowProductRateInput(false);
+    setProductSaleCurrencyRate("");
+    setIsEditingAddAmount(false);
+    setEditingOperationId(null);
+    setEditingOperationDate(null);
+  };
+
+  const fetchFinancialOperationById = async (operationId) => {
+    const response = await tokenService.authenticatedFetch(getApiUrl(`/financial-operations/${operationId}`));
+    if (!response.ok) {
+      throw new Error("Failed to fetch financial operation");
+    }
+    return response.json();
+  };
+
+  const openOperationOptionsModal = (item) => {
+    setSelectedOperationItem(item);
+    setOperationOptionsVisible(true);
+  };
+
+  const openEditAddAmountModal = async (item) => {
+    try {
+      const operation = item?._id ? await fetchFinancialOperationById(item._id) : item;
+      if (!operation) {
+        throw new Error("No operation data");
+      }
+
+      setIsEditingAddAmount(true);
+      setEditingOperationId(operation._id || null);
+      setEditingOperationDate(operation.date || null);
+
+      const amountValue = Math.abs(operation.amount || 0).toString();
+      const currencyValue = operation.currency || "PLN";
+      const hasProduct = Boolean(operation.productId || operation.productName);
+
+      setAddAmountAmount(amountValue);
+      setAddAmountCurrency(currencyValue);
+      if (currencyValue !== "PLN") {
+        setShowAddAmountRateInput(true);
+        try {
+          const tableRate = currencyRates.find(rate => rate.currency.code === currencyValue);
+          if (tableRate && tableRate.buyRate) {
+            setAddAmountCurrencyRate(tableRate.buyRate.toString());
+          } else {
+            const currentRate = await CurrencyService.getCurrencyRate(currencyValue);
+            setAddAmountCurrencyRate(currentRate.toString());
+          }
+        } catch (error) {
+          Logger.error('Error loading currency rate:', error);
+          setAddAmountCurrencyRate("1.0");
+        }
+      } else {
+        setShowAddAmountRateInput(false);
+        setAddAmountCurrencyRate("");
+      }
+
+      setReasonType(hasProduct ? "product" : "other");
+      setAddAmountReason(hasProduct ? "" : (operation.reason || ""));
+      setProductType("standard");
+
+      if (hasProduct) {
+        setSelectedProduct(operation.productId || "");
+        setProductSearchQuery(operation.productName || "");
+        setSelectedSize(operation.productSize || "");
+        setSizeSearchQuery(operation.productSize || "");
+        setProductFinalPrice(operation.finalPrice ? operation.finalPrice.toString() : "");
+
+        const displayCurrency = operation.productDisplayCurrency || "PLN";
+        setProductSaleCurrency(displayCurrency);
+        if (displayCurrency !== "PLN") {
+          setShowProductRateInput(true);
+          try {
+            const tableRate = currencyRates.find(rate => rate.currency.code === displayCurrency);
+            if (tableRate && tableRate.buyRate) {
+              setProductSaleCurrencyRate(tableRate.buyRate.toString());
+            } else {
+              const currentRate = await CurrencyService.getCurrencyRate(displayCurrency);
+              setProductSaleCurrencyRate(currentRate.toString());
+            }
+          } catch (error) {
+            Logger.error('Error loading currency rate:', error);
+            setProductSaleCurrencyRate("1.0");
+          }
+        } else {
+          setShowProductRateInput(false);
+          setProductSaleCurrencyRate("");
+        }
+
+        if (operation.finalPriceInDisplayCurrency) {
+          setProductPriceInCurrency(operation.finalPriceInDisplayCurrency.toString());
+        } else if (operation.finalPrice && displayCurrency !== "PLN") {
+          await convertProductPrice(parseFloat(operation.finalPrice), displayCurrency);
+        } else if (operation.finalPrice && displayCurrency === "PLN") {
+          setProductPriceInCurrency("");
+        }
+      } else {
+        setSelectedProduct("");
+        setProductSearchQuery("");
+        setSelectedSize("");
+        setSizeSearchQuery("");
+        setProductFinalPrice("");
+        setProductSaleCurrency("PLN");
+        setProductPriceInCurrency("");
+        setShowProductRateInput(false);
+        setProductSaleCurrencyRate("");
+      }
+
+      setOperationOptionsVisible(false);
+      setAddAmountModalVisible(true);
+    } catch (error) {
+      Logger.error("Error opening edit modal:", error);
+      setErrorMessage("Nie udało się pobrać danych do edycji. Spróbuj ponownie.");
+      setErrorModalVisible(true);
+    }
+  };
+
   const submitAddAmount = async () => {
     if (!addAmountAmount || parseFloat(addAmountAmount) <= 0) {
       setErrorMessage("Proszę wprowadzić prawidłową kwotę.");
@@ -1650,9 +1833,7 @@ const Home = () => {
         finalReason = addAmountReason.trim();
       }
       
-      // 🔧 DEBUG: Sprawdź czy mamy sellingPoint
       const sellingPointValue = user.sellingPoint || user.symbol;
-      console.log('🔧 DEBUG SELLING POINT:', sellingPointValue);
       
       const operationData = {
         userSymbol: user.symbol,
@@ -1679,30 +1860,19 @@ const Home = () => {
         if (selectedProduct) {
           let productFullName;
           
-          console.log('🔍 Looking for product:', selectedProduct);
-          console.log('📦 Products array length:', products?.length);
-          console.log('📊 StateData array length:', stateData?.length);
-          
           // Find the selected product object
           const selectedProductObj = products.find(p => (p.id || p._id) === selectedProduct) || 
                                       stateData?.find(p => (p.id || p._id) === selectedProduct);
           
-          console.log('✅ Found product:', selectedProductObj);
-          
           if (selectedProductObj) {
             productFullName = selectedProductObj.fullName || selectedProductObj.Tow_Opis || selectedProductObj.code || selectedProductObj.Tow_Kod || 'Nieznany produkt';
-            
-            console.log('📝 Product name:', productFullName);
-            console.log('📏 Size:', sizeSearchQuery);
             
             // Add size to product name if selected
             if (sizeSearchQuery) {
               productFullName += ` ${sizeSearchQuery}`;
             }
             
-            console.log('✅ Final product name:', productFullName);
           } else {
-            console.log('❌ Product not found!');
             productFullName = 'Nieznany produkt';
           }
           
@@ -1729,8 +1899,18 @@ const Home = () => {
         }
       }
       
-      const response = await tokenService.authenticatedFetch(getApiUrl("/financial-operations"), {
-        method: "POST",
+      if (isEditingAddAmount && editingOperationDate) {
+        operationData.date = editingOperationDate;
+      }
+
+      const requestUrl = isEditingAddAmount && editingOperationId
+        ? getApiUrl(`/financial-operations/${editingOperationId}`)
+        : getApiUrl("/financial-operations");
+
+      const requestMethod = isEditingAddAmount && editingOperationId ? "PUT" : "POST";
+
+      const response = await tokenService.authenticatedFetch(requestUrl, {
+        method: requestMethod,
         body: JSON.stringify(operationData),
       });
       
@@ -1739,28 +1919,8 @@ const Home = () => {
       }
       
       // Reset form and refresh data
-      setAddAmountAmount("");
-      setAddAmountCurrency("PLN");
-      setAddAmountReason("");
-      setReasonType("");
-      setProductType("standard"); // Reset to standard
-      setCustomProductName(""); // Clear custom product name
-      setSelectedStock(""); // Clear selected stock
-      setSelectedColor(""); // Clear selected color
-      setSelectedSize(""); // Clear selected size
-      setStockSearchQuery(""); // Clear stock search
-      setColorSearchQuery(""); // Clear color search
-      setSizeSearchQuery(""); // Clear size search
-      setShowStockDropdown(false); // Hide stock dropdown
-      setShowColorDropdown(false); // Hide color dropdown
-      setShowSizeDropdown(false); // Hide size dropdown
-      setSelectedProduct("");
-      setProductSearchQuery("");
-      setShowProductDropdown(false);
-      setProductFinalPrice("");
-      setShowAddAmountRateInput(false);
-      setAddAmountCurrencyRate("");
-      setAddAmountModalVisible(false);
+      const wasEditing = isEditingAddAmount;
+      resetAddAmountForm();
       
       // In test environment, add operation directly to state
       if (process.env.NODE_ENV === 'test') {
@@ -1778,7 +1938,7 @@ const Home = () => {
         await fetchFinancialOperations();
       }
       
-      setSuccessMessage("Kwota została dopisana.");
+      setSuccessMessage(wasEditing ? "Zaliczka została zaktualizowana." : "Kwota została dopisana.");
       setSuccessModalVisible(true);
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') {
@@ -2119,7 +2279,8 @@ const Home = () => {
         }
         
         if (rate && rate > 0) {
-          results[currency] = (pricePLN / rate).toFixed(2);
+          const multiplier = getMultiplier(currency);
+          results[currency] = ((pricePLN / rate) * multiplier).toFixed(2);
         }
       } catch (error) {
         Logger.error(`Error converting to ${currency}:`, error);
@@ -2221,7 +2382,8 @@ const Home = () => {
       }
 
       if (rate) {
-        const convertedPrice = pricePLN / rate;
+        const multiplier = getMultiplier(targetCurrency);
+        const convertedPrice = (pricePLN / rate) * multiplier;
         setProductPriceInCurrency(convertedPrice.toFixed(2));
         setShowCurrencyConversion(true);
       }
@@ -2238,7 +2400,8 @@ const Home = () => {
       // If custom rate provided, use it temporarily
       if (customRate && customRate > 0) {
         // Manual conversion with custom rate
-        const advanceInPLN = advanceAmount * customRate;
+        const multiplier = getMultiplier(advanceCurrency);
+        const advanceInPLN = (advanceAmount / multiplier) * customRate;
         const percentage = (advanceInPLN / productPricePLN) * 100;
         
         return {
@@ -2679,7 +2842,7 @@ const Home = () => {
                           ]}
                         >
                           <Text style={styles.deductionItemTextLeft}>
-                            {index + 1}. {item.reason}
+                            {index + 1}. {item.productName ? `Zaliczka na produkt ${item.productName}` : item.reason}
                           </Text>
                           <Text style={styles.deductionItemTextRight}>
                             {(item.type === 'addition' || item.amount > 0)
@@ -2688,7 +2851,7 @@ const Home = () => {
                             }
                           </Text>
                           <TouchableOpacity
-                            onPress={() => openCancelDeductionModal(item)}
+                            onPress={() => openOperationOptionsModal(item)}
                             style={{
                               paddingLeft: 8,
                               paddingVertical: 4,
@@ -2904,7 +3067,7 @@ const Home = () => {
                       {Object.keys(operationsTotals).length > 0 && (
                         <View style={{ marginBottom: 12 }}>
                           <Text style={{ fontSize: 14, color: "#fbbf24", fontWeight: "bold", marginBottom: 4 }}>
-                            OPERACJE FINANSOWE:
+                            OPERACJE FINANSOWE (BILANS):
                           </Text>
                           {Object.entries(operationsTotals).map(([currency, total]) => (
                             <Text key={`operations-${currency}`} style={{ 
@@ -2981,8 +3144,18 @@ const Home = () => {
                         }}>
                           💳 ZAMKNIĘCIE TERMINALA:
                         </Text>
-                        {Object.entries(finalCardTotals).length > 0 ? (
-                          Object.entries(finalCardTotals).map(([currency, total]) => (
+                        {(() => {
+                          const nonZeroCardTotals = Object.entries(finalCardTotals).filter(([currency, total]) => total !== 0);
+                          
+                          if (nonZeroCardTotals.length === 0) {
+                            return (
+                              <Text style={{ fontSize: 16, color: "#3b82f6", textAlign: "center", fontWeight: "bold" }}>
+                                0.00 PLN
+                              </Text>
+                            );
+                          }
+                          
+                          return nonZeroCardTotals.map(([currency, total]) => (
                             <Text 
                               key={`final-card-${currency}`} 
                               style={{ 
@@ -2995,12 +3168,8 @@ const Home = () => {
                             >
                               {total >= 0 ? '+' : ''}{total.toFixed(2)} {currency}
                             </Text>
-                          ))
-                        ) : (
-                          <Text style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", fontStyle: "italic" }}>
-                            0.00 PLN
-                          </Text>
-                        )}
+                          ));
+                        })()}
                         <Text style={{ 
                           fontSize: 11, 
                           color: "#9ca3af", 
@@ -3043,7 +3212,7 @@ const Home = () => {
                           marginTop: 8,
                           fontStyle: "italic"
                         }}>
-                          Suma sprzedaży gotówką, kartą i uzgodnionych cen z zaliczek
+                          Suma sprzedaży liczona do obrotu
                         </Text>
                       </View>
                     </View>
@@ -3626,15 +3795,26 @@ const Home = () => {
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>Wybierz walutę</Text>
-                {availableCurrencies.map((currency, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.optionButton}
-                    onPress={() => selectCurrencyFromModal(currency)}
-                  >
-                    <Text style={styles.optionText}>{currency}</Text>
-                  </TouchableOpacity>
-                ))}
+                <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                  Wybierz walutę dla płatności
+                </Text>
+                
+                <ScrollView style={{ maxHeight: 400, width: '100%', marginVertical: 15 }}>
+                  {availableCurrencies.map((item) => (
+                    <TouchableOpacity
+                      key={item.code}
+                      style={styles.optionButton}
+                      onPress={() => selectCurrencyFromModal(item.code)}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={[styles.optionText, { width: 60 }]}>{item.code}</Text>
+                        <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>{item.name}</Text>
+                        <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '500', marginLeft: 10 }}>{item.buyRate}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                
                 <TouchableOpacity
                   style={[styles.optionButton, styles.closeButton]}
                   onPress={() => setCurrencyModalVisible(false)}
@@ -3952,6 +4132,49 @@ const Home = () => {
           </View>
         </Modal>
         
+        {/* Operation Options Modal */}
+        <Modal
+          transparent={true}
+          visible={operationOptionsVisible}
+          animationType="fade"
+          onRequestClose={() => setOperationOptionsVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { width: '80%' }]}>
+              <Text style={styles.modalTitle}>Opcje operacji</Text>
+
+              {selectedOperationItem && (selectedOperationItem.type === 'addition' || selectedOperationItem.amount > 0) && (
+                <TouchableOpacity
+                  style={[styles.optionButton, { backgroundColor: '#0d6efd', marginBottom: 10 }]}
+                  onPress={() => openEditAddAmountModal(selectedOperationItem)}
+                >
+                  <Text style={styles.optionText}>Edytuj zaliczkę</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.optionButton, { backgroundColor: '#ef4444', marginBottom: 10 }]}
+                onPress={() => {
+                  if (selectedOperationItem) {
+                    setSelectedDeductionItem(selectedOperationItem);
+                    setOperationOptionsVisible(false);
+                    setCancelDeductionModalVisible(true);
+                  }
+                }}
+              >
+                <Text style={styles.optionText}>Anuluj operację</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.optionButton, styles.closeButton]}
+                onPress={() => setOperationOptionsVisible(false)}
+              >
+                <Text style={styles.closeText}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         {/* Cancel Deduction Modal */}
         <Modal
           transparent={true}
@@ -3961,12 +4184,12 @@ const Home = () => {
         >
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { width: '80%' }]}>
-              <Text style={styles.modalTitle}>Anuluj odpisaną kwotę</Text>
+              <Text style={styles.modalTitle}>Anuluj operację</Text>
               
               {selectedDeductionItem && (
                 <View style={{ width: '100%', marginBottom: 20 }}>
                   <Text style={{ color: '#fff', fontSize: 14, textAlign: 'center', marginBottom: 8 }}>
-                    Czy na pewno chcesz anulować tę odpisaną kwotę?
+                    Czy na pewno chcesz anulować tę operację?
                   </Text>
                   <View style={{ 
                     backgroundColor: '#374151', 
@@ -3997,7 +4220,7 @@ const Home = () => {
                 style={[styles.optionButton, { backgroundColor: '#ef4444', marginBottom: 10 }]}
                 onPress={cancelDeduction}
               >
-                <Text style={styles.optionText}>Tak, anuluj odpisaną kwotę</Text>
+                <Text style={styles.optionText}>Tak, anuluj operację</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -4019,23 +4242,14 @@ const Home = () => {
           visible={addAmountModalVisible}
           animationType="fade"
           onRequestClose={() => {
-            setAddAmountModalVisible(false);
-            setReasonType("");
-            setProductType("custom");
-            setCustomProductName("");
-            setSelectedStock("");
-            setSelectedColor("");
-            setSelectedSize("");
-            setSelectedProduct("");
-            setAddAmountReason("");
-            setProductSearchQuery("");
-            setShowProductDropdown(false);
-            setProductFinalPrice("");
+            resetAddAmountForm();
           }}
         >
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { width: '85%', maxHeight: '90%' }]}>
-              <Text style={styles.modalTitle}>Dopisz kwotę</Text>
+              <Text style={styles.modalTitle}>
+                {isEditingAddAmount ? 'Edytuj zaliczkę' : 'Dopisz kwotę'}
+              </Text>
               
               <ScrollView 
                 style={{ width: '100%' }}
@@ -4068,7 +4282,7 @@ const Home = () => {
               
               {/* Currency selection */}
               <View style={{ width: '100%', marginBottom: 15 }}>
-                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta:</Text>
+                <Text style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Waluta zaliczki:</Text>
                 <TouchableOpacity
                   style={{
                     backgroundColor: '#0d6efd', // Blue for addition
@@ -4398,11 +4612,11 @@ const Home = () => {
                           <TouchableOpacity
                             testID="product-currency-select-button"
                             style={{
-                              backgroundColor: 'black',
+                              backgroundColor: '#0d6efd',
                               borderRadius: 8,
                               padding: 12,
                               borderWidth: 1,
-                              borderColor: '#0d6efd',
+                              borderColor: 'white',
                               alignItems: 'center',
                             }}
                             onPress={() => setProductCurrencyModalVisible(true)}
@@ -4453,7 +4667,8 @@ const Home = () => {
                                   const rate = addAmountCurrencyRate && parseFloat(addAmountCurrencyRate) > 0 
                                     ? parseFloat(addAmountCurrencyRate) 
                                     : exchangeRates[addAmountCurrency] || 1;
-                                  return (parseFloat(productFinalPrice) / rate).toFixed(2);
+                                  const multiplier = getMultiplier(addAmountCurrency);
+                                  return ((parseFloat(productFinalPrice) / rate) * multiplier).toFixed(2);
                                 })()}
                               </Text>
                             )}
@@ -4465,7 +4680,8 @@ const Home = () => {
                                   const rate = productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0 
                                     ? parseFloat(productSaleCurrencyRate) 
                                     : exchangeRates[productSaleCurrency] || 1;
-                                  return (parseFloat(productFinalPrice) / rate).toFixed(2);
+                                  const multiplier = getMultiplier(productSaleCurrency);
+                                  return ((parseFloat(productFinalPrice) / rate) * multiplier).toFixed(2);
                                 })()}
                               </Text>
                             )}
@@ -4532,7 +4748,8 @@ const Home = () => {
                                     ? parseFloat(addAmountCurrencyRate) 
                                     : exchangeRates[addAmountCurrency] || 1);
                                 
-                                const advanceInPLN = advanceAmountNum * advanceRate;
+                                const advanceMultiplier = getMultiplier(addAmountCurrency);
+                                const advanceInPLN = (advanceAmountNum / advanceMultiplier) * advanceRate;
                                 const remainingPLN = pricePLN - advanceInPLN;
                                 
                                 // Convert remaining to display currency
@@ -4541,9 +4758,10 @@ const Home = () => {
                                   : (productSaleCurrencyRate && parseFloat(productSaleCurrencyRate) > 0
                                     ? parseFloat(productSaleCurrencyRate)
                                     : exchangeRates[productSaleCurrency] || 1);
+                                const displayMultiplier = getMultiplier(productSaleCurrency);
                                 const remainingInDisplayCurrency = productSaleCurrency === 'PLN'
                                   ? remainingPLN
-                                  : remainingPLN / displayRate;
+                                  : (remainingPLN / displayRate) * displayMultiplier;
                                 
                                 return (
                                   <>
@@ -4618,7 +4836,7 @@ const Home = () => {
                   testID="submit-addition-button"
                 >
                   <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                    Dopisz kwotę
+                    {isEditingAddAmount ? 'Aktualizuj kwotę' : 'Dopisz kwotę'}
                   </Text>
                 </TouchableOpacity>
                 
@@ -5228,28 +5446,24 @@ const Home = () => {
           visible={addAmountCurrencyModalVisible}
           onRequestClose={() => setAddAmountCurrencyModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
-              <Text style={styles.modalTitle}>Wybierz walutę</Text>
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalContent}>
+              <Text style={styles.currencyModalTitle}>Wybierz walutę</Text>
+              <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                Wybierz walutę dla płatności
+              </Text>
               
               <FlatList
                 data={currencyOptions}
                 keyExtractor={(item) => item.code}
-                style={{ width: '100%', marginVertical: 20 }}
+                style={{ width: '100%', marginVertical: 15 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={{
-                      backgroundColor: addAmountCurrency === item.code ? '#0d6efd' : 'transparent',
-                      padding: 15,
-                      borderRadius: 8,
-                      marginBottom: 8,
-                      borderWidth: 1,
-                      borderColor: addAmountCurrency === item.code ? 'white' : '#444',
-                    }}
+                    style={styles.currencyModalItem}
                     onPress={() => selectCurrencyForAddAmount(item.code)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ color: addAmountCurrency === item.code ? 'white' : '#ccc', fontSize: 16, width: 60 }}>
+                      <Text style={[styles.currencyModalItemText, { width: 60 }]}>
                         {item.code}
                       </Text>
                       <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>
@@ -5264,10 +5478,10 @@ const Home = () => {
               />
               
               <TouchableOpacity
-                style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
+                style={styles.currencyModalCloseButton}
                 onPress={() => setAddAmountCurrencyModalVisible(false)}
               >
-                <Text style={styles.optionText}>Zamknij</Text>
+                <Text style={styles.currencyModalCloseButtonText}>Zamknij</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -5283,31 +5497,38 @@ const Home = () => {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
               <Text style={styles.modalTitle}>Wybierz walutę</Text>
+              <Text style={{ color: '#a1a1aa', textAlign: 'center', fontSize: 14, marginBottom: 15 }}>
+                Wybierz walutę dla odpisanej kwoty
+              </Text>
               
               <FlatList
                 data={availableCurrencies}
-                keyExtractor={(item) => item}
+                keyExtractor={(item) => item.code}
                 style={{ width: '100%', marginVertical: 20 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={{
-                      backgroundColor: deductionCurrency === item ? '#dc3545' : 'transparent',
+                      backgroundColor: deductionCurrency === item.code ? '#dc3545' : 'transparent',
                       padding: 15,
                       borderRadius: 8,
                       marginBottom: 8,
                       borderWidth: 1,
-                      borderColor: deductionCurrency === item ? 'white' : '#444',
-                      alignItems: 'center',
+                      borderColor: deductionCurrency === item.code ? 'white' : '#444',
                     }}
-                    onPress={() => selectCurrencyForDeduction(item)}
+                    onPress={() => selectCurrencyForDeduction(item.code)}
                   >
-                    <Text style={{ 
-                      color: deductionCurrency === item ? 'white' : '#ccc', 
-                      fontSize: 16, 
-                      fontWeight: deductionCurrency === item ? 'bold' : 'normal' 
-                    }}>
-                      {item}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ 
+                        color: deductionCurrency === item.code ? 'white' : '#ccc', 
+                        fontSize: 16, 
+                        fontWeight: deductionCurrency === item.code ? 'bold' : 'normal',
+                        width: 60
+                      }}>
+                        {item.code}
+                      </Text>
+                      <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>{item.name}</Text>
+                      <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '500', marginLeft: 10 }}>{item.buyRate}</Text>
+                    </View>
                   </TouchableOpacity>
                 )}
               />
@@ -5329,30 +5550,23 @@ const Home = () => {
           visible={productCurrencyModalVisible}
           onRequestClose={() => setProductCurrencyModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { width: '80%', maxHeight: '70%' }]}>
-              <Text style={styles.modalTitle}>Wybierz walutę dla klienta</Text>
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalContent}>
+              <Text style={styles.currencyModalTitle}>Wybierz walutę dla klienta</Text>
               
               <FlatList
                 testID="product-currency-flatlist"
                 data={currencyOptions}
                 keyExtractor={(item) => item.code}
-                style={{ width: '100%', marginVertical: 20 }}
+                style={{ width: '100%', marginVertical: 15 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     testID={`product-currency-option-${item.code}`}
-                    style={{
-                      backgroundColor: productSaleCurrency === item.code ? '#0d6efd' : 'transparent',
-                      padding: 15,
-                      borderRadius: 8,
-                      marginBottom: 8,
-                      borderWidth: 1,
-                      borderColor: productSaleCurrency === item.code ? 'white' : '#444',
-                    }}
+                    style={styles.currencyModalItem}
                     onPress={() => selectProductCurrency(item.code)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ color: productSaleCurrency === item.code ? 'white' : '#ccc', fontSize: 16, width: 60 }}>
+                      <Text style={[styles.currencyModalItemText, { width: 60 }]}>
                         {item.code}
                       </Text>
                       <Text style={{ color: '#a1a1aa', fontSize: 12, flex: 1, marginLeft: 10 }}>
@@ -5368,10 +5582,10 @@ const Home = () => {
               
               <TouchableOpacity
                 testID="product-currency-close-button"
-                style={[styles.optionButton, { backgroundColor: '#6c757d', marginTop: 10, width: '90%' }]}
+                style={styles.currencyModalCloseButton}
                 onPress={() => setProductCurrencyModalVisible(false)}
               >
-                <Text style={styles.optionText}>Zamknij</Text>
+                <Text style={styles.currencyModalCloseButtonText}>Zamknij</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -6491,44 +6705,64 @@ const styles = StyleSheet.create({
   // Style identyczne z QRScanner dla modal wyboru symboli
   currencyModalContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   currencyModalContent: {
-    width: "80%",
-    backgroundColor: "black",
-    borderRadius: 10,
-    padding: 20,
-    alignItems: "center",
+    backgroundColor: '#000000',
+    borderRadius: 15,
+    padding: 25,
+    width: '90%',
+    maxHeight: '80%',
+    borderWidth: 2,
+    borderColor: '#0d6efd',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    alignItems: 'center',
   },
   currencyModalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 15,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   currencyModalItem: {
-    paddingVertical: 5, // Reduce vertical padding for shorter height
-    paddingHorizontal: 30, // Increase horizontal padding for wider items
-    marginVertical: 5, // Add vertical margin between items
-    borderBottomWidth: 1,
-    borderBottomColor: "gray",
-    width: 100, // Set the width to 100px
-    alignItems: "center",
-    backgroundColor: "rgb(13, 110, 253)", // Set background color to blue
+    backgroundColor: '#0d6efd',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'center',
   },
   currencyModalItemText: {
-    color: "white",
+    color: '#ffffff',
     fontSize: 16,
+    fontWeight: 'bold',
   },
   currencyModalCloseButton: {
-    marginTop: 15,
-    paddingVertical: 10,
+    backgroundColor: '#ef4444',
+    paddingVertical: 15,
     paddingHorizontal: 20,
-    backgroundColor: "red",
-    borderRadius: 5,
-    alignItems: "center",
+    borderRadius: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 20,
+    alignSelf: 'center',
   },
   currencyModalCloseButtonText: {
     color: "white",
