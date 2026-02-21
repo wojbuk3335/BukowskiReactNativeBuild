@@ -399,57 +399,6 @@ const fetchSales = async () => {
             return;
         }
 
-        // Sprawdź czy kurtka nie ma już aktywnego transferu DZISIAJ
-        if (hasActiveTransfer(selectedItem)) {
-            const existingTransfer = allTransfers.find(t => t.productId === selectedItem.id);
-            if (existingTransfer) {
-                // Sprawdź czy transfer rzeczywiście jest z dzisiaj
-                const transferDate = existingTransfer.date ? existingTransfer.date.split('T')[0] : '';
-                const isFromToday = transferDate === today;
-                
-                if (isFromToday) {
-                    const transferInfo = existingTransfer.transfer_to === 'SOLD' 
-                        ? 'została sprzedana' 
-                        : `została przeniesiona do ${existingTransfer.transfer_to}`;
-                    
-                    Alert.alert(
-                        "Kurtka już przeniesiona", 
-                        `Ta kurtka ${transferInfo} dzisiaj (${today}). Najpierw anuluj dzisiejszy transfer.`
-                    );
-                    return;
-                } else {
-                    // Transfer jest ze starszej daty - powinniśmy pozwolić na nowy transfer
-                    // Nie return - kontynuuj z tworzeniem nowego transferu
-                }
-            } else {
-                // hasActiveTransfer zwróciło true, ale nie ma transferu w allTransfers
-                // To może być spowodowane sprzedażą - sprawdźmy
-                // Nie return - kontynuuj z tworzeniem nowego transferu (jeśli to sprzedaż, to może być z wczoraj)
-            }
-        } else {
-            // hasActiveTransfer zwróciło false - można tworzyć transfer
-        }
-
-        // SPRAWDZENIE WSZYSTKICH TRANSFERÓW W BAZIE - informacyjne
-        try {
-            const response = await tokenService.authenticatedFetch(getApiUrl('/transfer'));
-            const allTransfersFromDB = await response.json();
-            
-            const anyExistingTransfer = Array.isArray(allTransfersFromDB) ? 
-                allTransfersFromDB.find(t => t.productId === selectedItem.id) : null;
-            
-            if (anyExistingTransfer) {
-                const transferDate = anyExistingTransfer.date ? anyExistingTransfer.date.split('T')[0] : 'nieznana';
-                const isFromToday = transferDate === today;
-                
-                if (!isFromToday) {
-                    // INFO: Old transfer found, allowing new transfer
-                }
-            }
-        } catch (error) {
-            // Error checking transfers
-        }
-
         // Sprawdź czy transfer jest do "Dom" i czy nie ma powodu
         if (toSymbol.toLowerCase() === 'dom' || toSymbol.toLowerCase() === 'd') {
             if (!reason) {
@@ -712,12 +661,6 @@ const fetchSales = async () => {
             return;
         }
 
-        // Sprawdź czy kurtka nie ma już aktywnego transferu DZISIAJ
-        if (hasActiveTransfer(selectedItem)) {
-            Alert.alert("Kurtka już przeniesiona", "Ta kurtka została już przeniesiona dzisiaj.");
-            return;
-        }
-
         const panKazekData = {
             productId: selectedItem.id,
             fullName: selectedItem.fullName,
@@ -755,47 +698,6 @@ const fetchSales = async () => {
         }
     };
 
-    const cancelTransfer = async () => {
-        if (!selectedItem) {
-            Alert.alert("Error", "No item selected to cancel transfer.");
-            return;
-        }
-
-        try {
-            // Szukaj transferu w obu listach
-            let transfer = transfers.find(t => t.productId === selectedItem.id);
-            if (!transfer) {
-                transfer = allTransfers.find(t => t.productId === selectedItem.id);
-            }
-            
-            if (!transfer) {
-                Alert.alert("Error", "No transfer found for this product.");
-                return;
-            }
-
-            // Blokuj anulowanie transferów typu SOLD - te można anulować tylko przez usunięcie sprzedaży
-            if (transfer.transfer_to === 'SOLD') {
-                Alert.alert("Informacja", "Ta kurtka została sprzedana. Aby ją odblokować, usuń odpowiednią sprzedaż z zakładki Home.");
-                return;
-            }
-
-            const response = await tokenService.authenticatedFetch(getApiUrl(`/transfer/${transfer.productId}`), {
-                method: "DELETE",
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to delete transfer");
-            }
-
-            fetchAllRequiredData(false);
-            closeModal();
-        } catch (error) {
-            Alert.alert("Error", "An unexpected error occurred while deleting the transfer.");
-        }
-    };
-
-
-
     const handleRetry = () => {
         setShowErrorModal(false);
         fetchAllRequiredData(false); // false = nie jest to refresh action
@@ -803,122 +705,6 @@ const fetchSales = async () => {
 
     const handleCloseError = () => {
         setShowErrorModal(false);
-    };
-
-    // Treat as transferred (blocked) for UI - show blocked ONLY if transferred TODAY
-    // After midnight, all jackets become available (blue) again
-    // Get the block status of an item (transfer, sale, or none)
-    const getItemBlockStatus = (item) => {
-        if (!Array.isArray(transfers)) return { isBlocked: false, type: 'none' };
-        
-        // FIRST: Check if THIS SPECIFIC jacket (by ID) has a transfer
-        const hasTransferWithSameId = transfers.some((t) => {
-            return t.productId === item.id;
-        });
-        
-        // If this specific item has a transfer, it's blocked by transfer - STOP HERE!
-        if (hasTransferWithSameId) {
-            return { isBlocked: true, type: 'transfer' };
-        }
-        
-        // SECOND: Only check sales for items WITHOUT transfers
-        const hasSaleWithSameBarcode = salesData.some((sale) => {
-            const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
-            const sellingPointMatches = sale.from === user?.symbol;
-            return barcodeMatches && sellingPointMatches;
-        });
-        
-        if (hasSaleWithSameBarcode) {
-            // Count how many sales exist for this barcode from this selling point
-            const salesCount = salesData.filter(sale => {
-                return sale.barcode === item.barcode && sale.from === user?.symbol;
-            }).length;
-            
-            // Get all items with same barcode, sorted by their position in filteredData
-            const allItemsWithSameBarcode = filteredData
-                .filter(dataItem => dataItem.barcode === item.barcode)
-                .sort((a, b) => filteredData.indexOf(a) - filteredData.indexOf(b));
-            
-            // CRITICAL: Filter out items that already have transfers (these are NEVER affected by sales)
-            const availableForSaleBlocking = allItemsWithSameBarcode.filter(dataItem => {
-                const hasTransfer = transfers.some(t => t.productId === dataItem.id);
-                return !hasTransfer; // Keep only items WITHOUT transfers
-            });
-            
-            // Among available items (no transfers), block the first N where N = salesCount
-            const indexInAvailableList = availableForSaleBlocking.findIndex(dataItem => dataItem.id === item.id);
-            
-            // This item should be blocked by sale only if:
-            // 1. It's in the available list (no transfer)
-            // 2. It's among the first N items where N = salesCount
-            if (indexInAvailableList >= 0 && indexInAvailableList < salesCount) {
-                return { isBlocked: true, type: 'sale' };
-            }
-        }
-        
-        return { isBlocked: false, type: 'none' };
-    };
-
-    // Function to check if item should be grayed out (transfers only, NOT sales)
-    const isTransferred = (item) => {
-        const status = getItemBlockStatus(item);
-        return status.isBlocked && status.type === 'transfer'; // Gray out transfers only, not sales
-    };
-
-    // Check if THIS SPECIFIC item has a transfer (for showing cancel button)
-    const hasTransfer = (item) => {
-        if (!Array.isArray(transfers)) return false;
-        return transfers.some((t) => t.productId === item.id);
-    };
-
-    // Check if item has active transfer, exchange OR sale TODAY ONLY (for validation)
-    // After midnight, all jackets can be transferred again
-    const hasActiveTransfer = (item) => {
-        if (!Array.isArray(allTransfers)) return false;
-        
-        // Use the same logic as getItemBlockStatus but with allTransfers
-        // FIRST: Check if THIS SPECIFIC jacket (by ID) has a transfer
-        const hasTransferWithSameId = allTransfers.some((t) => {
-            return t.productId === item.id;
-        });
-        
-        // If this specific item has a transfer, it's blocked - STOP HERE!
-        if (hasTransferWithSameId) {
-            return true;
-        }
-        
-        // SECOND: Only check sales for items WITHOUT transfers
-        const hasSaleWithSameBarcode = salesData.some((sale) => {
-            const barcodeMatches = sale.barcode && item.barcode && sale.barcode === item.barcode;
-            const sellingPointMatches = sale.from === user?.symbol;
-            return barcodeMatches && sellingPointMatches;
-        });
-        
-        if (hasSaleWithSameBarcode) {
-            // Count sales for this barcode
-            const salesCount = salesData.filter(sale => {
-                return sale.barcode === item.barcode && sale.from === user?.symbol;
-            }).length;
-            
-            // Get all items with same barcode
-            const allItemsWithSameBarcode = filteredData
-                .filter(dataItem => dataItem.barcode === item.barcode)
-                .sort((a, b) => filteredData.indexOf(a) - filteredData.indexOf(b));
-            
-            // CRITICAL: Filter out items with transfers (they are NEVER affected by sales)
-            const availableForSaleBlocking = allItemsWithSameBarcode.filter(dataItem => {
-                const hasTransfer = allTransfers.some(t => t.productId === dataItem.id);
-                return !hasTransfer; // Keep only items WITHOUT transfers
-            });
-            
-            // Check if this item should be blocked by sale
-            const indexInAvailableList = availableForSaleBlocking.findIndex(dataItem => dataItem.id === item.id);
-            const hasSaleWithSameItem = indexInAvailableList >= 0 && indexInAvailableList < salesCount;
-            
-            return hasSaleWithSameItem;
-        }
-        
-        return false;
     };
 
     // Show AuthFix for debugging
@@ -1015,7 +801,6 @@ const fetchSales = async () => {
                             <View
                                 style={[
                                     styles.item,
-                                    isTransferred(item) && { backgroundColor: "#6c757d" }, // Highlight transferred items
                                     { marginHorizontal: 0 }, // Remove side margins
                                 ]}
                             >
@@ -1053,84 +838,34 @@ const fetchSales = async () => {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Opcje</Text>
                         {selectedItem ? (
-                            (() => {
-                                const blockStatus = getItemBlockStatus(selectedItem);
-                                
-                                if (!blockStatus.isBlocked) {
-                                    // Item is not blocked - show transfer option
-                                    return (
-                                        <>
-                                            <TouchableOpacity
-                                                style={styles.optionButton}
-                                                onPress={() => {
-                                                    setModalVisible(false);
-                                                    setTransferModalVisible(true);
-                                                }}
-                                            >
-                                                <Text style={styles.optionText}>Przepisz do</Text>
-                                            </TouchableOpacity>
-                                            {(user?.symbol === 'most' || user?.email === 'most@wp.pl') && (
-                                                <TouchableOpacity
-                                                    style={[styles.optionButton, { backgroundColor: '#28a745' }]}
-                                                    onPress={() => handlePanKazekTransfer()}
-                                                >
-                                                    <Text style={styles.optionText}>Od Pana Kazka</Text>
-                                                </TouchableOpacity>
-                                            )}
-                                            <TouchableOpacity
-                                                style={[styles.optionButton, { backgroundColor: '#ff9800' }]}
-                                                onPress={() => {
-                                                    setModalVisible(false);
-                                                    setExchangeModalVisible(true);
-                                                }}
-                                            >
-                                                <Text style={styles.optionText}>Wymiana</Text>
-                                            </TouchableOpacity>
-                                        </>
-                                    );
-                                }
-                                
-                                if (blockStatus.type === 'transfer') {
-                                    // Item has a transfer - check if it's SOLD transfer or regular transfer
-                                    let transfer = transfers.find(t => t.productId === selectedItem.id);
-                                    if (!transfer) {
-                                        transfer = allTransfers.find(t => t.productId === selectedItem.id);
-                                    }
-                                    
-                                    if (transfer && transfer.transfer_to === 'SOLD') {
-                                        return (
-                                            <View style={[styles.optionButton, styles.disabledButton]}>
-                                                <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
-                                            </View>
-                                        );
-                                    } else {
-                                        return (
-                                            <TouchableOpacity
-                                                style={[styles.optionButton, styles.deleteButton]}
-                                                onPress={cancelTransfer}
-                                            >
-                                                <Text style={styles.optionText}>Anuluj odpisanie</Text>
-                                            </TouchableOpacity>
-                                        );
-                                    }
-                                }
-                                
-                                if (blockStatus.type === 'sale') {
-                                    // Item is blocked by sale - can only be cancelled in Home tab
-                                    return (
-                                        <View style={[styles.optionButton, styles.disabledButton]}>
-                                            <Text style={styles.optionText}>Nie można anulować sprzedaży tutaj. Usuń sprzedaż w zakładce Home.</Text>
-                                        </View>
-                                    );
-                                }
-                                
-                                // Fallback - shouldn't happen
-                                return (
-                                    <View style={[styles.optionButton, styles.disabledButton]}>
-                                        <Text style={styles.optionText}>Produkt zablokowany</Text>
-                                    </View>
-                                );
-                            })()
+                            <>
+                                <TouchableOpacity
+                                    style={styles.optionButton}
+                                    onPress={() => {
+                                        setModalVisible(false);
+                                        setTransferModalVisible(true);
+                                    }}
+                                >
+                                    <Text style={styles.optionText}>Przepisz do</Text>
+                                </TouchableOpacity>
+                                {(user?.symbol === 'most' || user?.email === 'most@wp.pl') && (
+                                    <TouchableOpacity
+                                        style={[styles.optionButton, { backgroundColor: '#28a745' }]}
+                                        onPress={() => handlePanKazekTransfer()}
+                                    >
+                                        <Text style={styles.optionText}>Od Pana Kazka</Text>
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                    style={[styles.optionButton, { backgroundColor: '#ff9800' }]}
+                                    onPress={() => {
+                                        setModalVisible(false);
+                                        setExchangeModalVisible(true);
+                                    }}
+                                >
+                                    <Text style={styles.optionText}>Wymiana</Text>
+                                </TouchableOpacity>
+                            </>
                         ) : (
                             <View style={[styles.optionButton, styles.disabledButton]}>
                                 <Text style={styles.optionText}>Brak wybranego produktu</Text>

@@ -51,6 +51,8 @@ const Home = () => {
   const [selectedDeductionItem, setSelectedDeductionItem] = useState(null); // Selected deduction item to cancel
   const [operationOptionsVisible, setOperationOptionsVisible] = useState(false); // State for operation options modal
   const [selectedOperationItem, setSelectedOperationItem] = useState(null); // Selected operation item for options
+  const [transferOptionsVisible, setTransferOptionsVisible] = useState(false); // State for transfer options modal
+  const [selectedTransferredItem, setSelectedTransferredItem] = useState(null); // Selected transfer item for cancel action
   
   // Currency rates modal state
   const [currencyRatesModalVisible, setCurrencyRatesModalVisible] = useState(false); // State for currency rates modal
@@ -1169,6 +1171,38 @@ const Home = () => {
       setSuccessModalVisible(true);
     } catch (error) {
       setErrorMessage("Nie udało się usunąć sprzedaży. Spróbuj ponownie.");
+      setErrorModalVisible(true);
+    }
+  };
+
+  const handleCancelTransferredItem = async () => {
+    if (!selectedTransferredItem?._id) {
+      setErrorMessage('Nie znaleziono transferu do anulowania.');
+      setErrorModalVisible(true);
+      setTransferOptionsVisible(false);
+      return;
+    }
+
+    try {
+      const response = await tokenService.authenticatedFetch(
+        getApiUrl(`/transfer/by-id/${selectedTransferredItem._id}`),
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete transfer');
+      }
+
+      setTransferOptionsVisible(false);
+      setSelectedTransferredItem(null);
+      await fetchTransferredItems();
+      await fetchReceivedItems();
+
+      setSuccessMessage('Transfer został anulowany.');
+      setSuccessModalVisible(true);
+    } catch (error) {
+      setTransferOptionsVisible(false);
+      setErrorMessage('Nie udało się anulować transferu. Spróbuj ponownie.');
       setErrorModalVisible(true);
     }
   };
@@ -2697,7 +2731,13 @@ const Home = () => {
                         >
                           {index + 1}. {item.fullName || 'Unknown'} {item.size || ''} - {item.sellingPoint || "Brak informacji o miejscu sprzedaży"}
                         </Text>
-                        <TouchableOpacity style={styles.dotsButton}>
+                        <TouchableOpacity
+                          style={styles.dotsButton}
+                          onPress={() => {
+                            setSelectedTransferredItem(item);
+                            setTransferOptionsVisible(true);
+                          }}
+                        >
                           <Text style={styles.dotsText}>⋮</Text>
                         </TouchableOpacity>
                       </View>
@@ -2710,7 +2750,7 @@ const Home = () => {
                     <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Odpisać ze stanu:</Text>
                     {transferredToday.map((item, index) => (
                       <View
-                        key={item.productId || index}
+                        key={item._id || `${item.productId || 'transfer'}-${index}`}
                         style={styles.item}
                       >
                         <Text
@@ -2735,7 +2775,13 @@ const Home = () => {
                             </Text>
                           )}
                         </Text>
-                        <TouchableOpacity style={styles.dotsButton}>
+                        <TouchableOpacity
+                          style={styles.dotsButton}
+                          onPress={() => {
+                            setSelectedTransferredItem(item);
+                            setTransferOptionsVisible(true);
+                          }}
+                        >
                           <Text style={styles.dotsText}>⋮</Text>
                         </TouchableOpacity>
                       </View>
@@ -2748,7 +2794,7 @@ const Home = () => {
                     <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Dopisać na to konto:</Text>
                     {receivedToday.map((item, index) => (
                       <View
-                        key={item.productId || index}
+                        key={item._id || `${item.productId || 'received'}-${index}`}
                         style={styles.receivedItem}
                       >
                         <Text
@@ -2783,7 +2829,7 @@ const Home = () => {
                       <Text style={{ fontSize: 13, color: "#d1d5db", fontWeight: "bold", marginBottom: 8 }}>Zaliczki wzięte dzisiaj:</Text>
                       {advancesToday.map((item, index) => (
                         <View
-                          key={item.productId || index}
+                          key={item._id || `${item.productId || 'advance'}-${index}`}
                           style={styles.advanceItem}
                         >
                           <Text style={styles.advanceItemTextLeft}>
@@ -3777,6 +3823,30 @@ const Home = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setModalVisible(false)}
+                style={[styles.optionButton, styles.closeButton]}
+              >
+                <Text style={styles.closeText}>Zamknij</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+        <Modal
+          transparent
+          visible={transferOptionsVisible}
+          animationType="slide"
+          onRequestClose={() => setTransferOptionsVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Opcje transferu</Text>
+              <TouchableOpacity
+                onPress={handleCancelTransferredItem}
+                style={[styles.optionButton, styles.deleteButton]}
+              >
+                <Text style={styles.optionText}>Anuluj odpisanie</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTransferOptionsVisible(false)}
                 style={[styles.optionButton, styles.closeButton]}
               >
                 <Text style={styles.closeText}>Zamknij</Text>
