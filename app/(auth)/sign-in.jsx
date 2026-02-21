@@ -105,7 +105,13 @@ const SignIn = () => {
         router.replace("/home"); // User panel
       }
     } catch (error) {
-      setError("Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
+      // 🔒 SESSION BLOCKING: Jeśli k toś już zalogowany
+      if (error.code === 'SESSION_ACTIVE' || error.message?.includes('Konto jest już zalogowane')) {
+        setError("⚠️ Ktoś jest już zalogowany na tym koncie. Wyloguj się z innego urządzenia, aby kontynuować.");
+      } else {
+        // Zwykły błąd logowania
+        setError("Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
+      }
     }
   };
 

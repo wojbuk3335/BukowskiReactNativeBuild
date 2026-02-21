@@ -261,8 +261,22 @@ export const GlobalStateProvider = ({ children }) => {
             if (!response.ok) {
                 try {
                     const errorData = await response.json();
-                    throw new Error(errorData.message || "Login failed");
+                    
+                    // 🔒 SESSION BLOCKING ERROR
+                    if (response.status === 403 && errorData.error === 'SESSION_ACTIVE') {
+                        const error = new Error(errorData.message);
+                        error.code = 'SESSION_ACTIVE';
+                        error.status = 403;
+                        throw error;
+                    }
+                    
+                    const error = new Error(errorData.message || "Login failed");
+                    throw error;
                 } catch (parseError) {
+                    // Jeśli to nasz SESSION_ACTIVE error - przekaż dalej
+                    if (parseError.code === 'SESSION_ACTIVE') {
+                        throw parseError;
+                    }
                     throw new Error(`Login failed with status ${response.status}: ${response.statusText}`);
                 }
             }
