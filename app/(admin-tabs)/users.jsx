@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -36,6 +36,7 @@ const Users = () => {
   const [warehouseItems, setWarehouseItems] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [matchedPairs, setMatchedPairs] = useState([]);
+  const [allStates, setAllStates] = useState([]);
   
   // Processing state
   const [processing, setProcessing] = useState(false);
@@ -249,6 +250,72 @@ const Users = () => {
     return result;
   };
 
+  // Calculate availability indicators for blue items (like web app)
+  const blueItemIndicators = useMemo(() => {
+    if (!Array.isArray(blueItems) || !Array.isArray(allStates) || !selectedUserId) {
+      return {};
+    }
+
+    const selectedUserData = users.find(user => user._id === selectedUserId);
+    if (!selectedUserData) return {};
+
+    // Group blue items by product (fullName, size - without barcode!)
+    const groupedByProduct = {};
+    blueItems.forEach(item => {
+      const fullName = item.fullName;
+      const size = item.size;
+      
+      // Grouping key: only name + size (barcode can differ!)
+      const key = `${fullName}_${size}`;
+      
+      if (!groupedByProduct[key]) {
+        groupedByProduct[key] = {
+          fullName,
+          size,
+          items: []
+        };
+      }
+      groupedByProduct[key].items.push(item);
+    });
+
+    // For each product group, check availability in state
+    const indicators = {};
+    
+    Object.values(groupedByProduct).forEach(group => {
+      // Find all products of this type in selected user's state
+      const availableInState = allStates.filter(stateItem => {
+        const stateFullName = stateItem.fullName?.fullName || stateItem.fullName;
+        const stateSize = stateItem.size?.Roz_Opis || stateItem.size;
+        const stateSymbol = stateItem.symbol;
+
+        // Must be from same selling point
+        if (stateSymbol !== selectedUserData.symbol) return false;
+
+        // Match by name and size
+        const nameMatch = group.fullName === stateFullName;
+        const sizeMatch = group.size === stateSize;
+
+        // If name and size match - it's the same product
+        return nameMatch && sizeMatch;
+      });
+
+      // Calculate indicators for each item in group
+      let availableCount = availableInState.length;
+      
+      group.items.forEach((item) => {
+        const itemId = item.sourceId || item._id;
+        if (availableCount > 0) {
+          indicators[itemId] = 'OK';
+          availableCount--;
+        } else {
+          indicators[itemId] = 'WARNING';
+        }
+      });
+    });
+
+    return indicators;
+  }, [blueItems, allStates, selectedUserId, users]);
+
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
       const parzygniatUser = users.find(u => 
@@ -263,6 +330,7 @@ const Users = () => {
   useEffect(() => {
     if (selectedUserId && selectedDate) {
       fetchItemsToPick();
+      fetchAllStates();
     }
   }, [selectedUserId, selectedDate]);
 
@@ -532,14 +600,37 @@ const Users = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Reload all data: items, price list, products cache, and colors
+    // Reload all data: items, price list, products cache, colors, and all states
     await Promise.all([
       fetchItemsToPick(),
+      fetchAllStates(),
       selectedUserId ? fetchPriceListInfo(selectedUserId) : Promise.resolve(),
       fetchAllProducts(),
       fetchColors()
     ]);
     setRefreshing(false);
+  };
+
+  // Fetch all states from API
+  const fetchAllStates = async () => {
+    try {
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl('/state');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAllStates(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching all states:', error);
+      setAllStates([]);
+    }
   };
 
   // Check for missing items in state (like web app)
@@ -1250,7 +1341,7 @@ const Users = () => {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Refresh data from server (this will clear the lists automatically)
-      await fetchItemsToPick();
+      await Promise.all([fetchItemsToPick(), fetchAllStates()]);
       
       // Wait a bit for React state to update
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -1441,7 +1532,7 @@ const Users = () => {
         });
         
         // Refresh data
-        await fetchItemsToPick();
+        await Promise.all([fetchItemsToPick(), fetchAllStates()]);
         
         // Restore grey state for MAGAZYN after undo (like web app)
         if (isWarehouse) {
@@ -1497,6 +1588,10 @@ const Users = () => {
     const isMatched = isBlueItemMatched(item.sourceId);
     const backgroundColor = isMatched ? '#10B981' : '#007bff';
     
+    // Get availability indicator
+    const itemId = item.sourceId || item._id;
+    const indicator = blueItemIndicators[itemId];
+    
     return (
       <View style={[styles.transferCard, { backgroundColor, borderColor: backgroundColor }]}>
         <View style={styles.transferContent}>
@@ -1510,6 +1605,11 @@ const Users = () => {
             <Text style={styles.transferBarcode}>
               {item.barcode || 'N/A'}
             </Text>
+            {indicator && (
+              <Text style={styles.transferIndicator}>
+                {indicator === 'OK' ? '✓ Dostępny' : '⚠ Do korekt'}
+              </Text>
+            )}
           </View>
           
           {isMatched && (
@@ -2922,6 +3022,12 @@ const styles = StyleSheet.create({
   transferBarcode: {
     fontSize: 12,
     color: "rgba(255, 255, 255, 0.8)",
+  },
+  transferIndicator: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#fff",
+    marginTop: 4,
   },
   transferActions: {
     flexDirection: "row",
