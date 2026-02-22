@@ -118,6 +118,7 @@ const RootLayout = () => {
             <Stack.Screen name="employees-list" options={{ headerShown: false }} />
             <Stack.Screen name="manufacturers-list" options={{ headerShown: false }} />
             <Stack.Screen name="payroll" options={{ headerShown: false }} />
+            <Stack.Screen name="pan-kazek" options={{ headerShown: false }} />
             <Stack.Screen name="print-labels" options={{ headerShown: false }} />
           </Stack>
         </GlobalStateProvider>

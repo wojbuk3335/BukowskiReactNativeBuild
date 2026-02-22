@@ -207,6 +207,14 @@ const Various = () => {
       route: "/print-labels",
       color: "#22C55E",
     },
+    {
+      id: "pan-kazek",
+      title: "Pan Kazek",
+      subtitle: "System rozliczania produktów",
+      icon: "cash-outline",
+      route: "/pan-kazek",
+      color: "#16A34A",
+    },
   ];
 
   const handleMenuPress = (route) => {
