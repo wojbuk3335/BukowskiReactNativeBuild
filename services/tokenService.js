@@ -422,16 +422,17 @@ class TokenService {
     async logout(options = {}) {
         this.isLoggingOut = true; // Set logout flag
         const suppressFlagReset = options.suppressFlagReset === true;
-        
-        const { refreshToken } = await this.getTokens();
-        
+
+        const { accessToken, refreshToken } = await this.getTokens();
+
         // Inform server about logout (best effort)
-        if (refreshToken) {
+        if (accessToken || refreshToken) {
             try {
                 await fetch(getApiUrl('/user/logout'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
                     },
                     body: JSON.stringify({ refreshToken })
                 });
