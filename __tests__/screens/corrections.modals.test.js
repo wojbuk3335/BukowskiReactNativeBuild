@@ -74,10 +74,16 @@ describe('CorrectionsList modals', () => {
 
     const screen = renderWithUser();
 
-    await waitFor(() => screen.getByText('Cofnij rozwiązanie'));
-    fireEvent.press(screen.getByText('Cofnij rozwiązanie'));
+    // Czekamy aż korekty się załadują i będą wyświetlone
+    await waitFor(() => {
+      expect(screen.getByText('Kurtka zimowa')).toBeTruthy();
+    }, { timeout: 5000 });
 
-    await waitFor(() => screen.getByText('Cofnięcie korekty zakończone pomyślnie'));
+    // Teraz szukamy przycisku "Cofnij rozwiązanie"
+    const rollbackButton = await waitFor(() => screen.getByText('Cofnij rozwiązanie'), { timeout: 3000 });
+    fireEvent.press(rollbackButton);
+
+    await waitFor(() => screen.getByText('Cofnięcie korekty zakończone pomyślnie'), { timeout: 3000 });
 
     expect(screen.queryByText('🏪 PUNKT SPRZEDAŻY - MAGAZYN')).toBeNull();
     expect(screen.getByText('📦 MAGAZYN')).toBeTruthy();
