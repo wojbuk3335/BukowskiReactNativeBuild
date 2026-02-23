@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -109,6 +109,9 @@ const ProductsList = () => {
   const [remainingProductsSearch, setRemainingProductsSearch] = useState("");
   const [showRemainingCategoryPicker, setShowRemainingCategoryPicker] = useState(false);
   const [showRemainingSubcategoryPicker, setShowRemainingSubcategoryPicker] = useState(false);
+
+  // Ref for FlatList to scroll to bottom
+  const flatListRef = useRef(null);
 
   useEffect(() => {
     fetchProducts();
@@ -671,7 +674,19 @@ const ProductsList = () => {
       if (selectedStock) formData.append("stock", selectedStock);
       if (selectedSubcategory) formData.append("subcategory", selectedSubcategory);
       if (selectedManufacturer) formData.append("manufacturer", selectedManufacturer);
-      if (selectedGender) formData.append(category === "Pozostałe" ? "Rodzaj" : "Plec", selectedGender);
+      
+      // Get Plec from selected subcategory or use selectedGender or default to "Unisex"
+      let plecValue = selectedGender || 'Unisex';
+      
+      // If subcategory is selected, get Plec from it
+      if (selectedSubcategory && subcategories && subcategories.length > 0) {
+        const selectedSubcategoryData = subcategories.find(s => s._id === selectedSubcategory);
+        if (selectedSubcategoryData && selectedSubcategoryData.Plec) {
+          plecValue = selectedSubcategoryData.Plec;
+        }
+      }
+      
+      formData.append(category === "Pozostałe" ? "Rodzaj" : "Plec", plecValue);
       
       // Price exceptions - always send, even if empty
       formData.append("priceExceptions", JSON.stringify(priceExceptions || []));
@@ -716,6 +731,8 @@ const ProductsList = () => {
       });
 
       if (response.ok) {
+        const responseData = await response.json();
+        
         // Backend już automatycznie synchronizuje cenniki po zapisie produktu
         setSuccessMessage(
           editingProduct
@@ -731,7 +748,7 @@ const ProductsList = () => {
         setShowErrorModal(true);
       }
     } catch (error) {
-      console.error("Error saving product:", error);
+      console.error("Błąd podczas zapisywania produktu:", error);
       setErrorMessage("Wystąpił błąd podczas zapisywania produktu");
       setShowErrorModal(true);
     }
@@ -770,10 +787,24 @@ const ProductsList = () => {
     setProductToDelete(null);
   };
 
-  const filteredProducts = products.filter((product) =>
-    product.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.ToW_Kod?.toString().toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Function to scroll to the bottom of the list
+  const scrollToBottom = () => {
+    if (flatListRef.current && filteredProducts.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  // Filter and sort products (newest first)
+  const filteredProducts = products
+    .filter((product) =>
+      product.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.ToW_Kod?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Sort by _id descending (newest first)
+      // MongoDB ObjectId contains timestamp, so newer IDs are "greater"
+      return b._id.localeCompare(a._id);
+    });
 
   const renderProduct = ({ item, index }) => {
     const imageUrl = getImageUrl(item.picture);
@@ -919,12 +950,23 @@ const ProductsList = () => {
             </Text>
           </View>
           <FlatList
+            ref={flatListRef}
             data={filteredProducts}
             renderItem={renderProduct}
             keyExtractor={(item) => item._id}
             contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(120, insets.bottom + 120) }]}
             showsVerticalScrollIndicator={false}
           />
+          
+          {/* Scroll to Bottom Button */}
+          {filteredProducts.length > 5 && (
+            <TouchableOpacity 
+              style={[styles.scrollToBottomButton, { bottom: insets.bottom + 80 }]}
+              onPress={scrollToBottom}
+            >
+              <Ionicons name="arrow-down-circle" size={50} color="#3b82f6" />
+            </TouchableOpacity>
+          )}
         </>
       )}
 
@@ -3539,6 +3581,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#0D6EFD",
     fontWeight: "600",
+  },
+  scrollToBottomButton: {
+    position: "absolute",
+    right: 20,
+    backgroundColor: "transparent",
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 1000,
   },
 });
 

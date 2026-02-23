@@ -467,8 +467,7 @@ const WarehouseMobile = () => {
     try {
       const selectedGood = goods.find((g) => g.fullName === productName);
       if (!selectedGood) {
-        console.error("Product not found. Searching for:", productName);
-        console.error("Available products:", goods.map(g => g.fullName));
+        console.error("Product not found:", productName);
         showNotification({
           title: "Błąd",
           message: "Produkt nie znaleziony w bazie",
@@ -512,10 +511,12 @@ const WarehouseMobile = () => {
           }
         }
       } catch (priceError) {
+        console.error('Price list fetch error:', priceError.message);
         // If price list fetch fails, fall back to product price
       }
 
       const currentSymbol = isStatesMode ? resolveCurrentSymbol() : "MAGAZYN";
+      
       if (isStatesMode && !currentSymbol) {
         showNotification({
           title: "Błąd",
@@ -525,6 +526,7 @@ const WarehouseMobile = () => {
         setLoading(false);
         return;
       }
+      
       const dataToSend = {
         fullName: productName,
         size: sizeValue,
@@ -539,14 +541,20 @@ const WarehouseMobile = () => {
       // Add product multiple times based on quantity
       const quantityNum = parseInt(quantity) || 1;
       const url = getApiUrl("/state");
+      
       for (let i = 0; i < quantityNum; i++) {
-        await tokenService.authenticatedFetch(url, {
+        const response = await tokenService.authenticatedFetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(dataToSend),
         });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Błąd podczas dodawania produktu');
+        }
       }
       
       // Reset form
@@ -554,8 +562,11 @@ const WarehouseMobile = () => {
       setSelectedSize("");
       setQuantity("1");
       
+      console.log('🔄 Odświeżanie danych tabeli...');
       // Refresh table and refocus on product input
       await fetchTableData();
+      
+      console.log('🟢 ===== PRODUKT DODANY DO MAGAZYNU POMYŚLNIE =====');
       
       // Scroll to top to show newly added product
       setTimeout(() => {
@@ -563,7 +574,8 @@ const WarehouseMobile = () => {
         productInputRef.current?.focus();
       }, 100);
     } catch (error) {
-      console.error("❌ Error adding product to warehouse:", error.message);
+      console.error("❌ BŁĄD PODCZAS DODAWANIA PRODUKTU DO MAGAZYNU:", error.message);
+      console.error("❌ Stack trace:", error.stack);
       showNotification({
         title: "Błąd",
         message: error.message,
@@ -571,6 +583,7 @@ const WarehouseMobile = () => {
       });
     } finally {
       setLoading(false);
+      console.log('🔚 Zakończenie procesu dodawania produktu');
     }
   };
 
