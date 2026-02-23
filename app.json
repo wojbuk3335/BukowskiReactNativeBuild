@@ -28,6 +28,11 @@
               "NSExceptionRequiresForwardSecrecy": false,
               "NSIncludesSubdomains": false
             },
+            "192.168.1.132": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": false
+            },
             "localhost": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSExceptionRequiresForwardSecrecy": false,
