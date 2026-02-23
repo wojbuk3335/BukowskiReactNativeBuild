@@ -37,6 +37,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# local config (IP addresses specific to each machine)
+config/api.js
+
 # typescript
 *.tsbuildinfo
 
