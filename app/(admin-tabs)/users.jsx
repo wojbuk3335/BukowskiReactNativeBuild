@@ -316,6 +316,50 @@ const Users = () => {
     return indicators;
   }, [blueItems, allStates, selectedUserId, users]);
 
+  // Calculate balance stats for +/- display
+  const balanceStats = useMemo(() => {
+    let removed = 0;      // -1 (blue OK)
+    let added = 0;        // +1 (yellow + orange - wszystko co dodajemy do stanu)
+    let warehouse = 0;    // all orange (pokazuje skąd pochodzą)
+    let corrections = 0;  // 0 (blue WARNING)
+
+    // Count blue items
+    blueItems.forEach(item => {
+      const itemId = item.sourceId || item._id;
+      const indicator = blueItemIndicators[itemId];
+      if (indicator === 'OK') {
+        removed++;
+      } else if (indicator === 'WARNING') {
+        corrections++;
+      }
+    });
+
+    // Count yellow transfers - dodajemy do stanu
+    added += yellowTransfers.length;
+
+    // Count orange from transfers (manually added) - dodajemy do stanu I liczymy do warehouse
+    warehouse += transfers.length;
+    added += transfers.length;
+
+    // Count orange from matchedPairs (paired warehouse items) - dodajemy do stanu I liczymy do warehouse
+    if (Array.isArray(matchedPairs)) {
+      matchedPairs.forEach(pair => {
+        if (pair && pair.warehouseProduct) {
+          warehouse++;
+          added++;
+        }
+      });
+    }
+
+    return {
+      removed,
+      added,
+      balance: added - removed,
+      warehouse,
+      corrections
+    };
+  }, [blueItems, yellowTransfers, transfers, matchedPairs, blueItemIndicators]);
+
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
       const parzygniatUser = users.find(u => 
@@ -1435,9 +1479,9 @@ const Users = () => {
       
       const { accessToken } = await tokenService.getTokens();
       
-      // Get current user data
-      const selectedUserData = users.find(u => u._id === selectedUserId);
-      const userSymbol = selectedUserData?.symbol || selectedUserData?.username;
+      // FIXED: Use userSymbol from lastTransaction (not from dropdown selectedUserId)
+      // Dropdown może pokazywać innego usera niż ten który wykonał transakcję
+      const userSymbol = lastTransaction?.userSymbol;
       
       // Get warehouse state BEFORE undo
       const warehouseUrlBefore = getApiUrl('/state/warehouse');
@@ -1503,6 +1547,10 @@ const Users = () => {
         const stateChange = userStateAfter - userStateBefore;
         const isWarehouse = userSymbol === 'MAGAZYN' || userSymbol === 'Magazyn';
         
+        // Określ typ transakcji dla poprawnego tekstu w modalu
+        const isWarehouseTransaction = lastTransaction?.transactionType === 'warehouse';
+        const isIncomingTransfer = lastTransaction?.transactionType === 'incoming_transfer';
+        
         // Calculate display values based on user type
         let restoredCount, calculation;
         
@@ -1528,7 +1576,9 @@ const Users = () => {
           warehouseAfterCount: warehouseAfterCount,
           warehouseProcessedCount: 0,
           isWarehouse,
-          isUndo: true
+          isUndo: true,
+          isWarehouseTransaction, // DODANE: typ transakcji dla poprawnego tekstu
+          isIncomingTransfer      // DODANE: czy to incoming transfer
         });
         
         // Refresh data
@@ -1592,6 +1642,10 @@ const Users = () => {
     const itemId = item.sourceId || item._id;
     const indicator = blueItemIndicators[itemId];
     
+    // Calculate balance
+    const balance = indicator === 'OK' ? -1 : indicator === 'WARNING' ? 0 : null;
+    const balanceColor = balance === -1 ? '#dc3545' : balance === 0 ? '#000000' : '#000';
+    
     return (
       <View style={[styles.transferCard, { backgroundColor, borderColor: backgroundColor }]}>
         <View style={styles.transferContent}>
@@ -1612,11 +1666,18 @@ const Users = () => {
             )}
           </View>
           
-          {isMatched && (
-            <View style={styles.matchedBadge}>
-              <Text style={styles.matchedBadgeText}>✓</Text>
-            </View>
-          )}
+          <View style={styles.transferBadges}>
+            {balance !== null && (
+              <View style={[styles.balanceBadge, { backgroundColor: balanceColor }]}>
+                <Text style={styles.balanceBadgeText}>{balance === 0 ? '0' : balance}</Text>
+              </View>
+            )}
+            {isMatched && (
+              <View style={styles.matchedBadge}>
+                <Text style={styles.matchedBadgeText}>✓</Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -1683,7 +1744,11 @@ const Users = () => {
             </Text>
           </View>
           
-          <View style={styles.transferActions}>
+          <View style={styles.transferBadges}>
+            <View style={[styles.balanceBadge, { backgroundColor: '#28a745' }]}>
+              <Text style={styles.balanceBadgeText}>+1</Text>
+            </View>
+            <View style={styles.transferActions}>
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
@@ -1729,6 +1794,7 @@ const Users = () => {
             >
               <Ionicons name="arrow-undo" size={20} color="#fff" />
             </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -1754,7 +1820,11 @@ const Users = () => {
             </Text>
           </View>
           
-          <View style={styles.transferActions}>
+          <View style={styles.transferBadges}>
+            <View style={[styles.balanceBadge, { backgroundColor: '#28a745' }]}>
+              <Text style={styles.balanceBadgeText}>+1</Text>
+            </View>
+            <View style={styles.transferActions}>
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
@@ -1802,6 +1872,7 @@ const Users = () => {
                 <Ionicons name="arrow-back" size={20} color="#fff" />
               </TouchableOpacity>
             )}
+            </View>
           </View>
         </View>
       </View>
@@ -1834,7 +1905,11 @@ const Users = () => {
             </Text>
           </View>
           
-          <View style={styles.transferActions}>
+          <View style={styles.transferBadges}>
+            <View style={[styles.balanceBadge, { backgroundColor: '#28a745' }]}>
+              <Text style={styles.balanceBadgeText}>+1</Text>
+            </View>
+            <View style={styles.transferActions}>
             <TouchableOpacity
               style={styles.printButton}
               onPress={() => {
@@ -1876,6 +1951,7 @@ const Users = () => {
             
             <View style={styles.yellowBadge}>
               <Text style={styles.yellowBadgeText}>🟡</Text>
+            </View>
             </View>
           </View>
         </View>
@@ -2309,6 +2385,31 @@ const Users = () => {
                     {renderTransferItem({ item, index })}
                   </View>
                 ))}
+                
+                {/* Balance Summary */}
+                <View style={styles.balanceSummary}>
+                  <Text style={styles.balanceSummaryTitle}>📊 Podsumowanie bilansu</Text>
+                  {balanceStats.balance !== 0 && (
+                    <View style={styles.balanceRow}>
+                      <Text style={styles.balanceLabel}>
+                        {balanceStats.balance > 0 ? 'Zostanie dopisane do stanu:' : 'Zostanie odpisane ze stanu:'}
+                      </Text>
+                      <Text style={[styles.balanceValue, { color: balanceStats.balance > 0 ? '#28a745' : '#dc3545' }]}>
+                        {balanceStats.balance > 0 ? `+${balanceStats.balance}` : balanceStats.balance}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.balanceRow}>
+                    <Text style={styles.balanceLabel}>Zostanie odpisane z magazynu:</Text>
+                    <Text style={[styles.balanceValue, { color: balanceStats.warehouse === 0 ? '#6c757d' : '#dc3545' }]}>
+                      {balanceStats.warehouse === 0 ? '0' : `-${balanceStats.warehouse}`}
+                    </Text>
+                  </View>
+                  <View style={styles.balanceRow}>
+                    <Text style={styles.balanceLabel}>Zostanie przepisane do korekt:</Text>
+                    <Text style={[styles.balanceValue, { color: '#6c757d' }]}>{balanceStats.corrections}</Text>
+                  </View>
+                </View>
               </View>
             )}
 
@@ -2464,7 +2565,12 @@ const Users = () => {
 
                           {controlModalData.warehouseReturnedCount > 0 && (
                             <View style={styles.statRowRed}>
-                              <Text style={styles.statLabelRed}>📦 Usunięte ze stanu (wrócone do magazynu)</Text>
+                              <Text style={styles.statLabelRed}>
+                                📦 Usunięte ze stanu 
+                                {controlModalData.isWarehouseTransaction 
+                                  ? ' (wrócone do magazynu)' 
+                                  : ' (przywrócone użytkownikowi)'}
+                              </Text>
                               <Text style={styles.statValueTextRed}>-{controlModalData.warehouseReturnedCount}</Text>
                             </View>
                           )}
@@ -3898,6 +4004,51 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  transferBadges: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  balanceBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  balanceBadgeText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  balanceSummary: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  balanceSummaryTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  balanceValue: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 
