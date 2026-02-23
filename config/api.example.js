@@ -1,23 +1,20 @@
 // Konfiguracja API
-// INSTRUKCJA: Skopiuj ten plik do config/api.js i ustaw swój lokalny IP
-// cp config/api.example.js config/api.js
+// INSTRUKCJA: Ten plik nie jest już potrzebny!
+// 
+// Użyj pliku .env do konfiguracji:
+// 1. Skopiuj .env.example do .env
+// 2. Ustaw EXPO_PUBLIC_API_URL na swój adres IP
+// 
+// Przykłady:
+// EXPO_PUBLIC_API_URL=http://192.168.1.XXX:3000/api  # Dla fizycznego telefonu
+// EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api       # Dla emulatora Android
+// EXPO_PUBLIC_API_URL=http://localhost:3000/api      # Dla localhost
+// EXPO_PUBLIC_API_URL=https://bukowskiapp.pl/api     # Dla produkcji
 
 export const API_CONFIG = {
-    // PRODUCTION (odkomentuj dla produkcji):
-    // BASE_URL: 'https://bukowskiapp.pl/api',
-    
-    // DEVELOPMENT (wybierz odpowiednią opcję):
-    // Opcja 1 - localhost (jeśli backend i app są na tej samej maszynie):
-    BASE_URL: 'http://localhost:3000/api',
-    
-    // Opcja 2 - IP lokalne (jeśli testujesz na fizycznym telefonie):
-    // BASE_URL: 'http://192.168.1.XXX:3000/api', // Zamień XXX na swój IP
-    
-    TIMEOUT: 30000 // 30 sekund
+    BASE_URL: 'https://bukowskiapp.pl/api',
+    TIMEOUT: 30000
 };
 
-// Export dla kompatybilności
 export const API_BASE_URL = API_CONFIG.BASE_URL;
-
-// Funkcje pomocnicze
 export const getApiUrl = (endpoint) => `${API_CONFIG.BASE_URL}${endpoint}`;
