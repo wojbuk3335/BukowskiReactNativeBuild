@@ -316,6 +316,7 @@ const Users = () => {
     return indicators;
   }, [blueItems, allStates, selectedUserId, users]);
 
+<<<<<<< HEAD
   // Calculate balance stats for +/- display
   const balanceStats = useMemo(() => {
     let removed = 0;      // -1 (blue OK)
@@ -347,10 +348,50 @@ const Users = () => {
         if (pair && pair.warehouseProduct) {
           warehouse++;
           added++;
+=======
+  // Podsumowanie +/- dla sekcji przetwarzania (jak w web app)
+  const balanceStats = useMemo(() => {
+    if (!selectedUserId) {
+      return { removed: 0, added: 0, balance: 0, warehouse: 0, corrections: 0 };
+    }
+
+    let removed = 0;      // -1 (niebieskie OK)
+    let added = 0;        // +1 (żółte + pomarańczowe)
+    let warehouse = 0;    // wszystkie pomarańczowe (z magazynu)
+    let corrections = 0;  // niebieskie WARNING
+
+    if (Array.isArray(blueItems)) {
+      blueItems.forEach(item => {
+        const itemId = item.sourceId || item._id;
+        const indicator = blueItemIndicators[itemId];
+        if (indicator === 'OK') {
+          removed++;
+        } else if (indicator === 'WARNING') {
+          corrections++;
+>>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
         }
       });
     }
 
+<<<<<<< HEAD
+=======
+    const transferWarehouseCount = Array.isArray(transfers) ? transfers.length : 0;
+
+    const matchedWarehouseCount = Array.isArray(matchedPairs)
+      ? matchedPairs.filter(pair => {
+          const warehouseItem = pair?.warehouseProduct;
+          if (!warehouseItem) return false;
+          const alreadyInTransfers = transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
+          return !alreadyInTransfers;
+        }).length
+      : 0;
+
+    warehouse = transferWarehouseCount + matchedWarehouseCount;
+
+    const yellowCount = Array.isArray(yellowTransfers) ? yellowTransfers.length : 0;
+    added = warehouse + yellowCount;
+
+>>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
     return {
       removed,
       added,
@@ -358,7 +399,11 @@ const Users = () => {
       warehouse,
       corrections
     };
+<<<<<<< HEAD
   }, [blueItems, yellowTransfers, transfers, matchedPairs, blueItemIndicators]);
+=======
+  }, [blueItems, blueItemIndicators, transfers, matchedPairs, yellowTransfers, selectedUserId]);
+>>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
 
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
@@ -1543,31 +1588,37 @@ const Users = () => {
         ).length;
         
         // Calculate changes
-        const warehouseReturned = warehouseAfterCount - warehouseBeforeCount;
+        const warehouseReturned = result.restoredOrangeCount || 0; // 🟠 Bezpośrednio z backendu
         const stateChange = userStateAfter - userStateBefore;
         const isWarehouse = userSymbol === 'MAGAZYN' || userSymbol === 'Magazyn';
-        
+
         // Określ typ transakcji dla poprawnego tekstu w modalu
         const isWarehouseTransaction = lastTransaction?.transactionType === 'warehouse';
         const isIncomingTransfer = lastTransaction?.transactionType === 'incoming_transfer';
+
+        // 🆕 Szczegółowe liczniki ze backendu
+        const restoredBlueCount = result.restoredBlueCount || 0;        // 🔵 Niebieskie
+        const restoredYellowCount = result.restoredYellowCount || 0;    // 🟡 Żółte
+        const restoredOrangeCount = result.restoredOrangeCount || 0;    // 🟠 Pomarańczowe
         
-        // Calculate display values based on user type
-        let restoredCount, calculation;
-        
-        if (isWarehouse) {
-          // For warehouse: show items removed (negative value)
-          restoredCount = -stateChange; // Negative value (opposite of stateChange)
-          calculation = `${userStateBefore} + ${stateChange} (cofnięcie artykułów) = ${userStateAfter}`;
+        // Oblicz obliczenie na podstawie liczników
+        let calculation;
+        if (restoredBlueCount > 0 || restoredYellowCount > 0 || restoredOrangeCount > 0) {
+          const parts = [];
+          if (restoredBlueCount > 0) parts.push(`+${restoredBlueCount} (niebieskie)`);
+          if (restoredYellowCount > 0) parts.push(`-${restoredYellowCount} (żółte)`);
+          if (restoredOrangeCount > 0) parts.push(`-${restoredOrangeCount} (pomarańczowe)`);
+          calculation = `Stan: ${userStateBefore} = ${parts.join(' ')} = ${userStateAfter}`;
         } else {
-          // For selling points: don't show "restored count", only warehouse return
-          restoredCount = undefined;
           calculation = `Stan przed transakcją: ${userStateBefore}`;
         }
         
         setControlModalData({
           userSymbol: userSymbol,
           beforeCount: userStateBefore,
-          restoredCount: restoredCount,
+          restoredBlueCount: restoredBlueCount,        // 🔵 Niebieskie
+          restoredYellowCount: restoredYellowCount,    // 🟡 Żółte
+          restoredOrangeCount: restoredOrangeCount,    // 🟠 Pomarańczowe
           warehouseReturnedCount: warehouseReturned,
           expectedAfterCount: userStateAfter,
           actualAfterCount: userStateAfter,
@@ -1621,6 +1672,32 @@ const Users = () => {
     const barcode = (item.barcode || '').toLowerCase();
     return fullName.includes(search) || size.includes(search) || barcode.includes(search);
   });
+
+  // Podsumowanie magazynu (auto sparowane + ręcznie przeniesione)
+  const warehouseSummary = useMemo(() => {
+    const manualMovedCount = Array.isArray(transfers)
+      ? transfers.filter(item => item.fromWarehouse === true).length
+      : 0;
+    const baseCount = Array.isArray(warehouseItems)
+      ? warehouseItems.length + manualMovedCount
+      : manualMovedCount;
+    const matchedWarehouseIds = new Set(
+      Array.isArray(matchedPairs)
+        ? matchedPairs
+            .map(pair => pair?.warehouseProduct?._id)
+            .filter(Boolean)
+        : []
+    );
+    const autoMatchedCount = matchedWarehouseIds.size;
+    const availableCount = Math.max(0, baseCount - autoMatchedCount - manualMovedCount);
+
+    return {
+      baseCount,
+      autoMatchedCount,
+      manualMovedCount,
+      availableCount
+    };
+  }, [warehouseItems, transfers, matchedPairs]);
 
   const isWarehouseItemMatched = (itemId) => {
     // Check if item is in matched pairs (for graying out)
@@ -1685,7 +1762,7 @@ const Users = () => {
 
   const renderWarehouseItem = ({ item, index }) => {
     const isMatched = isWarehouseItemMatched(item._id);
-    const isGreyed = greyedWarehouseItems.has(item._id);
+    const isGreyed = isMatched || greyedWarehouseItems.has(item._id);
     
     return (
       <View style={[styles.warehouseCard, isGreyed && styles.warehouseCardMatched]}>
@@ -1711,7 +1788,7 @@ const Users = () => {
             disabled={isGreyed}
           >
             <Text style={styles.warehouseButtonText}>
-              {isGreyed ? 'Zablokowany!' : 'Przenieś'}
+              {isGreyed ? '🔒 Sparowany' : 'Przenieś'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -2312,6 +2389,15 @@ const Users = () => {
                   </TouchableOpacity>
                 )}
               </View>
+              <Text style={styles.warehouseFoundText}>
+                Znaleziono: {filteredWarehouse.length} produktów
+              </Text>
+              <Text style={styles.warehouseSummaryText}>
+                Stan magazynu: {warehouseSummary.baseCount}
+                {warehouseSummary.autoMatchedCount > 0 ? ` - ${warehouseSummary.autoMatchedCount} (sparowane)` : ''}
+                {warehouseSummary.manualMovedCount > 0 ? ` - ${warehouseSummary.manualMovedCount} (przeniesione)` : ''}
+                {' '}= {warehouseSummary.availableCount}
+              </Text>
 
               <ScrollView 
                 style={[
@@ -2385,6 +2471,7 @@ const Users = () => {
                     {renderTransferItem({ item, index })}
                   </View>
                 ))}
+<<<<<<< HEAD
                 
                 {/* Balance Summary */}
                 <View style={styles.balanceSummary}>
@@ -2410,6 +2497,37 @@ const Users = () => {
                     <Text style={[styles.balanceValue, { color: '#6c757d' }]}>{balanceStats.corrections}</Text>
                   </View>
                 </View>
+=======
+
+                {/* Podsumowanie +/- */}
+                {(blueItems.length + transfers.length + matchedPairs.length + yellowTransfers.length) > 0 && (
+                  <View style={styles.processingSummaryBox}>
+                    {balanceStats.balance !== 0 && (
+                      <Text
+                        style={[
+                          styles.summaryLine,
+                          balanceStats.balance > 0 ? styles.summaryPositive : styles.summaryNegative
+                        ]}
+                      >
+                        {balanceStats.balance > 0
+                          ? `Zostanie dopisane do stanu: +${balanceStats.balance}`
+                          : `Zostanie odpisane ze stanu: ${balanceStats.balance}`}
+                      </Text>
+                    )}
+                    <Text
+                      style={[
+                        styles.summaryLine,
+                        balanceStats.warehouse === 0 ? styles.summaryMuted : styles.summaryWarehouse
+                      ]}
+                    >
+                      Zostanie odpisane z magazynu: {balanceStats.warehouse === 0 ? '0' : `-${balanceStats.warehouse}`}
+                    </Text>
+                    <Text style={[styles.summaryLine, styles.summaryMuted]}>
+                      Zostanie przepisane do korekt: {balanceStats.corrections}
+                    </Text>
+                  </View>
+                )}
+>>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
               </View>
             )}
 
@@ -2556,14 +2674,38 @@ const Users = () => {
                       ) : (
                         <>
                           {/* For selling points: show restored products and removed items */}
-                          {controlModalData.restoredCount !== undefined && controlModalData.restoredCount > 0 && (
-                            <View style={styles.statRowGreen}>
-                              <Text style={styles.statLabelGreen}>↩️ Przywrócone produkty</Text>
-                              <Text style={styles.statValueTextGreen}>+{controlModalData.restoredCount}</Text>
-                            </View>
+                          {controlModalData.restoredBlueCount !== undefined && (
+                            <>
+                              {controlModalData.restoredBlueCount > 0 && (
+                                <View style={styles.statRowGreen}>
+                                  <Text style={styles.statLabelGreen}>🔵 Przywrócone (niebieskie)</Text>
+                                  <Text style={styles.statValueTextGreen}>+{controlModalData.restoredBlueCount}</Text>
+                                </View>
+                              )}
+
+                              {controlModalData.restoredYellowCount > 0 && (
+                                <View style={styles.statRowYellow}>
+                                  <Text style={styles.statLabelYellow}>🟡 Usunięte (żółte)</Text>
+                                  <Text style={styles.statValueTextYellow}>-{controlModalData.restoredYellowCount}</Text>
+                                </View>
+                              )}
+                            </>
+                          )}
+                          
+                          {/* Fallback dla starego podejścia */}
+                          {controlModalData.restoredCount !== undefined && controlModalData.restoredBlueCount === undefined && (
+                            <>
+                              {controlModalData.restoredCount > 0 && (
+                                <View style={styles.statRowGreen}>
+                                  <Text style={styles.statLabelGreen}>↩️ Przywrócone produkty</Text>
+                                  <Text style={styles.statValueTextGreen}>+{controlModalData.restoredCount}</Text>
+                                </View>
+                              )}
+                            </>
                           )}
 
                           {controlModalData.warehouseReturnedCount > 0 && (
+<<<<<<< HEAD
                             <View style={styles.statRowRed}>
                               <Text style={styles.statLabelRed}>
                                 📦 Usunięte ze stanu 
@@ -2572,6 +2714,11 @@ const Users = () => {
                                   : ' (przywrócone użytkownikowi)'}
                               </Text>
                               <Text style={styles.statValueTextRed}>-{controlModalData.warehouseReturnedCount}</Text>
+=======
+                            <View style={styles.statRowOrange}>
+                              <Text style={styles.statLabelOrange}>📦 Usunięte ze stanu (wrócone do magazynu)</Text>
+                              <Text style={styles.statValueTextOrange}>-{controlModalData.warehouseReturnedCount}</Text>
+>>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
                             </View>
                           )}
                         </>
@@ -2679,16 +2826,10 @@ const Users = () => {
                               </View>
                             )}
 
-                            {controlModalData.warehouseCount > 0 && (
-                              <View style={styles.statRowGreen}>
-                                <Text style={styles.statLabelGreen}>📦 Magazyn (dopis)</Text>
-                                <Text style={styles.statValueTextGreen}>+{controlModalData.warehouseCount}</Text>
-                              </View>
-                            )}
-
-                            {controlModalData.greenMatchedCount > 0 && (
-                              <View style={styles.statRowGray}>
-                                <Text style={styles.statLabelGray}>🟢 {controlModalData.greenMatchedCount} par dopasowanych (bilans: 0)</Text>
+                            {controlModalData.allOrangeCount > 0 && (
+                              <View style={styles.statRowOrange}>
+                                <Text style={styles.statLabelOrange}>🟠 Pomarańczowe (z magazynu)</Text>
+                                <Text style={styles.statValueTextOrange}>+{controlModalData.allOrangeCount}</Text>
                               </View>
                             )}
 
@@ -3477,26 +3618,26 @@ const styles = StyleSheet.create({
     color: "#999999",
     textAlign: "center",
   },
-  statRowRed: {
+  statRowOrange: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#3a1a1a",
+    backgroundColor: "#3a2a1a",
     padding: 12,
     borderRadius: 8,
     borderLeftWidth: 3,
-    borderLeftColor: "#ff5555",
+    borderLeftColor: "#ff9900",
     marginBottom: 10,
   },
-  statLabelRed: {
+  statLabelOrange: {
     fontSize: 13,
-    color: "#ffaaaa",
+    color: "#ffbb88",
     flex: 1,
   },
-  statValueTextRed: {
+  statValueTextOrange: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#ff6666",
+    color: "#ffaa44",
   },
   warehouseRemovalBox: {
     backgroundColor: "#fee2e2",
@@ -3889,6 +4030,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#cbd5e1",
   },
+  warehouseFoundText: {
+    fontSize: 12,
+    color: "#e2e8f0",
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  warehouseSummaryText: {
+    fontSize: 12,
+    color: "#cbd5e1",
+    marginBottom: 10,
+  },
   yellowBadge: {
     width: 40,
     height: 40,
@@ -3900,6 +4052,31 @@ const styles = StyleSheet.create({
   yellowBadgeText: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  processingSummaryBox: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#1f2937',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  summaryLine: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  summaryPositive: {
+    color: '#22c55e',
+  },
+  summaryNegative: {
+    color: '#ef4444',
+  },
+  summaryWarehouse: {
+    color: '#fb923c',
+  },
+  summaryMuted: {
+    color: '#94a3b8',
   },
   correctionIconContainer: {
     backgroundColor: '#FEF3C7',
