@@ -316,39 +316,6 @@ const Users = () => {
     return indicators;
   }, [blueItems, allStates, selectedUserId, users]);
 
-<<<<<<< HEAD
-  // Calculate balance stats for +/- display
-  const balanceStats = useMemo(() => {
-    let removed = 0;      // -1 (blue OK)
-    let added = 0;        // +1 (yellow + orange - wszystko co dodajemy do stanu)
-    let warehouse = 0;    // all orange (pokazuje skąd pochodzą)
-    let corrections = 0;  // 0 (blue WARNING)
-
-    // Count blue items
-    blueItems.forEach(item => {
-      const itemId = item.sourceId || item._id;
-      const indicator = blueItemIndicators[itemId];
-      if (indicator === 'OK') {
-        removed++;
-      } else if (indicator === 'WARNING') {
-        corrections++;
-      }
-    });
-
-    // Count yellow transfers - dodajemy do stanu
-    added += yellowTransfers.length;
-
-    // Count orange from transfers (manually added) - dodajemy do stanu I liczymy do warehouse
-    warehouse += transfers.length;
-    added += transfers.length;
-
-    // Count orange from matchedPairs (paired warehouse items) - dodajemy do stanu I liczymy do warehouse
-    if (Array.isArray(matchedPairs)) {
-      matchedPairs.forEach(pair => {
-        if (pair && pair.warehouseProduct) {
-          warehouse++;
-          added++;
-=======
   // Podsumowanie +/- dla sekcji przetwarzania (jak w web app)
   const balanceStats = useMemo(() => {
     if (!selectedUserId) {
@@ -368,13 +335,10 @@ const Users = () => {
           removed++;
         } else if (indicator === 'WARNING') {
           corrections++;
->>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
         }
       });
     }
 
-<<<<<<< HEAD
-=======
     const transferWarehouseCount = Array.isArray(transfers) ? transfers.length : 0;
 
     const matchedWarehouseCount = Array.isArray(matchedPairs)
@@ -391,7 +355,6 @@ const Users = () => {
     const yellowCount = Array.isArray(yellowTransfers) ? yellowTransfers.length : 0;
     added = warehouse + yellowCount;
 
->>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
     return {
       removed,
       added,
@@ -399,11 +362,7 @@ const Users = () => {
       warehouse,
       corrections
     };
-<<<<<<< HEAD
-  }, [blueItems, yellowTransfers, transfers, matchedPairs, blueItemIndicators]);
-=======
   }, [blueItems, blueItemIndicators, transfers, matchedPairs, yellowTransfers, selectedUserId]);
->>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
 
   useEffect(() => {
     if (users.length > 0 && !selectedUserId) {
@@ -2471,33 +2430,6 @@ const Users = () => {
                     {renderTransferItem({ item, index })}
                   </View>
                 ))}
-<<<<<<< HEAD
-                
-                {/* Balance Summary */}
-                <View style={styles.balanceSummary}>
-                  <Text style={styles.balanceSummaryTitle}>📊 Podsumowanie bilansu</Text>
-                  {balanceStats.balance !== 0 && (
-                    <View style={styles.balanceRow}>
-                      <Text style={styles.balanceLabel}>
-                        {balanceStats.balance > 0 ? 'Zostanie dopisane do stanu:' : 'Zostanie odpisane ze stanu:'}
-                      </Text>
-                      <Text style={[styles.balanceValue, { color: balanceStats.balance > 0 ? '#28a745' : '#dc3545' }]}>
-                        {balanceStats.balance > 0 ? `+${balanceStats.balance}` : balanceStats.balance}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Zostanie odpisane z magazynu:</Text>
-                    <Text style={[styles.balanceValue, { color: balanceStats.warehouse === 0 ? '#6c757d' : '#dc3545' }]}>
-                      {balanceStats.warehouse === 0 ? '0' : `-${balanceStats.warehouse}`}
-                    </Text>
-                  </View>
-                  <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Zostanie przepisane do korekt:</Text>
-                    <Text style={[styles.balanceValue, { color: '#6c757d' }]}>{balanceStats.corrections}</Text>
-                  </View>
-                </View>
-=======
 
                 {/* Podsumowanie +/- */}
                 {(blueItems.length + transfers.length + matchedPairs.length + yellowTransfers.length) > 0 && (
@@ -2527,7 +2459,6 @@ const Users = () => {
                     </Text>
                   </View>
                 )}
->>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
               </View>
             )}
 
@@ -2705,20 +2636,9 @@ const Users = () => {
                           )}
 
                           {controlModalData.warehouseReturnedCount > 0 && (
-<<<<<<< HEAD
-                            <View style={styles.statRowRed}>
-                              <Text style={styles.statLabelRed}>
-                                📦 Usunięte ze stanu 
-                                {controlModalData.isWarehouseTransaction 
-                                  ? ' (wrócone do magazynu)' 
-                                  : ' (przywrócone użytkownikowi)'}
-                              </Text>
-                              <Text style={styles.statValueTextRed}>-{controlModalData.warehouseReturnedCount}</Text>
-=======
                             <View style={styles.statRowOrange}>
                               <Text style={styles.statLabelOrange}>📦 Usunięte ze stanu (wrócone do magazynu)</Text>
                               <Text style={styles.statValueTextOrange}>-{controlModalData.warehouseReturnedCount}</Text>
->>>>>>> 5a11f36 (feat: improve processing/undo modals and warehouse counts)
                             </View>
                           )}
                         </>
