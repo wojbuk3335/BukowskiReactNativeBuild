@@ -2482,7 +2482,8 @@ const Users = () => {
                 )}
               </TouchableOpacity>
 
-              {lastTransaction && (
+              {lastTransaction && 
+               lastTransaction.userSymbol === filteredUsers.find(u => u._id === selectedUserId)?.symbol && (
                 <TouchableOpacity
                   style={[styles.undoButton, processing && styles.undoButtonDisabled]}
                   onPress={() => setShowUndoConfirmModal(true)}
