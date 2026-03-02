@@ -1184,190 +1184,105 @@ const Users = () => {
       const checkResult = await checkForMissingItems(blueItems, userSymbol, sharedTransactionId);
       const availableBlueItems = checkResult.availableItems;
       const missingBlueCount = checkResult.missingItems.length;
+      const missingItems = checkResult.missingItems || [];
 
-      // Step 2: Process BLUE items that ARE available (remove from state)
-      for (const blue of availableBlueItems) {
-        try {
-          // Different endpoints for sales vs transfers
-          if (blue.type === 'sale') {
-            // Process as sale - use sourceId as _id
-            const url = getApiUrl('/transfer/process-sales');
-            const { accessToken } = await tokenService.getTokens();
-            
-            // Get the user symbol from the selected user
-            const userSymbol = selectedUserData?.symbol || selectedUserData?.sellingPoint;
-            
-            const saleItem = {
-              _id: blue.sourceId,
-              barcode: blue.barcode,
-              fullName: blue.fullName,
-              size: blue.size,
-              from: userSymbol
-            };
-            
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                salesItems: [saleItem],
-                selectedUser: selectedUserId,
-                transactionId: sharedTransactionId
-              })
-            });
-            
-            if (response.ok) {
-              allBlueCount++;
-              processedCount++;
-            }
-          } else {
-            // Process as transfer - use full transfer object from backend (includes productId)
-            const url = getApiUrl('/transfer/process-all');
-            const { accessToken } = await tokenService.getTokens();
-            
-            // Use the full blue object from backend which now includes productId, transfer_from, transfer_to
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                transfers: [blue], // Send full object from backend
-                selectedDate: dateStr,
-                selectedUser: selectedUserId,
-                transactionId: sharedTransactionId
-              })
-            });
-            
-            if (response.ok) {
-              allBlueCount++;
-              processedCount++;
-            }
-          }
-        } catch (error) {
-          console.error('Error processing blue item:', error);
-        }
-      }
+      // Step 2: Prepare all items for BATCH processing
+      // Separate sales from transfers
+      const salesItemsToProcess = availableBlueItems
+        .filter(blue => blue.type === 'sale')
+        .map(blue => ({
+          _id: blue.sourceId,
+          barcode: blue.barcode,
+          fullName: blue.fullName,
+          size: blue.size,
+          from: userSymbol
+        }));
 
-      // Step 2: Process WAREHOUSE items (add to state)
-      const warehouseItemsToProcess = transfers.filter(t => t.fromWarehouse);
-      
-      if (warehouseItemsToProcess.length > 0) {
-        try {
-          const url = getApiUrl('/transfer/process-warehouse');
-          const { accessToken } = await tokenService.getTokens();
-          
-          const itemsWithTransferTo = warehouseItemsToProcess.map(item => ({
-            ...item,
-            transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
-          }));
-          
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              warehouseItems: itemsWithTransferTo,
-              selectedDate: dateStr,
-              selectedUser: selectedUserId,
-              transactionId: sharedTransactionId
-            })
-          });
-          
-          if (response.ok) {
-            const result = await response.json();
-            orangeCount = result.processedCount || warehouseItemsToProcess.length;
-            processedCount += orangeCount;
-          }
-        } catch (error) {
-          console.error('Error processing warehouse items:', error);
-        }
-      }
+      const transfersToProcess = availableBlueItems
+        .filter(blue => blue.type !== 'sale');
 
-      // Step 3: Process MATCHED warehouse items (auto-matched green/orange items)
-      // Like web app lines 1884-1895: ALWAYS add matched items to state
-      if (matchedPairs && matchedPairs.length > 0) {
-        try {
-          const url = getApiUrl('/transfer/process-warehouse');
-          const { accessToken } = await tokenService.getTokens();
-          
-          // Filter out items that are already in manual transfers
-          const matchedWarehouseItems = matchedPairs
-            .filter(pair => {
-              const warehouseItem = pair.warehouseProduct;
-              // Don't process if already manually moved
-              return !transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
-            })
-            .map(pair => ({
-              ...pair.warehouseProduct,
-              transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
-            }));
-          
-          if (matchedWarehouseItems.length > 0) {
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                warehouseItems: matchedWarehouseItems,
-                selectedDate: dateStr,
-                selectedUser: selectedUserId,
-                transactionId: sharedTransactionId
-              })
-            });
-            
-            if (response.ok) {
-              const result = await response.json();
-              greenMatchedCount = result.processedCount || matchedWarehouseItems.length;
-              processedCount += greenMatchedCount;
-            }
-          }
-        } catch (error) {
-          console.error('Error processing matched warehouse items:', error);
-        }
-      }
+      // Warehouse items (Orange) - manual selections
+      const warehouseItemsToProcess = transfers
+        .filter(t => t.fromWarehouse)
+        .map(item => ({
+          ...item,
+          transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
+        }));
 
-      // Step 4: Process YELLOW transfers (incoming transfers from other users)
-      if (yellowTransfers && yellowTransfers.length > 0) {
-        try {
-          const url = getApiUrl('/transfer/process-warehouse');
-          const { accessToken } = await tokenService.getTokens();
+      // Matched warehouse items (Green) - auto-matched pairs
+      const matchedWarehouseItems = (matchedPairs || [])
+        .filter(pair => {
+          const warehouseItem = pair.warehouseProduct;
+          // Don't process if already manually moved
+          return !transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
+        })
+        .map(pair => ({
+          ...pair.warehouseProduct,
+          transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
+        }));
+
+      // Combine all warehouse items (Orange + Green)
+      const allWarehouseItems = [...warehouseItemsToProcess, ...matchedWarehouseItems];
+
+      // Yellow transfers (incoming from other selling points)
+      const yellowItems = (yellowTransfers || []).map(transfer => ({
+        ...transfer,
+        transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
+      }));
+
+      // Step 3: Execute SINGLE BATCH request with ALL items
+      try {
+        const url = getApiUrl('/transfer/process-batch');
+        const { accessToken } = await tokenService.getTokens();
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            salesItems: salesItemsToProcess,
+            transfers: transfersToProcess,
+            warehouseItems: allWarehouseItems,
+            yellowItems: yellowItems,
+            correctionsToCreate: missingItems,
+            selectedDate: dateStr,
+            selectedUser: selectedUserId,
+            transactionId: sharedTransactionId
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Batch processing failed:', errorText);
           
-          const yellowItems = yellowTransfers.map(transfer => ({
-            ...transfer,
-            transfer_to: selectedUserData?.symbol || selectedUserData?.sellingPoint
-          }));
-          
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              warehouseItems: yellowItems,
-              selectedDate: dateStr,
-              selectedUser: selectedUserId,
-              transactionId: sharedTransactionId,
-              isIncomingTransfer: true
-            })
-          });
-          
-          if (response.ok) {
-            const result = await response.json();
-            yellowCount = result.processedCount || yellowTransfers.length;
-            processedCount += yellowCount;
-          }
-        } catch (error) {
-          console.error('Error processing yellow transfers:', error);
+          // TODO: Show error modal (deferred until clean EAS build)
+          Alert.alert(
+            'Błąd przetwarzania',
+            `Nie udało się przetworzyć transakcji. ${errorText}`,
+            [{ text: 'OK' }]
+          );
+          return;
         }
+
+        const batchResult = await response.json();
+        
+        // Update counters from batch result
+        allBlueCount = availableBlueItems.length;
+        orangeCount = warehouseItemsToProcess.length;
+        greenMatchedCount = matchedWarehouseItems.length;
+        yellowCount = yellowItems.length;
+        processedCount = allBlueCount + orangeCount + greenMatchedCount + yellowCount;
+
+      } catch (error) {
+        console.error('Error in batch processing:', error);
+        Alert.alert(
+          'Błąd połączenia',
+          'Nie udało się połączyć z serwerem. Sprawdź połączenie internetowe.',
+          [{ text: 'OK' }]
+        );
+        return;
       }
 
       // Calculate expected result BEFORE refresh
