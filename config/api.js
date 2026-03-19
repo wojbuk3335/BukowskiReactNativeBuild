@@ -1,6 +1,26 @@
 // Konfiguracja API
 // Używa zmiennych środowiskowych z .env lub wartości domyślnych
 
+const getExpoLanHost = () => {
+    try {
+        const expoConstants = require('expo-constants');
+        const Constants = expoConstants?.default || expoConstants;
+        const hostUri =
+            Constants?.expoConfig?.hostUri ||
+            Constants?.manifest2?.extra?.expoClient?.hostUri ||
+            Constants?.manifest?.debuggerHost ||
+            null;
+
+        if (!hostUri || typeof hostUri !== 'string') {
+            return null;
+        }
+
+        return hostUri.split(':')[0] || null;
+    } catch (_error) {
+        return null;
+    }
+};
+
 // Pobierz BASE_URL z .env lub użyj domyślnej wartości
 const getBaseUrl = () => {
     // W środowisku testowym (CI/CD) użyj mock URL
@@ -11,6 +31,17 @@ const getBaseUrl = () => {
     // Użyj zmiennej środowiskowej jeśli istnieje
     if (process.env.EXPO_PUBLIC_API_URL) {
         return process.env.EXPO_PUBLIC_API_URL;
+    }
+
+    // W development próbuj automatycznie użyć IP hosta Expo (działa na fizycznym telefonie)
+    if (process.env.NODE_ENV === 'development') {
+        const lanHost = getExpoLanHost();
+        if (lanHost) {
+            return `http://${lanHost}:3000/api`;
+        }
+
+        // Fallback dla emulatora/symulatora
+        return 'http://localhost:3000/api';
     }
     
     // Domyślnie produkcja

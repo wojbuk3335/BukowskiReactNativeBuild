@@ -547,22 +547,30 @@ const PrintLabels = () => {
     
     // item.fullName is product ID or item.product is product name
     const itemFullName = item.product || getProductName(item.fullName);
-    const normalizedFullName = itemFullName ? itemFullName.trim() : null;
+    // Normalize: trim + lowercase for case-insensitive matching (mirrors web app logic)
+    const normalizedFullName = itemFullName 
+      ? itemFullName.toString().trim().toLowerCase()
+      : null;
 
     const priceListItem = priceList.items.find(priceItem => {
       const priceItemCode = priceItem.code !== undefined && priceItem.code !== null
         ? priceItem.code.toString().trim()
         : null;
-      const priceItemFullName = priceItem.fullName ? priceItem.fullName.trim() : null;
+      const priceItemFullName = priceItem.fullName 
+        ? priceItem.fullName.toString().trim().toLowerCase()
+        : null;
 
+      // Match by barcode if both available
       if (normalizedBarcode && priceItemCode && priceItemCode === normalizedBarcode) {
         return true;
       }
 
+      // Match by fullName (case-insensitive)
       if (priceItemFullName && normalizedFullName && priceItemFullName === normalizedFullName) {
         return true;
       }
 
+      // Otherwise require both name and category match
       return priceItemFullName && normalizedFullName &&
         priceItemFullName === normalizedFullName &&
         priceItem.category === item.category;
@@ -637,19 +645,10 @@ const PrintLabels = () => {
         ? getSellingPointLabel(userId)
         : (item.sellingPoints || getSellingPointLabel(item.sellingPoint));
       
+      // Dynamically get point number from user.pointNumber (never use hardcoded map)
       let symbol = 'N/A';
-      const pointMapping = {
-        P: '01',
-        M: '02',
-        K: '03',
-        T: '04',
-        S: '05',
-        Kar: '06',
-        Magazyn: '02'
-      };
-      
-      // Get pointNumber from user if available
       const userToCheck = userId || item.sellingPoint || item.sellingPoints;
+      
       if (userToCheck) {
         let user;
         // Check if it's a MongoDB ID
@@ -658,30 +657,17 @@ const PrintLabels = () => {
         } else {
           // It's a symbol like "T", "M", find user by symbol or sellingPoint
           user = allUsers.find(u => {
-            const symbol = u.symbol || '';
+            const userSymbol = u.symbol || '';
             const sellingPoint = u.sellingPoint || '';
-            return symbol === userToCheck || 
+            return userSymbol === userToCheck || 
                    sellingPoint === userToCheck ||
                    (u.role === 'magazyn' && userToCheck === 'MAGAZYN');
           });
         }
         
-        if (user && user.pointNumber) {
+        // ALWAYS use pointNumber from database - never fallback to hardcoded map
+        if (user?.pointNumber) {
           symbol = user.pointNumber;
-        } else if (user && user.symbol) {
-          // Try symbol from user
-          const userSymbol = user.symbol;
-          if (pointMapping[userSymbol]) {
-            symbol = pointMapping[userSymbol];
-          } else {
-            // Try from sellingPoint name
-            for (const [key, value] of Object.entries(pointMapping)) {
-              if (sellingPointLabel.includes(key)) {
-                symbol = value;
-                break;
-              }
-            }
-          }
         }
       }
 
