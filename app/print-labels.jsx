@@ -788,71 +788,54 @@ const PrintLabels = () => {
   const handlePrintLabel = async (item, userId = null, uniqueKey = null) => {
     const itemBarcode = item.barcode || item.barcodes;
     setPrintingId(uniqueKey || itemBarcode);
-    
+
     try {
       const itemSize = getSizeLabel(item.size);
-      const priceInfo = getPriceFromPriceList(item, itemSize, userId);
+      const sellingPointId = userId?.toString();
 
-      // Check if we have dedicated price list
-      if (priceInfo) {
-        // Priority 1: Size exception - print ONE label with exception price
-        if (priceInfo.sizeExceptionPrice) {
-          const zplCode = generateZplCode(item, priceInfo.sizeExceptionPrice, userId);
-          const result = await sendZplToPrinter(zplCode);
-          setPrintingId(null);
-          return result;
-        }
-        
-        // Priority 2: Has discount - print TWO labels (regular + discount)
-        if (priceInfo.hasDiscount) {
-          const regularZpl = generateZplCode(item, priceInfo.regularPrice, userId);
-          const discountZpl = generateZplCode(item, priceInfo.discountPrice, userId);
+      if (!sellingPointId) {
+        console.error('❌ Brak sellingPointId dla produktu:', item.fullName);
+        setPrintingId(null);
+        return false;
+      }
 
-          const regularResult = await sendZplToPrinter(regularZpl);
-          const discountResult = await sendZplToPrinter(discountZpl);
+      // Call backend to generate ZPL (single source of truth)
+      const response = await tokenService.authenticatedFetch(getApiUrl('/print/generate-zpl'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sellingPointId,
+          itemId: item._id?.toString() || item.productId?.toString(),
+          itemBarcode: itemBarcode?.toString(),
+          itemFullName: item.fullName,
+          itemSize,
+          colorId: item.color?._id?.toString() || item.colorId?.toString(),
+        }),
+      });
 
-          setPrintingId(null);
-          return regularResult && discountResult;
-        }
-        
-        // Priority 3: Regular price only - print ONE label
-        const zplCode = generateZplCode(item, priceInfo.regularPrice, userId);
+      if (!response.ok) {
+        console.error('❌ Backend ZPL error:', response.status);
+        setPrintingId(null);
+        return false;
+      }
+
+      const { zplCodes } = await response.json();
+      if (!zplCodes || zplCodes.length === 0) {
+        setPrintingId(null);
+        return false;
+      }
+
+      // Send each ZPL label to printer
+      let allOk = true;
+      for (const zplCode of zplCodes) {
         const result = await sendZplToPrinter(zplCode);
-        setPrintingId(null);
-        return result;
+        if (!result) allOk = false;
       }
 
-      // No dedicated price list - use goods prices
-      const productName = item.product || getProductName(item.fullName);
-      const product = products.find(p => p.label === productName || p.value === item.fullName);
-      
-      if (!product) {
-        // Fallback to item price if product not found
-        const fallbackPrice = item.price || null;
-        const zplCode = generateZplCode(item, fallbackPrice, userId);
-        const result = await sendZplToPrinter(zplCode);
-        setPrintingId(null);
-        return result;
-      }
-
-      // Check if goods has discount price - print TWO labels
-      if (product.discountPrice && product.discountPrice > 0) {
-        const regularZpl = generateZplCode(item, product.price, userId);
-        const discountZpl = generateZplCode(item, product.discountPrice, userId);
-
-        const regularResult = await sendZplToPrinter(regularZpl);
-        const discountResult = await sendZplToPrinter(discountZpl);
-
-        setPrintingId(null);
-        return regularResult && discountResult;
-      }
-
-      // No discount - print ONE label with regular price
-      const zplCode = generateZplCode(item, product.price, userId);
-      const result = await sendZplToPrinter(zplCode);
       setPrintingId(null);
-      return result;
+      return allOk;
     } catch (error) {
+      console.error('❌ handlePrintLabel error:', error);
       setPrintingId(null);
       return false;
     }

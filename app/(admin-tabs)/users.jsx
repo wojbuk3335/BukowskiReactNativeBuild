@@ -889,99 +889,59 @@ const Users = () => {
       return;
     }
 
-    // Step 1: Print labels for orange and yellow items
+    // Step 1: Print labels in strict order:
+    // 1) yellow, 2) orange auto-matched, 3) orange manual
+    const manualOrangeTransfers = transfers.filter(t => t.fromWarehouse);
+    const manualOrangeIds = new Set(manualOrangeTransfers.map(item => item?._id).filter(Boolean));
+    const autoMatchedOrange = matchedPairs
+      .map(pair => pair?.warehouseProduct)
+      .filter(Boolean)
+      .filter(item => !manualOrangeIds.has(item._id))
+      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0)); // higher price first
+
+    const enrichForPrint = (item) => {
+      let enrichedItem = { ...item };
+      const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
+
+      if (!enrichedItem.price) {
+        const matchingWarehouse = warehouseItems.find(w =>
+          w.barcode === item.barcode || w.fullName === itemFullName
+        );
+        if (matchingWarehouse) {
+          enrichedItem.price = matchingWarehouse.price;
+        }
+      }
+
+      if (!enrichedItem.color && itemFullName && allProducts.length > 0) {
+        const productByName = allProducts.find(p => p.fullName === itemFullName);
+        if (productByName) {
+          if (!enrichedItem.price) {
+            enrichedItem.price = productByName.price;
+          }
+          enrichedItem.color = productByName.color;
+        }
+      }
+
+      if (!enrichedItem.price) {
+        enrichedItem.price = 0;
+      }
+
+      return enrichedItem;
+    };
+
     const itemsToPrint = [
-      ...transfers.filter(t => t.fromWarehouse).map(item => {
-        // Enrich transfer items with price AND color
-        let enrichedItem = { ...item };
-        const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
-        
-        // Try warehouse first for price (match by barcode OR fullName)
-        if (!enrichedItem.price) {
-          const matchingWarehouse = warehouseItems.find(w => 
-            w.barcode === item.barcode || w.fullName === itemFullName
-          );
-          if (matchingWarehouse) {
-            enrichedItem.price = matchingWarehouse.price;
-          }
-        }
-        
-        // Always try to get color from allProducts cache
-        if (!enrichedItem.color && itemFullName && allProducts.length > 0) {
-          const productByName = allProducts.find(p => p.fullName === itemFullName);
-          if (productByName) {
-            if (!enrichedItem.price) {
-              enrichedItem.price = productByName.price;
-            }
-            enrichedItem.color = productByName.color;
-          }
-        }
-        
-        // Fallback price to 0 if still not found
-        if (!enrichedItem.price) {
-          enrichedItem.price = 0;
-        }
-        
-        return enrichedItem;
-      }), // Orange from warehouse
-      ...matchedPairs.map(pair => {
-        // Orange matched items - enrich with price AND color if missing
-        let warehouseItem = { ...pair.warehouseProduct };
-        const itemFullName = typeof warehouseItem.fullName === 'string' ? warehouseItem.fullName : warehouseItem.fullName?.fullName;
-        
-        // Try allProducts by fullName for both price and color
-        if (itemFullName && allProducts.length > 0) {
-          const productByName = allProducts.find(p => p.fullName === itemFullName);
-          if (productByName) {
-            if (!warehouseItem.price) {
-              warehouseItem.price = productByName.price;
-            }
-            if (!warehouseItem.color) {
-              warehouseItem.color = productByName.color;
-            }
-          }
-        }
-        
-        // Fallback price to 0 if still not found
-        if (!warehouseItem.price) {
-          warehouseItem.price = 0;
-        }
-        
-        return warehouseItem;
-      }), // Orange matched pairs
       ...yellowTransfers.map(item => {
-        // Enrich yellow transfer items with price AND color
-        let enrichedItem = { ...item };
-        const itemFullName = typeof item.fullName === 'string' ? item.fullName : item.fullName?.fullName;
-        
-        // Try warehouse first for price (match by barcode OR fullName)
-        if (!enrichedItem.price) {
-          const matchingWarehouse = warehouseItems.find(w => 
-            w.barcode === item.barcode || w.fullName === itemFullName
-          );
-          if (matchingWarehouse) {
-            enrichedItem.price = matchingWarehouse.price;
-          }
-        }
-        
-        // Always try to get color from allProducts cache
-        if (!enrichedItem.color && itemFullName && allProducts.length > 0) {
-          const productByName = allProducts.find(p => p.fullName === itemFullName);
-          if (productByName) {
-            if (!enrichedItem.price) {
-              enrichedItem.price = productByName.price;
-            }
-            enrichedItem.color = productByName.color;
-          }
-        }
-        
-        // Fallback price to 0 if still not found
-        if (!enrichedItem.price) {
-          enrichedItem.price = 0;
-        }
-        
-        return enrichedItem;
-      }) // Yellow incoming transfers
+        // Enrich transfer items with price AND color
+        return enrichForPrint(item);
+      }), // Yellow incoming transfers
+      ...autoMatchedOrange.map(item => {
+        // Orange auto-matched
+        return enrichForPrint(item);
+      }),
+      ...manualOrangeTransfers.map(item => {
+        // Orange manual (from warehouse)
+        return enrichForPrint(item);
+      })
     ];
 
     if (itemsToPrint.length > 0) {
@@ -1994,14 +1954,16 @@ const Users = () => {
       const shouldPrintTwoLabels = finalPriceInfo && finalPriceInfo.hasDiscount && !finalPriceInfo.sizeExceptionPrice;
 
       if (shouldPrintTwoLabels) {
-        
-        const regularZpl = generateZplCode(item, finalPriceInfo.regularPrice);
-        const discountZpl = generateZplCode(item, finalPriceInfo.discountPrice);
+        // Higher price first, lower price second (consistent with web)
+        const higherPrice = Math.max(finalPriceInfo.regularPrice, finalPriceInfo.discountPrice);
+        const lowerPrice = Math.min(finalPriceInfo.regularPrice, finalPriceInfo.discountPrice);
+        const higherZpl = generateZplCode(item, higherPrice);
+        const lowerZpl = generateZplCode(item, lowerPrice);
 
-        const regularResult = await sendZplToPrinter(regularZpl);
-        const discountResult = await sendZplToPrinter(discountZpl);
+        const higherResult = await sendZplToPrinter(higherZpl);
+        const lowerResult = await sendZplToPrinter(lowerZpl);
 
-        return regularResult && discountResult;
+        return higherResult && lowerResult;
       }
 
       // Print single label
@@ -2215,12 +2177,19 @@ const Users = () => {
                   </View>
                 ))}
                 
-                {/* Matched Warehouse Items (rendered AFTER all blue items) - ONE PER PAIR */}
+                {/* Yellow Transfer Items (incoming from other users) */}
+                {yellowTransfers.map((item, index) => (
+                  <View key={`yellow-${item._id}-${index}`}>
+                    {renderYellowTransferItem({ item, index })}
+                  </View>
+                ))}
+
+                {/* Matched Warehouse Items (orange auto-matched) */}
                 {matchedPairs.map((pair, pairIndex) => {
                   const warehouseItem = pair.warehouseProduct;
                   // Check if this warehouse item is already in transfers (manually moved)
                   const alreadyInTransfers = transfers.some(t => t._id === warehouseItem._id && t.fromWarehouse);
-                  
+
                   if (!alreadyInTransfers) {
                     return (
                       <View key={`matched-warehouse-${warehouseItem._id}-${pairIndex}`}>
@@ -2230,13 +2199,6 @@ const Users = () => {
                   }
                   return null;
                 })}
-                
-                {/* Yellow Transfer Items (incoming from other users) */}
-                {yellowTransfers.map((item, index) => (
-                  <View key={`yellow-${item._id}-${index}`}>
-                    {renderYellowTransferItem({ item, index })}
-                  </View>
-                ))}
                 
                 {/* Transfer Items (manually moved from warehouse) */}
                 {transfers.map((item, index) => (
