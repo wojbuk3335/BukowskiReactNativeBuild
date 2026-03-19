@@ -72,6 +72,10 @@ const Users = () => {
   const [printErrorMessage, setPrintErrorMessage] = useState('');
   const [processingStatusMessage, setProcessingStatusMessage] = useState("");
   const [allProcessed, setAllProcessed] = useState(false);
+  
+  // Batch error modal
+  const [showBatchErrorModal, setShowBatchErrorModal] = useState(false);
+  const [batchErrorMessage, setBatchErrorMessage] = useState('');
   const [priceList, setPriceList] = useState(null);
   const [priceListLoading, setPriceListLoading] = useState(false);
   const [priceListCount, setPriceListCount] = useState(0);
@@ -776,120 +780,8 @@ const Users = () => {
         }
       });
       
-      // If there are missing items, save them to corrections table
-      if (missingItems.length > 0) {
-        const correctionsUrl = getApiUrl('/corrections/multiple');
-        const correctionsResponse = await fetch(correctionsUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(missingItems)
-        });
-        
-        if (correctionsResponse.ok) {
-          // Mark missing transfers as blueProcessed
-          for (const missingItem of missingItems) {
-            if (missingItem.originalData && missingItem.originalData._id && !missingItem.originalData.isFromSale) {
-              try {
-                const updateUrl = getApiUrl(`/transfer/${missingItem.originalData._id}`);
-                await fetch(updateUrl, {
-                  method: 'PUT',
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    blueProcessed: true,
-                    blueProcessedAt: new Date()
-                  })
-                });
-              } catch (error) {
-                console.error(`Error marking transfer as processed:`, error);
-              }
-            }
-            
-            // Mark missing sales as processed
-            if (missingItem.originalData && missingItem.originalData._id && missingItem.originalData.isFromSale) {
-              try {
-                const getSaleUrl = getApiUrl(`/sales/${missingItem.originalData._id}`);
-                const getSaleResponse = await fetch(getSaleUrl, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                });
-                
-                if (getSaleResponse.ok) {
-                  const currentSaleData = await getSaleResponse.json();
-                  const updatedSaleData = {
-                    ...currentSaleData,
-                    processed: true,
-                    processedAt: new Date().toISOString()
-                  };
-                  
-                  delete updatedSaleData._id;
-                  delete updatedSaleData.__v;
-                  delete updatedSaleData.date;
-                  
-                  const updateSaleUrl = getApiUrl(`/sales/update-sales/${missingItem.originalData._id}`);
-                  await fetch(updateSaleUrl, {
-                    method: 'PATCH',
-                    headers: {
-                      'Authorization': `Bearer ${accessToken}`,
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(updatedSaleData)
-                  });
-                }
-              } catch (error) {
-                console.error(`Error updating sale:`, error);
-              }
-            }
-          }
-          
-          // Show corrections modal
-          setCorrectionsData({
-            title: '⚠️ WYKRYTO BRAKI W STANIE',
-            items: missingItems,
-            count: missingItems.length,
-            success: true
-          });
-          setShowCorrectionsModal(true);
-        } else {
-          setCorrectionsData({
-            title: '⚠️ WYKRYTO BRAKI - BŁĄD ZAPISU',
-            items: missingItems,
-            count: missingItems.length,
-            success: false
-          });
-          setShowCorrectionsModal(true);
-        }
-      }
-      
-      // Mark available transfers as blueProcessed
-      const availableTransfers = availableItems.filter(item => item.type !== 'sale');
-      if (availableTransfers.length > 0) {
-        for (const transfer of availableTransfers) {
-          try {
-            const updateUrl = getApiUrl(`/transfer/${transfer.sourceId}`);
-            await fetch(updateUrl, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                blueProcessed: true,
-                blueProcessedAt: new Date()
-              })
-            });
-          } catch (error) {
-            console.error('Error marking available transfer as processed:', error);
-          }
-        }
-      }
-      
+      // IMPORTANT: pre-check must be read-only.
+      // All writes (flags, corrections, history, state) are persisted only by /transfer/process-batch.
       return { missingItems, availableItems };
     } catch (error) {
       console.error('Error checking for missing items:', error);
@@ -1175,6 +1067,7 @@ const Users = () => {
       let yellowCount = 0;
       let orangeCount = 0;
       let greenMatchedCount = 0;
+      let correctionsCount = 0;
       
       // Store initial counts BEFORE processing
       const initialBlueCount = blueItems.length;
@@ -1257,16 +1150,14 @@ const Users = () => {
           const errorText = await response.text();
           console.error('❌ Batch processing failed:', errorText);
           
-          // TODO: Show error modal (deferred until clean EAS build)
-          Alert.alert(
-            'Błąd przetwarzania',
-            `Nie udało się przetworzyć transakcji. ${errorText}`,
-            [{ text: 'OK' }]
-          );
+          setBatchErrorMessage(`Nie udało się przetworzyć transakcji. ${errorText}`);
+          setShowBatchErrorModal(true);
           return;
         }
 
         const batchResult = await response.json();
+        const savedCorrectionsCount = Number(batchResult?.savedCorrections || 0);
+        correctionsCount = savedCorrectionsCount > 0 ? savedCorrectionsCount : missingItems.length;
         
         // Update counters from batch result
         allBlueCount = availableBlueItems.length;
@@ -1277,11 +1168,8 @@ const Users = () => {
 
       } catch (error) {
         console.error('Error in batch processing:', error);
-        Alert.alert(
-          'Błąd połączenia',
-          'Nie udało się połączyć z serwerem. Sprawdź połączenie internetowe.',
-          [{ text: 'OK' }]
-        );
+        setBatchErrorMessage('Nie udało się połączyć z serwerem. Sprawdź połączenie internetowe.');
+        setShowBatchErrorModal(true);
         return;
       }
 
@@ -1351,6 +1239,7 @@ const Users = () => {
         userSymbol: selectedUserData?.symbol || selectedUserData?.username,
         beforeCount: currentUserStateCountBefore,
         allBlueCount,
+        correctionsCount,
         yellowCount, // Incoming transfers from other points (NOT from warehouse)
         warehouseCount: orangeCount, // Manually moved from warehouse
         allOrangeCount: totalOrangeFromWarehouse, // Total from warehouse (manual + auto-matched)
@@ -1381,8 +1270,18 @@ const Users = () => {
       // Refresh last transaction data
       await checkLastTransaction();
 
-      // THEN show the modal
-      setShowControlModal(true);    } catch (error) {
+      // Show corrections summary first (same UX intent as web), then control modal.
+      if (correctionsCount > 0) {
+        setCorrectionsData({
+          success: true,
+          count: correctionsCount,
+          items: missingItems
+        });
+        setShowCorrectionsModal(true);
+      } else {
+        setShowControlModal(true);
+      }
+    } catch (error) {
       console.error('Error processing items:', error);
       Alert.alert("Błąd", "Wystąpił błąd podczas przetwarzania");
     } finally {
@@ -2609,6 +2508,13 @@ const Users = () => {
                         </View>
                       )}
 
+                        {controlModalData.correctionsCount > 0 && (
+                          <View style={styles.statRowYellow}>
+                            <Text style={styles.statLabelYellow}>⚠️ Przeniesione do korekt</Text>
+                            <Text style={styles.statValueTextYellow}>+{controlModalData.correctionsCount}</Text>
+                          </View>
+                        )}
+
                         {/* For MAGAZYN - show state before, yellow transfers, calculation, and expected state */}
                         {controlModalData.isWarehouse ? (
                           <>
@@ -2774,7 +2680,12 @@ const Users = () => {
         visible={showCorrectionsModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowCorrectionsModal(false)}
+        onRequestClose={() => {
+          setShowCorrectionsModal(false);
+          if (controlModalData && !showControlModal) {
+            setShowControlModal(true);
+          }
+        }}
       >
         <View style={styles.confirmModalOverlay}>
           <View style={[styles.confirmModalContent, { maxHeight: '85%', width: '90%' }]}>
@@ -2790,6 +2701,9 @@ const Users = () => {
                 Braki w stanie
               </Text>
               <Text style={styles.confirmModalMessage}>
+                Do korekt przeniesiono: {correctionsData?.count || correctionsData?.items?.length || 0}
+              </Text>
+              <Text style={[styles.confirmModalMessage, { marginTop: 8 }]}> 
                 Następujące produkty nie zostały znalezione w stanie i zostały automatycznie przeniesione do korekt:
               </Text>
             </View>
@@ -2830,7 +2744,12 @@ const Users = () => {
             
             <TouchableOpacity
               style={styles.correctionConfirmButton}
-              onPress={() => setShowCorrectionsModal(false)}
+              onPress={() => {
+                setShowCorrectionsModal(false);
+                if (controlModalData && !showControlModal) {
+                  setShowControlModal(true);
+                }
+              }}
             >
               <Ionicons name="checkmark-circle" size={24} color="#fff" />
               <Text style={styles.correctionConfirmText}>Rozumiem</Text>
@@ -2920,6 +2839,33 @@ const Users = () => {
             <TouchableOpacity
               style={styles.printErrorButton}
               onPress={() => setShowPrintErrorModal(false)}
+            >
+              <Text style={styles.printErrorButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Batch Error Modal */}
+      <Modal
+        visible={showBatchErrorModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowBatchErrorModal(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <View style={styles.confirmModalHeader}>
+              <Ionicons name="alert-circle" size={64} color="#ef4444" />
+              <Text style={styles.confirmModalTitle}>Błąd przetwarzania</Text>
+              <Text style={styles.confirmModalMessage}>
+                {batchErrorMessage}
+              </Text>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.printErrorButton}
+              onPress={() => setShowBatchErrorModal(false)}
             >
               <Text style={styles.printErrorButtonText}>OK</Text>
             </TouchableOpacity>
