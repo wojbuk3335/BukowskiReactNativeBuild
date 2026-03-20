@@ -56,9 +56,6 @@ const Users = () => {
   // All products cache (for prices)
   const [allProducts, setAllProducts] = useState([]);
   
-  // Colors cache (for color codes)
-  const [colors, setColors] = useState([]);
-  
   // Corrections modal
   const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
   const [correctionsData, setCorrectionsData] = useState(null);
@@ -113,7 +110,6 @@ const Users = () => {
       fetchUsers();
     }
     fetchAllProducts(); // Fetch products for price cache
-    fetchColors(); // Fetch colors for color codes
   }, []);
 
   const fetchAllProducts = async () => {
@@ -652,13 +648,12 @@ const Users = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Reload all data: items, price list, products cache, colors, and all states
+    // Reload all data: items, price list, products cache, and all states
     await Promise.all([
       fetchItemsToPick(),
       fetchAllStates(),
       selectedUserId ? fetchPriceListInfo(selectedUserId) : Promise.resolve(),
-      fetchAllProducts(),
-      fetchColors()
+      fetchAllProducts()
     ]);
     setRefreshing(false);
   };
@@ -674,7 +669,7 @@ const Users = () => {
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setAllStates(data || []);
@@ -685,7 +680,6 @@ const Users = () => {
     }
   };
 
-  // Check for missing items in state (like web app)
   const checkForMissingItems = async (itemsToCheck, userSymbol, transactionId = null) => {
     try {
       const { accessToken } = await tokenService.getTokens();
@@ -1769,113 +1763,52 @@ const Users = () => {
     );
   };
 
-  const getColorCodeFromName = (itemName) => {
-    if (!itemName || !colors.length) return null;
-    
-    const foundColor = colors.find(color => {
-      const colorName = color.Kol_Opis ? color.Kol_Opis.toLowerCase() : '';
-      const itemNameLower = itemName.toLowerCase();
-      
-      if (!colorName) return false;
-      
-      return itemNameLower.includes(colorName);
+  const resolveSellingPointIdForLabel = (item) => {
+    if (selectedUserId) {
+      return selectedUserId.toString();
+    }
+
+    const directIdCandidates = [
+      item?.sellingPoint?._id,
+      item?.sellingPointId,
+      item?.userId,
+      item?.user?._id,
+      item?.ownerId,
+    ];
+
+    const directId = directIdCandidates.find((candidate) =>
+      typeof candidate === 'string' && candidate.trim().length > 0
+    );
+    if (directId) {
+      return directId.toString();
+    }
+
+    const symbolCandidates = [
+      item?.transfer_to,
+      item?.symbol,
+      item?.sellingPoint?.symbol,
+      item?.sellingPoint,
+      item?.from,
+    ];
+    const symbolOrPoint = symbolCandidates.find((candidate) =>
+      typeof candidate === 'string' && candidate.trim().length > 0
+    );
+
+    if (!symbolOrPoint) {
+      return null;
+    }
+
+    const matchedUser = users.find((user) => {
+      const userSymbol = user.symbol || '';
+      const sellingPoint = user.sellingPoint || '';
+      return (
+        userSymbol === symbolOrPoint ||
+        sellingPoint === symbolOrPoint ||
+        (user.role === 'magazyn' && symbolOrPoint === 'MAGAZYN')
+      );
     });
-    
-    return foundColor ? { code: foundColor.Kol_Kod, colorName: foundColor.Kol_Opis } : null;
-  };
 
-  const generateZplCode = (item, priceOverride = null) => {
-    const itemName = item.fullName?.fullName || item.fullName || 'N/A';
-    const itemSize = item.size?.Roz_Opis || item.size || 'N/A';
-    const barcode = item.barcode || 'NO-BARCODE';
-    
-    // 🔧 FIX: Extract price (should be enriched before calling this function)
-    let price = null;
-    if (priceOverride !== null && priceOverride !== undefined) {
-      price = priceOverride;
-    } else if (item.price !== undefined && item.price !== null) {
-      price = item.price;
-    } else if (item.fullName?.price !== undefined && item.fullName?.price !== null) {
-      price = item.fullName.price;
-    }
-    
-    const symbol = item.symbol || item.sellingPoint?.symbol || item.transfer_to || 'N/A';
-    const selectedUserPointNumber = users.find(u => u._id === selectedUserId)?.pointNumber;
-    const explicitPointNumber = item.pointNumber || item.sellingPoint?.pointNumber || selectedUserPointNumber;
-
-    const pointMapping = {
-      P: '01',
-      M: '02',
-      K: '03',
-      T: '04',
-      S: '05',
-      Kar: '06'
-    };
-
-    const mappedPoint = explicitPointNumber || pointMapping[symbol] || symbol;
-
-    let processedName = (itemName || 'N/A');
-    
-    // Get color code from item.color or fallback to name search
-    let colorInfo = null;
-    
-    // Priority 1: Use color from item if available
-    if (item.color) {
-      const colorId = typeof item.color === 'object' ? item.color._id : item.color;
-      const foundColor = colors.find(c => c._id === colorId);
-      if (foundColor && foundColor.Kol_Kod) {
-        colorInfo = { code: foundColor.Kol_Kod, colorName: foundColor.Kol_Opis || '' };
-      }
-    }
-    
-    // Priority 2: Fallback to name search (old method)
-    if (!colorInfo) {
-      colorInfo = getColorCodeFromName(itemName);
-    }
-    
-    if (colorInfo) {
-      // Remove the found color name from the product name (case-insensitive)
-      if (colorInfo.colorName) {
-        const colorNameRegex = new RegExp('\\s*' + colorInfo.colorName + '\\s*', 'gi');
-        processedName = processedName.replace(colorNameRegex, ' ').trim();
-      }
-      
-      // Add color code at the end
-      if (colorInfo.code) {
-        processedName += ' ' + colorInfo.code;
-      }
-    }
-    
-    // NOTE: We DON'T add barcode digits here because color code already contains them
-    // The color code (e.g., "21") comes from the same barcode position (substring 3-5)
-    // Adding both would create duplicates like "Amanda 21 21"
-
-    // 🇵🇱 Keep Polish characters - Zebra printer will handle UTF-8 with ^CI28
-    const safeName = processedName || 'N/A';
-    const safeSize = itemSize || 'N/A';
-    const safeTransfer = mappedPoint || 'N/A';
-    
-    // 🔧 FIX: Only show 'N/A' if price is truly missing (not if it's 0)
-    const safePrice = (price !== null && price !== undefined) 
-      ? price.toString() 
-      : 'N/A';
-
-    return `^XA
-^CI28
-^MMT
-^PW450
-^LL0400
-^LS0
-^FT3,50^A0N,40,40^FD${safeName}^FS
-^FT320,55^A0N,40,40^FDCena:^FS
-^FT320,105^A0N,55,55^FD${safePrice} zl^FS
-
-^FT3,120^A0N,38,38^FDRozmiar: ${safeSize}^FS
-^FT3,150^A0N,25,25^FDPunkt: ${safeTransfer}^FS
-^BY2,3,85^FT80,238^BCN,,N,N
-^FD${barcode}^FS
-^FT125,280^A0N,28,28^FB200,1,0,C,0^FD${barcode}^FS
-^XZ`;
+    return matchedUser?._id ? matchedUser._id.toString() : null;
   };
 
   const sendZplToPrinter = async (zplCode) => {
@@ -1914,6 +1847,12 @@ const Users = () => {
       const itemSize = item.isFromSale
         ? item.size
         : (typeof item.size === 'object' ? item.size?.Roz_Opis : item.size);
+
+      const sellingPointId = resolveSellingPointIdForLabel(item);
+      if (!sellingPointId) {
+        console.error('❌ Brak sellingPointId dla produktu:', item.fullName || item.product || item.barcode);
+        return false;
+      }
       
       // Try to get price from dedicated price list first
       const priceInfo = getPriceFromPriceList(item, itemSize);
@@ -1953,25 +1892,43 @@ const Users = () => {
       const finalPriceInfo = priceInfo || fallbackPriceInfo;
       const shouldPrintTwoLabels = finalPriceInfo && finalPriceInfo.hasDiscount && !finalPriceInfo.sizeExceptionPrice;
 
-      if (shouldPrintTwoLabels) {
-        // Higher price first, lower price second (consistent with web)
-        const higherPrice = Math.max(finalPriceInfo.regularPrice, finalPriceInfo.discountPrice);
-        const lowerPrice = Math.min(finalPriceInfo.regularPrice, finalPriceInfo.discountPrice);
-        const higherZpl = generateZplCode(item, higherPrice);
-        const lowerZpl = generateZplCode(item, lowerPrice);
+      const itemBarcode = item.barcode || item.barcodes;
+      const normalizedItemFullName =
+        typeof item.fullName === 'object' ? item.fullName?.fullName : item.fullName;
 
-        const higherResult = await sendZplToPrinter(higherZpl);
-        const lowerResult = await sendZplToPrinter(lowerZpl);
+      const response = await tokenService.authenticatedFetch(getApiUrl('/print/generate-zpl'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sellingPointId,
+          itemId: item.productId?.toString() || item._id?.toString(),
+          itemBarcode: itemBarcode?.toString(),
+          itemFullName: normalizedItemFullName,
+          itemSize,
+          colorId: item.color?._id?.toString() || item.colorId?.toString() || (typeof item.color === 'string' ? item.color : undefined),
+          forceDoubleLabel: shouldPrintTwoLabels,
+        }),
+      });
 
-        return higherResult && lowerResult;
+      if (!response.ok) {
+        console.error('❌ Backend ZPL error:', response.status);
+        return false;
       }
 
-      // Print single label
-      const fallbackPrice = item.price ?? item.fullName?.price ?? null;
-      const finalPrice = finalPriceInfo?.sizeExceptionPrice ?? finalPriceInfo?.regularPrice ?? fallbackPrice;
-      
-      const zplCode = generateZplCode(item, finalPrice);
-      return await sendZplToPrinter(zplCode);
+      const { zplCodes } = await response.json();
+      if (!zplCodes || zplCodes.length === 0) {
+        return false;
+      }
+
+      let allOk = true;
+      for (const zplCode of zplCodes) {
+        const result = await sendZplToPrinter(zplCode);
+        if (!result) {
+          allOk = false;
+        }
+      }
+
+      return allOk;
     } catch (error) {
       console.error('❌ Error in handlePrintLabel:', error);
       return false;
