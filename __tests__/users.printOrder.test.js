@@ -1,24 +1,23 @@
 /**
  * 📱 MOBILE: users.jsx — Label Print Order Tests
  * 
- * REGRESSION TESTS for handleProcessItems sorting logic
- * Ensures auto-matched orange items are sorted by price (descending)
- * before being added to print queue
+ * REGRESSION TESTS for handleProcessItems print-order logic
+ * Ensures auto-matched orange items preserve matchedPairs order
+ * (blue-driven order), before being added to print queue
  */
 
 describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
   
-  // Simulacja logiki sortowania z handleProcessItems
+  // Simulacja logiki z handleProcessItems
   const processItemsForPrint = (transfers, matchedPairs) => {
     const manualOrangeTransfers = transfers.filter(t => t.fromWarehouse);
     const manualOrangeIds = new Set(manualOrangeTransfers.map(item => item?._id).filter(Boolean));
     
-    // CRITICAL: auto-matched orange sorted by price (higher first)
+    // CRITICAL: auto-matched orange keeps matchedPairs order (from BLUE scanning)
     const autoMatchedOrange = matchedPairs
       .map(pair => pair?.warehouseProduct)
       .filter(Boolean)
-      .filter(item => !manualOrangeIds.has(item._id))
-      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0)); // DESC
+      .filter(item => !manualOrangeIds.has(item._id));
 
     return {
       manualOrange: manualOrangeTransfers,
@@ -26,9 +25,9 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
     };
   };
 
-  describe('Auto-Matched Orange Sorting', () => {
+  describe('Auto-Matched Orange Order', () => {
     
-    test('✅ REGRESSION: autoMatchedOrange sorted descending by price', () => {
+    test('✅ REGRESSION: autoMatchedOrange keeps matchedPairs insertion order', () => {
       const matchedPairs = [
         { warehouseProduct: { _id: 'a1', fullName: 'Bożena ŻÓŁTY', price: 222 } },
         { warehouseProduct: { _id: 'a2', fullName: 'Bożena ŻÓŁTY', price: 333 } },
@@ -36,15 +35,12 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
       ];
 
       const result = processItemsForPrint([], matchedPairs);
-      const prices = result.autoOrange.map(item => item.price);
+      const ids = result.autoOrange.map(item => item._id);
 
-      expect(prices).toEqual([333, 222, 111]); // DESC
-      expect(prices[0]).toBeGreaterThan(prices[1]);
-      expect(prices[1]).toBeGreaterThan(prices[2]);
+      expect(ids).toEqual(['a1', 'a2', 'a3']);
     });
 
-    test('✅ REGRESSION: Bożena scenario — 333 before 222', () => {
-      // Real scenario from phone
+    test('✅ REGRESSION: duplicated product keeps BLUE-driven pair order', () => {
       const matchedPairs = [
         { warehouseProduct: { _id: 'bozena1', fullName: 'Bożena ŻÓŁTY', price: 222 } },
         { warehouseProduct: { _id: 'bozena2', fullName: 'Bożena ŻÓŁTY', price: 333 } }
@@ -52,13 +48,11 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
 
       const result = processItemsForPrint([], matchedPairs);
 
-      expect(result.autoOrange[0].price).toBe(333); // First
-      expect(result.autoOrange[1].price).toBe(222); // Second
-      expect(result.autoOrange[0]._id).toBe('bozena2');
-      expect(result.autoOrange[1]._id).toBe('bozena1');
+      expect(result.autoOrange[0]._id).toBe('bozena1');
+      expect(result.autoOrange[1]._id).toBe('bozena2');
     });
 
-    test('✅ REGRESSION: handles items with undefined/null price gracefully', () => {
+    test('✅ REGRESSION: handles items with undefined/null price without reordering', () => {
       const matchedPairs = [
         { warehouseProduct: { _id: 'x1', fullName: 'Item X', price: 100 } },
         { warehouseProduct: { _id: 'x2', fullName: 'Item Y', price: undefined } },
@@ -66,10 +60,11 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
       ];
 
       const result = processItemsForPrint([], matchedPairs);
-      
-      // undefined treated as 0, so order should be: 100, 50, 0
-      expect(result.autoOrange[0].price).toBe(100);
-      expect(result.autoOrange[2].price).toBeUndefined();
+
+      expect(result.autoOrange[0]._id).toBe('x1');
+      expect(result.autoOrange[1]._id).toBe('x2');
+      expect(result.autoOrange[2]._id).toBe('x3');
+      expect(result.autoOrange[1].price).toBeUndefined();
     });
 
     test('✅ REGRESSION: deduplication with manual orange — auto doesn\'t include manual _ids', () => {
@@ -96,7 +91,7 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
       expect(result.autoOrange).toEqual([]);
     });
 
-    test('✅ REGRESSION: all pairs have same price — maintains insertion order after sort', () => {
+    test('✅ REGRESSION: same price still preserves insertion order', () => {
       const matchedPairs = [
         { warehouseProduct: { _id: 'a1', fullName: 'Item A', price: 100 } },
         { warehouseProduct: { _id: 'a2', fullName: 'Item B', price: 100 } },
@@ -105,9 +100,7 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
 
       const result = processItemsForPrint([], matchedPairs);
       
-      // All same price, so order depends on stable sort (usually preserves input)
-      expect(result.autoOrange.length).toBe(3);
-      expect(result.autoOrange.every(item => item.price === 100)).toBe(true);
+      expect(result.autoOrange.map(item => item._id)).toEqual(['a1', 'a2', 'a3']);
     });
   });
 
@@ -155,12 +148,8 @@ describe('📱 Mobile: handleProcessItems – Print Order Logic', () => {
 
       const ids = printOrder.map(i => i._id);
       
-      // Expected: y1 → ao1 (333) → ao2 (222) → mo1
+      // Expected: y1 → ao1 → ao2 → mo1 (matchedPairs order)
       expect(ids).toEqual(['y1', 'ao1', 'ao2', 'mo1']);
-      
-      // Prices in auto-orange are DESC
-      const autoPrices = result.autoOrange.map(i => i.price);
-      expect(autoPrices).toEqual([333, 222]);
     });
   });
 });

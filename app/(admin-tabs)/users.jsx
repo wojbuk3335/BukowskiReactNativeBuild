@@ -884,14 +884,13 @@ const Users = () => {
     }
 
     // Step 1: Print labels in strict order:
-    // 1) yellow, 2) orange auto-matched, 3) orange manual
+    // 1) yellow, 2) orange auto-matched (in matchedPairs order), 3) orange manual
     const manualOrangeTransfers = transfers.filter(t => t.fromWarehouse);
     const manualOrangeIds = new Set(manualOrangeTransfers.map(item => item?._id).filter(Boolean));
     const autoMatchedOrange = matchedPairs
       .map(pair => pair?.warehouseProduct)
       .filter(Boolean)
-      .filter(item => !manualOrangeIds.has(item._id))
-      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0)); // higher price first
+      .filter(item => !manualOrangeIds.has(item._id));
 
     const enrichForPrint = (item) => {
       let enrichedItem = { ...item };
@@ -941,21 +940,25 @@ const Users = () => {
     if (itemsToPrint.length > 0) {
       try {
         setProcessing(true);
-        
-        // Print labels quickly - printer has buffer
-        const results = [];
-        for (let i = 0; i < itemsToPrint.length; i++) {
-          const item = itemsToPrint[i];
-          
+
+        const zplResults = await Promise.all(itemsToPrint.map(async (item) => {
           try {
-            const result = await handlePrintLabel(item);
-            results.push(result);
+            return await fetchLabelZplCodes(item);
           } catch (error) {
-            results.push(false);
+            return null;
           }
+        }));
+
+        const printableBatches = zplResults.filter(Array.isArray);
+        const allZplCodes = printableBatches.flat();
+        let batchPrinted = false;
+
+        if (allZplCodes.length > 0) {
+          batchPrinted = await sendZplChunksToPrinter(allZplCodes);
         }
-        const successCount = results.filter(r => r === true).length;
-        const errorCount = results.filter(r => r === false).length;
+
+        const successCount = batchPrinted ? printableBatches.length : 0;
+        const errorCount = itemsToPrint.length - successCount;
         
         setProcessing(false);
         
@@ -1810,6 +1813,8 @@ const Users = () => {
 
     return matchedUser?._id ? matchedUser._id.toString() : null;
   };
+  const PRINTER_REQUEST_TIMEOUT_MS = 1500;
+  const PRINTER_CHUNK_RETRY_COUNT = 1;
 
   const sendZplToPrinter = async (zplCode) => {
     const printerIP = '192.168.1.25';
@@ -1817,7 +1822,7 @@ const Users = () => {
     const printerUrl = `http://${printerIP}:${printerPort}`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300);
+    const timeoutId = setTimeout(() => controller.abort(), PRINTER_REQUEST_TIMEOUT_MS);
 
     try {
       await fetch(printerUrl, {
@@ -1842,93 +1847,114 @@ const Users = () => {
     }
   };
 
-  const handlePrintLabel = async (item) => {
-    try {
-      const itemSize = item.isFromSale
-        ? item.size
-        : (typeof item.size === 'object' ? item.size?.Roz_Opis : item.size);
+  const sendZplChunksToPrinter = async (zplCodes) => {
+    if (!Array.isArray(zplCodes) || zplCodes.length === 0) {
+      return true;
+    }
 
-      const sellingPointId = resolveSellingPointIdForLabel(item);
-      if (!sellingPointId) {
-        console.error('❌ Brak sellingPointId dla produktu:', item.fullName || item.product || item.barcode);
+    for (const zplCode of zplCodes) {
+      let sent = false;
+      for (let attempt = 0; attempt <= PRINTER_CHUNK_RETRY_COUNT; attempt++) {
+        const result = await sendZplToPrinter(zplCode);
+        if (result) {
+          sent = true;
+          break;
+        }
+      }
+
+      if (!sent) {
         return false;
       }
-      
-      // Try to get price from dedicated price list first
-      const priceInfo = getPriceFromPriceList(item, itemSize);
-      
-      // If no dedicated price list, get price from goods (fallback)
-      let fallbackPriceInfo = null;
-      if (!priceInfo && allProducts.length > 0) {
-        const product = allProducts.find(p =>
-          (item.barcode && p.code === item.barcode) ||
-          (item.productId && p._id === item.productId) ||
-          (typeof item.fullName === 'object' && item.fullName?.fullName && p.fullName === item.fullName.fullName) ||
-          (typeof item.fullName === 'string' && p.fullName === item.fullName)
-        );
-        
-        if (product) {
-          fallbackPriceInfo = {
-            regularPrice: product.price || 0,
-            discountPrice: product.discount_price || 0,
-            sizeExceptionPrice: null,
-            hasDiscount: product.discount_price && product.discount_price > 0
-          };
-          
-          // Check for size exceptions in goods
-          if (itemSize && product.priceExceptions && product.priceExceptions.length > 0) {
-            const sizeException = product.priceExceptions.find(exception => {
-              const exceptionSizeName = exception.size?.Roz_Opis || exception.size;
-              return exceptionSizeName === itemSize;
-            });
-            
-            if (sizeException) {
-              fallbackPriceInfo.sizeExceptionPrice = sizeException.value;
-            }
+    }
+
+    return true;
+  };
+
+  const fetchLabelZplCodes = async (item) => {
+    const itemSize = item.isFromSale
+      ? item.size
+      : (typeof item.size === 'object' ? item.size?.Roz_Opis : item.size);
+
+    const sellingPointId = resolveSellingPointIdForLabel(item);
+    if (!sellingPointId) {
+      console.error('❌ Brak sellingPointId dla produktu:', item.fullName || item.product || item.barcode);
+      return null;
+    }
+
+    const priceInfo = getPriceFromPriceList(item, itemSize);
+
+    let fallbackPriceInfo = null;
+    if (!priceInfo && allProducts.length > 0) {
+      const product = allProducts.find(p =>
+        (item.barcode && p.code === item.barcode) ||
+        (item.productId && p._id === item.productId) ||
+        (typeof item.fullName === 'object' && item.fullName?.fullName && p.fullName === item.fullName.fullName) ||
+        (typeof item.fullName === 'string' && p.fullName === item.fullName)
+      );
+
+      if (product) {
+        fallbackPriceInfo = {
+          regularPrice: product.price || 0,
+          discountPrice: product.discount_price || 0,
+          sizeExceptionPrice: null,
+          hasDiscount: product.discount_price && product.discount_price > 0
+        };
+
+        if (itemSize && product.priceExceptions && product.priceExceptions.length > 0) {
+          const sizeException = product.priceExceptions.find(exception => {
+            const exceptionSizeName = exception.size?.Roz_Opis || exception.size;
+            return exceptionSizeName === itemSize;
+          });
+
+          if (sizeException) {
+            fallbackPriceInfo.sizeExceptionPrice = sizeException.value;
           }
         }
       }
-      
-      const finalPriceInfo = priceInfo || fallbackPriceInfo;
-      const shouldPrintTwoLabels = finalPriceInfo && finalPriceInfo.hasDiscount && !finalPriceInfo.sizeExceptionPrice;
+    }
 
-      const itemBarcode = item.barcode || item.barcodes;
-      const normalizedItemFullName =
-        typeof item.fullName === 'object' ? item.fullName?.fullName : item.fullName;
+    const finalPriceInfo = priceInfo || fallbackPriceInfo;
+    const shouldPrintTwoLabels = finalPriceInfo && finalPriceInfo.hasDiscount && !finalPriceInfo.sizeExceptionPrice;
 
-      const response = await tokenService.authenticatedFetch(getApiUrl('/print/generate-zpl'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sellingPointId,
-          itemId: item.productId?.toString() || item._id?.toString(),
-          itemBarcode: itemBarcode?.toString(),
-          itemFullName: normalizedItemFullName,
-          itemSize,
-          colorId: item.color?._id?.toString() || item.colorId?.toString() || (typeof item.color === 'string' ? item.color : undefined),
-          forceDoubleLabel: shouldPrintTwoLabels,
-        }),
-      });
+    const itemBarcode = item.barcode || item.barcodes;
+    const normalizedItemFullName =
+      typeof item.fullName === 'object' ? item.fullName?.fullName : item.fullName;
 
-      if (!response.ok) {
-        console.error('❌ Backend ZPL error:', response.status);
+    const response = await tokenService.authenticatedFetch(getApiUrl('/print/generate-zpl'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sellingPointId,
+        itemId: item.productId?.toString() || item._id?.toString(),
+        itemBarcode: itemBarcode?.toString(),
+        itemFullName: normalizedItemFullName,
+        itemSize,
+        colorId: item.color?._id?.toString() || item.colorId?.toString() || (typeof item.color === 'string' ? item.color : undefined),
+        forceDoubleLabel: shouldPrintTwoLabels,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ Backend ZPL error:', response.status);
+      return null;
+    }
+
+    const { zplCodes } = await response.json();
+    if (!Array.isArray(zplCodes) || zplCodes.length === 0) {
+      return null;
+    }
+
+    return zplCodes;
+  };
+
+  const handlePrintLabel = async (item) => {
+    try {
+      const zplCodes = await fetchLabelZplCodes(item);
+      if (!zplCodes) {
         return false;
       }
 
-      const { zplCodes } = await response.json();
-      if (!zplCodes || zplCodes.length === 0) {
-        return false;
-      }
-
-      let allOk = true;
-      for (const zplCode of zplCodes) {
-        const result = await sendZplToPrinter(zplCode);
-        if (!result) {
-          allOk = false;
-        }
-      }
-
-      return allOk;
+      return await sendZplChunksToPrinter(zplCodes);
     } catch (error) {
       console.error('❌ Error in handlePrintLabel:', error);
       return false;
@@ -2065,7 +2091,7 @@ const Users = () => {
                 📦 Magazyn ({warehouseItems.length})
               </Text>
               <Text style={styles.sectionSubtitle}>Dostępne produkty w magazynie</Text>
-              
+
               <View style={styles.searchContainer}>
                 <Ionicons name="search" size={20} color="#94A3B8" />
                 <TextInput
@@ -2091,7 +2117,7 @@ const Users = () => {
                 {' '}= {warehouseSummary.availableCount}
               </Text>
 
-              <ScrollView 
+              <ScrollView
                 style={[
                   styles.warehouseList,
                   filteredWarehouse.length === 0 && styles.warehouseListEmpty,
