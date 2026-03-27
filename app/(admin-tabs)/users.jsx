@@ -1852,22 +1852,13 @@ const Users = () => {
       return true;
     }
 
-    for (const zplCode of zplCodes) {
-      let sent = false;
-      for (let attempt = 0; attempt <= PRINTER_CHUNK_RETRY_COUNT; attempt++) {
-        const result = await sendZplToPrinter(zplCode);
-        if (result) {
-          sent = true;
-          break;
-        }
-      }
-
-      if (!sent) {
-        return false;
-      }
+    // Join all ZPL codes into one job — drukarka drukuje ciągiem bez pauz
+    const combined = zplCodes.join('');
+    for (let attempt = 0; attempt <= PRINTER_CHUNK_RETRY_COUNT; attempt++) {
+      const result = await sendZplToPrinter(combined);
+      if (result) return true;
     }
-
-    return true;
+    return false;
   };
 
   const fetchLabelZplCodes = async (item) => {
