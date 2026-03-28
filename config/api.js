@@ -40,7 +40,7 @@ const getBaseUrl = () => {
             return `http://${lanHost}:3000/api`;
         }
 
-        // Fallback dla emulatora/symulatora
+        // Fallback dla development
         return 'http://localhost:3000/api';
     }
     

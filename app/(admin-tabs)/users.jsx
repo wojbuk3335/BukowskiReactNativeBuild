@@ -1463,6 +1463,12 @@ const Users = () => {
   const renderBlueItem = ({ item, index }) => {
     const isMatched = isBlueItemMatched(item.sourceId);
     const backgroundColor = isMatched ? '#10B981' : '#007bff';
+    const displaySize = (item.size === '!NIEOKREŚLONY' || item.size === 'NIEOKREŚLONY') ? '-' : (item.size || 'N/A');
+    const displayDate = formatDateValueLocal(item.date || item.timestamp || item.createdAt);
+    const displayFrom = item.type === 'sale' ? (item.from || item.transfer_from || 'N/A') : (item.transfer_from || 'N/A');
+    const displayTo = item.type === 'sale'
+      ? (item.sellingPoint || item.transfer_to || 'N/A')
+      : (item.transfer_to || item.sellingPoint || 'N/A');
     
     // Get availability indicator
     const itemId = item.sourceId || item._id;
@@ -1480,7 +1486,10 @@ const Users = () => {
               {item.fullName || 'N/A'}
             </Text>
             <Text style={styles.transferSize}>
-              {item.size || 'N/A'} • {item.type === 'sale' ? 'Sprzedaż' : 'Transfer'}
+              {displaySize} • {item.type === 'sale' ? 'Sprzedaż' : 'Transfer'}
+            </Text>
+            <Text style={styles.transferSize}>
+              {displayDate || 'N/A'} • {displayFrom} {'->'} {displayTo}
             </Text>
             <Text style={styles.transferBarcode}>
               {item.barcode || 'N/A'}
@@ -1547,6 +1556,10 @@ const Users = () => {
 
   const renderMatchedWarehouseItem = ({ item, index }) => {
     const isGreyed = greyedWarehouseItems.has(item._id);
+    const displaySize = (item.size?.Roz_Opis || item.size || 'N/A');
+    const displayDate = formatDateValueLocal(item.date || item.timestamp || item.createdAt);
+    const displayFrom = item.transfer_from || 'MAGAZYN';
+    const displayTo = item.transfer_to || item.sellingPoint || 'N/A';
     
     return (
       <View style={[styles.transferCard, { 
@@ -1560,13 +1573,13 @@ const Users = () => {
               {isGreyed && '✓ '}{item.fullName?.fullName || item.fullName}
             </Text>
             <Text style={styles.transferSize}>
-              {item.size?.Roz_Opis || item.size}
+              {displaySize}
+            </Text>
+            <Text style={styles.transferSize}>
+              {displayDate || 'N/A'} • {displayFrom} {'->'} {displayTo}
             </Text>
             <Text style={styles.transferBarcode}>
               {item.barcode}
-            </Text>
-            <Text style={styles.transferSize}>
-              MAGAZYN → {item.transfer_to || item.sellingPoint || 'N/A'}
             </Text>
           </View>
           
@@ -1630,6 +1643,10 @@ const Users = () => {
   const renderTransferItem = ({ item, index }) => {
     const fromWarehouse = item.fromWarehouse;
     const backgroundColor = fromWarehouse ? '#ff8c00' : '#ffc107';
+    const displaySize = (item.size?.Roz_Opis || item.size || 'N/A');
+    const displayDate = formatDateValueLocal(item.date || item.timestamp || item.createdAt);
+    const displayFrom = fromWarehouse ? (item.transfer_from || 'MAGAZYN') : (item.transfer_from || 'N/A');
+    const displayTo = item.transfer_to || item.sellingPoint || 'N/A';
     
     return (
       <View style={[styles.transferCard, { backgroundColor, borderColor: backgroundColor }]}>
@@ -1639,7 +1656,10 @@ const Users = () => {
               {item.fullName?.fullName || item.fullName}
             </Text>
             <Text style={styles.transferSize}>
-              {item.size?.Roz_Opis || item.size}
+              {displaySize}
+            </Text>
+            <Text style={styles.transferSize}>
+              {displayDate || 'N/A'} • {displayFrom} {'->'} {displayTo}
             </Text>
             <Text style={styles.transferBarcode}>
               {item.barcode}
@@ -1707,8 +1727,10 @@ const Users = () => {
 
   const renderYellowTransferItem = ({ item, index }) => {
     const fullName = item.fullName?.fullName || item.fullName;
-    const size = item.size?.Roz_Opis || item.size;
+    const size = (item.size?.Roz_Opis || item.size || 'N/A');
     const transferFrom = item.transfer_from || 'N/A';
+    const transferTo = item.transfer_to || item.sellingPoint || 'N/A';
+    const displayDate = formatDateValueLocal(item.date || item.timestamp || item.createdAt);
     
     return (
       <View style={[styles.transferCard, { 
@@ -1723,11 +1745,11 @@ const Users = () => {
             <Text style={styles.transferSize}>
               {size}
             </Text>
+            <Text style={styles.transferSize}>
+              {displayDate || 'N/A'} • {transferFrom} {'->'} {transferTo}
+            </Text>
             <Text style={styles.transferBarcode}>
               {item.barcode}
-            </Text>
-            <Text style={styles.transferSize}>
-              Transfer z: {transferFrom}
             </Text>
           </View>
           

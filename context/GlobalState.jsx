@@ -337,9 +337,7 @@ export const GlobalStateProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            // Set logout flag to prevent new requests
             tokenService.isLoggingOut = true;
-            
             // Stop auto-logout monitoring first
             tokenService.stopAutoLogoutMonitoring();
             
@@ -372,10 +370,7 @@ export const GlobalStateProvider = ({ children }) => {
         } catch (error) {
             // Silently handle logout errors
         } finally {
-            // Reset logout flag after a delay to let everything settle
-            setTimeout(() => {
-                tokenService.isLoggingOut = false;
-            }, 500);
+            setTimeout(() => { tokenService.isLoggingOut = false; }, 500);
         }
     };
 
