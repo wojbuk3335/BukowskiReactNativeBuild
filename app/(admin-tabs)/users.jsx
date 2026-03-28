@@ -971,14 +971,15 @@ const Users = () => {
 
         const printableBatches = zplResults.filter(Array.isArray);
         const allZplCodes = printableBatches.flat();
+        const totalLabelsToPrint = allZplCodes.length;
         let batchPrinted = false;
 
-        if (allZplCodes.length > 0) {
+        if (totalLabelsToPrint > 0) {
           batchPrinted = await sendZplChunksToPrinter(allZplCodes);
         }
 
-        const successCount = batchPrinted ? printableBatches.length : 0;
-        const errorCount = itemsToPrint.length - successCount;
+        const successCount = batchPrinted ? totalLabelsToPrint : 0;
+        const errorCount = totalLabelsToPrint - successCount;
         
         setProcessing(false);
         
@@ -986,7 +987,7 @@ const Users = () => {
         setPendingProcessData({
           successCount,
           errorCount,
-          totalCount: itemsToPrint.length
+          totalCount: totalLabelsToPrint
         });
         setShowPrintConfirmModal(true);
       } catch (error) {
