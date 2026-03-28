@@ -504,7 +504,7 @@ const Users = () => {
       
       // 2. Filter BLUE transfers (outgoing from this user, not processed, correct date)
       const blueTransfers = allTransfers.filter(transfer => {
-        const transferDate = formatDateValueLocal(transfer.date);
+        const transferDate = new Date(transfer.date).toISOString().split('T')[0];
         const isCorrectDate = transferDate === dateStr;
         const isOutgoing = transfer.transfer_from === selectedUserData.symbol && !transfer.fromWarehouse;
         const notProcessed = !transfer.blueProcessed;
@@ -514,7 +514,7 @@ const Users = () => {
       
       // 3. Filter YELLOW transfers (incoming to this user, not processed, correct date)
       const yellowTransfers = allTransfers.filter(transfer => {
-        const transferDate = formatDateValueLocal(transfer.date);
+        const transferDate = new Date(transfer.date).toISOString().split('T')[0];
         const isCorrectDate = transferDate === dateStr;
         const isIncoming = transfer.transfer_to === selectedUserData.symbol && transfer.transfer_from !== 'MAGAZYN';
         const notProcessed = !transfer.yellowProcessed;
@@ -536,7 +536,7 @@ const Users = () => {
         const allSales = await salesResponse.json();
         // Filter unprocessed sales for this date and user
         salesItems = allSales.filter(sale => {
-          const saleDate = formatDateValueLocal(sale.timestamp);
+          const saleDate = new Date(sale.timestamp).toISOString().split('T')[0];
           const isCorrectDate = saleDate === dateStr;
           const isFromUser = sale.from === selectedUserData.symbol;
           const notProcessed = !sale.processed;
@@ -627,6 +627,7 @@ const Users = () => {
               },
               warehouseProduct: {
                 ...warehouseItem,
+                date: blueItem.date || blueItem.timestamp || warehouseItem.date,
                 transfer_to: blueItem.type === 'transfer' ? blueItem.transfer_to : undefined,
                 sellingPoint: blueItem.type === 'sale' ? (blueItem.sellingPoint || blueItem.from) : undefined
               }
