@@ -69,6 +69,9 @@ const Users = () => {
   const [printErrorMessage, setPrintErrorMessage] = useState('');
   const [processingStatusMessage, setProcessingStatusMessage] = useState("");
   const [allProcessed, setAllProcessed] = useState(false);
+  const [hasPreviousUnprocessed, setHasPreviousUnprocessed] = useState(false);
+  const [previousUnprocessedCount, setPreviousUnprocessedCount] = useState(0);
+  const [previousUnprocessedByDate, setPreviousUnprocessedByDate] = useState([]);
   
   // Batch error modal
   const [showBatchErrorModal, setShowBatchErrorModal] = useState(false);
@@ -80,10 +83,23 @@ const Users = () => {
 
   const filteredUsers = users.filter((u) => !u.isAdmin);
 
+  const formatDateLocal = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateValueLocal = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return formatDateLocal(date);
+  };
+
   // Check processing status for ALL users for selected date
   const checkProcessingStatus = async () => {
     try {
-      const dateStr = selectedDate.toISOString().split("T")[0];
+      const dateStr = formatDateLocal(selectedDate);
       const url = getApiUrl(`/state/processing-status?date=${dateStr}`);
       
       const { accessToken } = await tokenService.getTokens();
@@ -99,6 +115,9 @@ const Users = () => {
         setUnprocessedCount(data.unprocessedCount || 0);
         setAllProcessed(data.allProcessed || false);
         setProcessingStatusMessage(data.message || "");
+        setHasPreviousUnprocessed(Boolean(data.hasPreviousUnprocessed));
+        setPreviousUnprocessedCount(data.previousUnprocessedCount || 0);
+        setPreviousUnprocessedByDate(Array.isArray(data.previousUnprocessedByDate) ? data.previousUnprocessedByDate : []);
       }
     } catch (error) {
       console.error("Error checking processing status:", error);
@@ -459,7 +478,7 @@ const Users = () => {
 
     try {
       setLoading(true);
-      const dateStr = selectedDate.toISOString().split("T")[0];
+      const dateStr = formatDateLocal(selectedDate);
       const { accessToken } = await tokenService.getTokens();
       
       // Get selected user data
@@ -485,7 +504,7 @@ const Users = () => {
       
       // 2. Filter BLUE transfers (outgoing from this user, not processed, correct date)
       const blueTransfers = allTransfers.filter(transfer => {
-        const transferDate = new Date(transfer.date).toISOString().split('T')[0];
+        const transferDate = formatDateValueLocal(transfer.date);
         const isCorrectDate = transferDate === dateStr;
         const isOutgoing = transfer.transfer_from === selectedUserData.symbol && !transfer.fromWarehouse;
         const notProcessed = !transfer.blueProcessed;
@@ -495,7 +514,7 @@ const Users = () => {
       
       // 3. Filter YELLOW transfers (incoming to this user, not processed, correct date)
       const yellowTransfers = allTransfers.filter(transfer => {
-        const transferDate = new Date(transfer.date).toISOString().split('T')[0];
+        const transferDate = formatDateValueLocal(transfer.date);
         const isCorrectDate = transferDate === dateStr;
         const isIncoming = transfer.transfer_to === selectedUserData.symbol && transfer.transfer_from !== 'MAGAZYN';
         const notProcessed = !transfer.yellowProcessed;
@@ -517,7 +536,7 @@ const Users = () => {
         const allSales = await salesResponse.json();
         // Filter unprocessed sales for this date and user
         salesItems = allSales.filter(sale => {
-          const saleDate = new Date(sale.timestamp).toISOString().split('T')[0];
+          const saleDate = formatDateValueLocal(sale.timestamp);
           const isCorrectDate = saleDate === dateStr;
           const isFromUser = sale.from === selectedUserData.symbol;
           const notProcessed = !sale.processed;
@@ -986,7 +1005,7 @@ const Users = () => {
     
     try {
       const selectedUserData = users.find(u => u._id === selectedUserId);
-      const dateStr = selectedDate.toISOString().split("T")[0];
+      const dateStr = formatDateLocal(selectedDate);
       const sharedTransactionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       const userSymbol = selectedUserData?.symbol || selectedUserData?.sellingPoint;
@@ -1980,18 +1999,30 @@ const Users = () => {
         {/* PROCESSING STATUS - ALWAYS VISIBLE AT TOP */}
         {processingStatusMessage && (
           <View style={styles.topWarningContainer}>
-            <View style={allProcessed ? styles.topSuccess : styles.topWarning}>
+            <View style={(allProcessed && !hasPreviousUnprocessed) ? styles.topSuccess : styles.topWarning}>
               <Ionicons 
-                name={allProcessed ? "checkmark-circle" : "warning"} 
+                name={(allProcessed && !hasPreviousUnprocessed) ? "checkmark-circle" : "warning"} 
                 size={32} 
-                color={allProcessed ? "#22c55e" : "#ff9900"} 
+                color={(allProcessed && !hasPreviousUnprocessed) ? "#22c55e" : "#ff9900"} 
               />
               <View style={styles.topWarningContent}>
-                <Text style={allProcessed ? styles.topSuccessTitle : styles.topWarningTitle}>
+                <Text style={(allProcessed && !hasPreviousUnprocessed) ? styles.topSuccessTitle : styles.topWarningTitle}>
                   {processingStatusMessage}
                 </Text>
                 {!allProcessed && unprocessedCount > 0 && (
                   <Text style={styles.topWarningCount}>Nieprzetworzonych pozycji: {unprocessedCount}</Text>
+                )}
+                {hasPreviousUnprocessed && previousUnprocessedCount > 0 && (
+                  <>
+                    <Text style={styles.topWarningCount}>
+                      Zaległe nieprzetworzone z wcześniejszych dni: {previousUnprocessedCount}
+                    </Text>
+                    {previousUnprocessedByDate.length > 0 && (
+                      <Text style={styles.topWarningCount}>
+                        Dni: {previousUnprocessedByDate.slice(0, 3).map(entry => `${entry.date} (${entry.count})`).join(', ')}{previousUnprocessedByDate.length > 3 ? ' ...' : ''}
+                      </Text>
+                    )}
+                  </>
                 )}
               </View>
             </View>
