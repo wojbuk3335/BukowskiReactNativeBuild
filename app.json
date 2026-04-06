@@ -2,15 +2,15 @@
   "expo": {
     "name": "Bukowski",
     "slug": "bukowski-mobile-2025",
-    "version": "1.1.6",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/logo2.png",
     "scheme": "bukowski",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bukowski.inventory36.mobile2026",
-      "buildNumber": "13",
+      "bundleIdentifier": "com.bukowski.inventory2026.mobile2026",
+      "buildNumber": "1.1.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app requires camera access exclusively for scanning barcodes and QR codes on inventory items. For example, when you scan a product's barcode, the app uses the camera to read the code and retrieve product details from the inventory database. The camera is used only during active scanning and no photos or videos are captured, stored, or transmitted.",
@@ -47,7 +47,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory36.app2026",
+      "package": "com.bukowski.inventory2026.mobile2026",
       "versionCode": 7,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [

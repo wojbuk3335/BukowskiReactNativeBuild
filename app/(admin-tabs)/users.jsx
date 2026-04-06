@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   RefreshControl,
+  AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -96,6 +97,17 @@ const Users = () => {
     return `${year}-${month}-${day}`;
   };
 
+  const buildTodayDate = () => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  };
+
+  const getOperationTimestamp = (item) => {
+    const rawValue = item?.timestamp || item?.date || item?.createdAt;
+    const timestamp = rawValue ? new Date(rawValue).getTime() : 0;
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  };
+
   const parseDateFromYmd = (ymd) => {
     if (!ymd || typeof ymd !== 'string') {
       return null;
@@ -134,9 +146,9 @@ const Users = () => {
   };
 
   // Check processing status for ALL users for selected date
-  const checkProcessingStatus = async () => {
+  const checkProcessingStatus = async (dateOverride = selectedDate) => {
     try {
-      const dateStr = formatDateLocal(selectedDate);
+      const dateStr = formatDateLocal(dateOverride || new Date());
       const url = getApiUrl(`/state/processing-status?date=${dateStr}`);
       
       const { accessToken } = await tokenService.getTokens();
@@ -218,6 +230,20 @@ const Users = () => {
       fetchUsers();
     }
     fetchAllProducts(); // Fetch products for price cache
+  }, []);
+
+  useEffect(() => {
+    setSelectedDate(buildTodayDate());
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        setSelectedDate(buildTodayDate());
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
   }, []);
 
   const fetchAllProducts = async () => {
@@ -562,12 +588,13 @@ const Users = () => {
     }
   };
 
-  const fetchItemsToPick = async () => {
+  const fetchItemsToPick = async (dateOverride = selectedDate) => {
     if (!selectedUserId) return;
 
     try {
       setLoading(true);
-      const dateStr = formatDateLocal(selectedDate);
+      const effectiveDate = dateOverride || selectedDate || new Date();
+      const dateStr = formatDateLocal(effectiveDate);
       const { accessToken } = await tokenService.getTokens();
       
       // Get selected user data
@@ -655,6 +682,17 @@ const Users = () => {
           isFromSale: true
         }))
       ];
+
+      const orderedBlueItems = [...blueItemsArray].sort((a, b) => {
+        const timeDiff = getOperationTimestamp(a) - getOperationTimestamp(b);
+        if (timeDiff !== 0) {
+          return timeDiff;
+        }
+
+        const aId = String(a?.sourceId || a?._id || '');
+        const bId = String(b?.sourceId || b?._id || '');
+        return aId.localeCompare(bId);
+      });
       
       // 6. Fetch warehouse items
       const warehouseUrl = getApiUrl('/state/warehouse');
@@ -730,7 +768,7 @@ const Users = () => {
       }
       
       // Set all data
-      setBlueItems(blueItemsArray);
+      setBlueItems(orderedBlueItems);
       setWarehouseItems(warehouseItemsArray);
       setYellowTransfers(yellowTransfers);
       setMatchedPairs(matchedPairsArray);
@@ -745,7 +783,7 @@ const Users = () => {
       }
       
       // Check processing status for ALL users for this date
-      await checkProcessingStatus();
+      await checkProcessingStatus(effectiveDate);
       
     } catch (error) {
       console.error("Error fetching items to pick:", error);
@@ -757,12 +795,16 @@ const Users = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    const today = buildTodayDate();
+    setSelectedDate(today);
+
     // Reload all data: items, price list, products cache, and all states
     await Promise.all([
-      fetchItemsToPick(),
+      fetchItemsToPick(today),
       fetchAllStates(),
       selectedUserId ? fetchPriceListInfo(selectedUserId) : Promise.resolve(),
-      fetchAllProducts()
+      fetchAllProducts(),
+      checkProcessingStatus(today)
     ]);
     setRefreshing(false);
   };
