@@ -63,12 +63,18 @@ const Users = () => {
   // Print confirmation modal
   const [showPrintConfirmModal, setShowPrintConfirmModal] = useState(false);
   const [pendingProcessData, setPendingProcessData] = useState(null);
+  const [pendingProcessingDate, setPendingProcessingDate] = useState(null);
   
   // Print error modal
   const [showPrintErrorModal, setShowPrintErrorModal] = useState(false);
   const [printErrorMessage, setPrintErrorMessage] = useState('');
+  const [showPendingPrintModal, setShowPendingPrintModal] = useState(false);
+  const [pendingPrintData, setPendingPrintData] = useState(null);
+  const [showOnlyOrangeModal, setShowOnlyOrangeModal] = useState(false);
+  const [onlyOrangeData, setOnlyOrangeData] = useState(null);
   const [processingStatusMessage, setProcessingStatusMessage] = useState("");
   const [allProcessed, setAllProcessed] = useState(false);
+  const [currentUnprocessedUsers, setCurrentUnprocessedUsers] = useState([]);
   const [hasPreviousUnprocessed, setHasPreviousUnprocessed] = useState(false);
   const [previousUnprocessedCount, setPreviousUnprocessedCount] = useState(0);
   const [previousUnprocessedByDate, setPreviousUnprocessedByDate] = useState([]);
@@ -90,10 +96,41 @@ const Users = () => {
     return `${year}-${month}-${day}`;
   };
 
+  const parseDateFromYmd = (ymd) => {
+    if (!ymd || typeof ymd !== 'string') {
+      return null;
+    }
+    const [year, month, day] = ymd.split('-').map(Number);
+    if (!year || !month || !day) {
+      return null;
+    }
+    return new Date(year, month - 1, day);
+  };
+
   const formatDateValueLocal = (value) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
     return formatDateLocal(date);
+  };
+
+  const jumpToPreviousUnprocessedDay = (dateString) => {
+    if (!dateString) return;
+
+    const [year, month, day] = String(dateString).split('-').map(Number);
+    if (!year || !month || !day) return;
+
+    setSelectedDate(new Date(year, month - 1, day));
+  };
+
+  const jumpToCurrentUnprocessedUser = (symbol) => {
+    if (!symbol) return;
+
+    const userForSymbol = filteredUsers.find((user) => String(user?.symbol || '').trim() === String(symbol).trim());
+    if (!userForSymbol?._id) {
+      return;
+    }
+
+    setSelectedUserId(userForSymbol._id);
   };
 
   // Check processing status for ALL users for selected date
@@ -114,6 +151,7 @@ const Users = () => {
         const data = await response.json();
         setUnprocessedCount(data.unprocessedCount || 0);
         setAllProcessed(data.allProcessed || false);
+        setCurrentUnprocessedUsers(Array.isArray(data.currentUnprocessedUsers) ? data.currentUnprocessedUsers : []);
         setProcessingStatusMessage(data.message || "");
         setHasPreviousUnprocessed(Boolean(data.hasPreviousUnprocessed));
         setPreviousUnprocessedCount(data.previousUnprocessedCount || 0);
@@ -121,6 +159,57 @@ const Users = () => {
       }
     } catch (error) {
       console.error("Error checking processing status:", error);
+    }
+  };
+
+  const fetchPendingPrintStatus = async ({ dateStr, location }) => {
+    try {
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl(`/prints/pending?date=${dateStr}&location=${encodeURIComponent(location || 'Zakopane')}`);
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching pending print status:', error);
+      return null;
+    }
+  };
+
+  const fetchLastPrintedDateForLocation = async (location) => {
+    if (!location) {
+      return null;
+    }
+
+    try {
+      const { accessToken } = await tokenService.getTokens();
+      const url = getApiUrl(`/prints/list?location=${encodeURIComponent(location)}`);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json();
+      const prints = Array.isArray(payload?.prints) ? payload.prints : [];
+      return prints[0]?.date || null;
+    } catch (error) {
+      console.error('Error fetching last printed date:', error);
+      return null;
     }
   };
 
@@ -897,9 +986,36 @@ const Users = () => {
     });
   };
 
-  const handleProcessItems = async () => {
+  const handleProcessItems = async (options = {}) => {
+    const {
+      skipOnlyOrangeGate = false,
+      processingDateOverride = null
+    } = options;
+    const effectiveDate = processingDateOverride || selectedDate;
+
     if (transfers.length === 0 && blueItems.length === 0 && yellowTransfers.length === 0) {
       Alert.alert("Informacja", "Brak elementów do przetworzenia");
+      return;
+    }
+
+    const selectedUserData = users.find(u => u._id === selectedUserId);
+    const dateStr = formatDateLocal(effectiveDate);
+    const pendingStatus = await fetchPendingPrintStatus({
+      dateStr,
+      location: selectedUserData?.location || 'Zakopane'
+    });
+
+    if (pendingStatus?.hasBlockingPending) {
+      const blockingDays = Array.isArray(pendingStatus.blockingPendingDays)
+        ? pendingStatus.blockingPendingDays
+        : [];
+
+      setPendingPrintData({
+        blockingPendingCount: pendingStatus.blockingPendingCount || 0,
+        blockingDays,
+        nextDay: blockingDays[0]?.date || null
+      });
+      setShowPendingPrintModal(true);
       return;
     }
 
@@ -911,6 +1027,28 @@ const Users = () => {
       .map(pair => pair?.warehouseProduct)
       .filter(Boolean)
       .filter(item => !manualOrangeIds.has(item._id));
+
+    const onlyOrangeItemsCount = manualOrangeTransfers.length + autoMatchedOrange.length;
+    const isOnlyOrangeFlow = blueItems.length === 0 && yellowTransfers.length === 0 && onlyOrangeItemsCount > 0;
+
+    if (isOnlyOrangeFlow && !skipOnlyOrangeGate) {
+      const lastPrintedDateRaw = await fetchLastPrintedDateForLocation(selectedUserData?.location || 'Zakopane');
+      const lastPrintedDate = lastPrintedDateRaw ? String(lastPrintedDateRaw).slice(0, 10) : null;
+
+      if (lastPrintedDate && lastPrintedDate !== dateStr) {
+      setOnlyOrangeData({
+        count: onlyOrangeItemsCount,
+          date: dateStr,
+          lastPrintedDate,
+          alternativeDate: dateStr,
+          awaitingAlternativeDate: false
+      });
+      setShowOnlyOrangeModal(true);
+      return;
+      }
+    }
+
+    setPendingProcessingDate(effectiveDate);
 
     const enrichForPrint = (item) => {
       let enrichedItem = { ...item };
@@ -998,16 +1136,17 @@ const Users = () => {
       }
     } else {
       // No items to print, proceed directly
-      executeProcessItems();
+      executeProcessItems(effectiveDate);
     }
   };
 
-  const executeProcessItems = async () => {
+  const executeProcessItems = async (processingDateOverride = null) => {
     setProcessing(true);
     
     try {
       const selectedUserData = users.find(u => u._id === selectedUserId);
-      const dateStr = formatDateLocal(selectedDate);
+      const processingDate = processingDateOverride || selectedDate;
+      const dateStr = formatDateLocal(processingDate);
       const sharedTransactionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       const userSymbol = selectedUserData?.symbol || selectedUserData?.sellingPoint;
@@ -2034,7 +2173,26 @@ const Users = () => {
                   {processingStatusMessage}
                 </Text>
                 {!allProcessed && unprocessedCount > 0 && (
-                  <Text style={styles.topWarningCount}>Nieprzetworzonych pozycji: {unprocessedCount}</Text>
+                  <>
+                    <Text style={styles.topWarningCount}>Nieprzetworzonych pozycji: {unprocessedCount}</Text>
+                    {currentUnprocessedUsers.length > 0 && (
+                      <View style={styles.topWarningDaysContainer}>
+                        <Text style={styles.topWarningDaysLabel}>Punkty do domknięcia (tapnij, aby przełączyć):</Text>
+                        <View style={styles.topWarningDayChipsRow}>
+                          {currentUnprocessedUsers.map((entry, index) => (
+                            <TouchableOpacity
+                              key={`${entry.symbol}-${index}`}
+                              style={styles.topWarningDayChip}
+                              onPress={() => jumpToCurrentUnprocessedUser(entry.symbol)}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.topWarningDayChipText}>{entry.label || entry.symbol} ({entry.count || 0})</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                  </>
                 )}
                 {hasPreviousUnprocessed && previousUnprocessedCount > 0 && (
                   <>
@@ -2042,9 +2200,21 @@ const Users = () => {
                       Zaległe nieprzetworzone z wcześniejszych dni: {previousUnprocessedCount}
                     </Text>
                     {previousUnprocessedByDate.length > 0 && (
-                      <Text style={styles.topWarningCount}>
-                        Dni: {previousUnprocessedByDate.slice(0, 3).map(entry => `${entry.date} (${entry.count})`).join(', ')}{previousUnprocessedByDate.length > 3 ? ' ...' : ''}
-                      </Text>
+                      <View style={styles.topWarningDaysContainer}>
+                        <Text style={styles.topWarningDaysLabel}>Dni (tapnij, aby przejść):</Text>
+                        <View style={styles.topWarningDayChipsRow}>
+                          {previousUnprocessedByDate.map((entry, index) => (
+                            <TouchableOpacity
+                              key={`${entry.date}-${index}`}
+                              style={styles.topWarningDayChip}
+                              onPress={() => jumpToPreviousUnprocessedDay(entry.date)}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.topWarningDayChipText}>{entry.date} ({entry.count})</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
                     )}
                   </>
                 )}
@@ -2118,6 +2288,26 @@ const Users = () => {
               display="default"
               onChange={(event, date) => {
                 setShowDatePicker(false);
+                if (onlyOrangeData?.awaitingAlternativeDate) {
+                  if (!date) {
+                    setOnlyOrangeData((prev) => prev ? { ...prev, awaitingAlternativeDate: false } : prev);
+                    return;
+                  }
+
+                  const alternativeDate = formatDateLocal(date);
+                  setOnlyOrangeData((prev) => prev ? {
+                    ...prev,
+                    alternativeDate,
+                    awaitingAlternativeDate: false
+                  } : prev);
+
+                  handleProcessItems({
+                    skipOnlyOrangeGate: true,
+                    processingDateOverride: date
+                  });
+                  return;
+                }
+
                 if (date) setSelectedDate(date);
               }}
             />
@@ -2788,7 +2978,8 @@ const Users = () => {
                 onPress={() => {
                   setShowPrintConfirmModal(false);
                   setPendingProcessData(null);
-                  executeProcessItems();
+                  executeProcessItems(pendingProcessingDate || selectedDate);
+                  setPendingProcessingDate(null);
                 }}
               >
                 <Ionicons name="checkmark-circle" size={24} color="#fff" />
@@ -2800,10 +2991,114 @@ const Users = () => {
                 onPress={() => {
                   setShowPrintConfirmModal(false);
                   setPendingProcessData(null);
+                  setPendingProcessingDate(null);
                 }}
               >
                 <Ionicons name="close-circle" size={24} color="#94A3B8" />
                 <Text style={styles.printCancelButtonText}>Nie - Anuluj</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal potwierdzenia daty przetwarzania */}
+      <Modal
+        visible={showOnlyOrangeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowOnlyOrangeModal(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <View style={styles.confirmModalHeader}>
+              <Ionicons name="alert-circle" size={64} color="#ff9900" />
+              <Text style={styles.confirmModalTitle}>Potwierdzenie daty przetwarzania</Text>
+              <Text style={styles.confirmModalMessage}>
+                Nie wykryto sprzedaży ani transferów dla tego dnia.
+              </Text>
+              <Text style={styles.confirmModalSubtext}>
+                Ostatnio pracowałeś nad dniem: {onlyOrangeData?.lastPrintedDate || onlyOrangeData?.date || formatDateLocal(selectedDate)}
+              </Text>
+              <Text style={styles.confirmModalSubtext}>
+                Czy to uzupełnienie tego dnia?
+              </Text>
+              <Text style={styles.confirmModalSubtext}>
+                Jeśli nie, wybierz inną datę do przypisania:
+              </Text>
+            </View>
+
+            <View style={styles.printModalButtons}>
+              <TouchableOpacity
+                style={styles.printConfirmButton}
+                onPress={() => {
+                  setShowOnlyOrangeModal(false);
+                  const suggestedDate = parseDateFromYmd(onlyOrangeData?.lastPrintedDate || onlyOrangeData?.date);
+                  handleProcessItems({
+                    skipOnlyOrangeGate: true,
+                    processingDateOverride: suggestedDate || selectedDate
+                  });
+                }}
+              >
+                <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                <Text style={styles.printConfirmButtonText}>Tak, przypisz do {onlyOrangeData?.lastPrintedDate || onlyOrangeData?.date}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.printCancelButton}
+                onPress={() => {
+                  setShowOnlyOrangeModal(false);
+                  setOnlyOrangeData((prev) => prev ? { ...prev, awaitingAlternativeDate: true } : prev);
+                  setShowDatePicker(true);
+                }}
+              >
+                <Ionicons name="calendar" size={22} color="#94A3B8" />
+                <Text style={styles.printCancelButtonText}>Nie, wybierz inną datę</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pending Print Block Modal (WebApp only flow) */}
+      <Modal
+        visible={showPendingPrintModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPendingPrintModal(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <View style={styles.confirmModalHeader}>
+              <Ionicons name="warning" size={64} color="#ff9900" />
+              <Text style={styles.confirmModalTitle}>Zaległe wydruki do wygenerowania</Text>
+              <Text style={styles.confirmModalMessage}>
+                Masz {pendingPrintData?.blockingPendingCount || 0} niewydrukowanych rekordów z wcześniejszych dni.
+              </Text>
+              <Text style={styles.confirmModalSubtext}>
+                W mobile nie drukujemy „Wykruk z dnia”. Najpierw wygeneruj wydruk w panelu web,
+                a potem wróć tutaj i ponów przetwarzanie.
+              </Text>
+            </View>
+
+            {(pendingPrintData?.blockingDays || []).length > 0 && (
+              <View style={styles.pendingDaysBox}>
+                <Text style={styles.pendingDaysTitle}>Dni do domknięcia:</Text>
+                {(pendingPrintData?.blockingDays || []).slice(0, 6).map((entry, idx) => (
+                  <Text key={`${entry.date}-${idx}`} style={styles.pendingDaysItem}>
+                    {entry.date}: {entry.pendingCount} rek. ({(entry.points || []).join(', ') || 'brak punktów'})
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.printModalButtons}>
+              <TouchableOpacity
+                style={styles.printConfirmButton}
+                onPress={() => setShowPendingPrintModal(false)}
+              >
+                <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                <Text style={styles.printConfirmButtonText}>Rozumiem</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3700,6 +3995,26 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     textAlign: "center",
   },
+  pendingDaysBox: {
+    width: '100%',
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#374151',
+    padding: 12,
+    marginBottom: 12,
+  },
+  pendingDaysTitle: {
+    color: '#FBBF24',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  pendingDaysItem: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    marginBottom: 4,
+  },
   topWarningContainer: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -3755,6 +4070,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: "#ff9900",
+  },
+  topWarningDaysContainer: {
+    marginTop: 6,
+  },
+  topWarningDaysLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#ffd699",
+    marginBottom: 6,
+  },
+  topWarningDayChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  topWarningDayChip: {
+    backgroundColor: "#5b3a12",
+    borderWidth: 1,
+    borderColor: "#ff9900",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  topWarningDayChipText: {
+    color: "#ffcc66",
+    fontSize: 12,
+    fontWeight: "700",
   },
   priceListInfoContainer: {
     paddingHorizontal: 16,
