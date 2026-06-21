@@ -108,9 +108,14 @@ const SignIn = () => {
       // 🔒 SESSION BLOCKING: Jeśli k toś już zalogowany
       if (error.code === 'SESSION_ACTIVE' || error.message?.includes('Konto jest już zalogowane')) {
         setError("⚠️ Ktoś jest już zalogowany na tym koncie. Wyloguj się z innego urządzenia, aby kontynuować.");
+      } else if (error.code === 'INVALID_CREDENTIALS') {
+        setError("Nieprawidłowy email lub hasło. Spróbuj ponownie.");
+      } else if (error.code === 'FORBIDDEN') {
+        setError("Brak uprawnień do logowania w tym panelu. Sprawdź wybrany panel.");
+      } else if (error.message?.includes('Admin role required')) {
+        setError("To konto nie ma uprawnień administratora. Przełącz na panel użytkownika.");
       } else {
-        // Zwykły błąd logowania
-        setError("Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
+        setError(error.message || "Logowanie nie powiodło się. Sprawdź swoje dane i spróbuj ponownie.");
       }
     }
   };

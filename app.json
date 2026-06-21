@@ -47,7 +47,7 @@
         "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bukowski.inventory2026.mobile2026",
+        "package": "com.bukowski.inventory2026.mobile2026",
       "versionCode": 8,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
@@ -68,7 +68,7 @@
         {
           "position": "absolute",
           "visibility": "immersive"
-        }
+        } 
       ],
       [
         "expo-splash-screen",

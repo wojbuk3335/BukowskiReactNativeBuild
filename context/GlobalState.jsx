@@ -246,11 +246,17 @@ export const GlobalStateProvider = ({ children }) => {
 
     const bukowski_login = async (email, password, navigation, isAdminPanel = false) => {
         setIsLoading(true); // Set loading to true
+        const loginAttemptId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         try {
             // Use different endpoint based on panel selection
             const endpoint = isAdminPanel ? "/user/admin-login" : "/user/login";
+            const url = getApiUrl(endpoint);
             
-            const response = await fetch(getApiUrl(endpoint), {
+            console.log(`🔐 [LOGIN][${loginAttemptId}] Panel: ${isAdminPanel ? 'Admin' : 'User'}`);
+            console.log(`🔐 [LOGIN][${loginAttemptId}] Email: ${email}`);
+            console.log(`🔐 [LOGIN][${loginAttemptId}] URL: ${url}`);
+            
+            const response = await fetch(url, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -258,32 +264,65 @@ export const GlobalStateProvider = ({ children }) => {
                 body: JSON.stringify({ email, password }),
             });
 
+            console.log(`🔐 [LOGIN][${loginAttemptId}] Response Status: ${response.status}`);
+
             if (!response.ok) {
+                let errorData = null;
                 try {
-                    const errorData = await response.json();
-                    
-                    // 🔒 SESSION BLOCKING ERROR
-                    if (response.status === 403 && errorData.error === 'SESSION_ACTIVE') {
-                        const error = new Error(errorData.message);
-                        error.code = 'SESSION_ACTIVE';
-                        error.status = 403;
-                        throw error;
-                    }
-                    
-                    const error = new Error(errorData.message || "Login failed");
-                    throw error;
-                } catch (parseError) {
-                    // Jeśli to nasz SESSION_ACTIVE error - przekaż dalej
-                    if (parseError.code === 'SESSION_ACTIVE') {
-                        throw parseError;
-                    }
-                    throw new Error(`Login failed with status ${response.status}: ${response.statusText}`);
+                    errorData = await response.json();
+                } catch (_parseError) {
+                    // Ignoruj błąd parsowania i użyj fallback message poniżej
                 }
+
+                // Expected auth failures (401/403) should not look like app crashes in Metro logs.
+                const backendMessage = String(errorData?.message || '').toLowerCase();
+                const looksLikeInvalidCredentials =
+                    backendMessage.includes('błędny login') ||
+                    backendMessage.includes('bledny login') ||
+                    backendMessage.includes('invalid login') ||
+                    backendMessage.includes('invalid credentials') ||
+                    backendMessage.includes('nieprawidłowy') ||
+                    backendMessage.includes('nieprawidlowy') ||
+                    backendMessage.includes('hasło') ||
+                    backendMessage.includes('haslo');
+
+                if (response.status === 401 || (response.status === 400 && looksLikeInvalidCredentials)) {
+                    const invalidCredentialsError = new Error('Nieprawidłowy email lub hasło.');
+                    invalidCredentialsError.code = 'INVALID_CREDENTIALS';
+                    invalidCredentialsError.status = response.status;
+                    throw invalidCredentialsError;
+                }
+
+                if (response.status === 403 && errorData?.error !== 'SESSION_ACTIVE') {
+                    const forbiddenError = new Error('Brak uprawnień do logowania w tym panelu.');
+                    forbiddenError.code = 'FORBIDDEN';
+                    forbiddenError.status = 403;
+                    throw forbiddenError;
+                }
+
+                console.warn(`⚠️ [LOGIN][${loginAttemptId}] Error Data:`, errorData);
+                console.warn(`⚠️ [LOGIN][${loginAttemptId}] Error Response: ${response.status} ${response.statusText}`);
+                console.warn(`⚠️ [LOGIN][${loginAttemptId}] Context: panel=${isAdminPanel ? 'Admin' : 'User'} endpoint=${endpoint}`);
+
+                // 🔒 SESSION BLOCKING ERROR
+                if (response.status === 403 && errorData?.error === 'SESSION_ACTIVE') {
+                    const error = new Error(errorData.message);
+                    error.code = 'SESSION_ACTIVE';
+                    error.status = 403;
+                    throw error;
+                }
+
+                throw new Error(
+                    errorData?.message || `Login failed with status ${response.status}: ${response.statusText}`
+                );
             }
 
             const data = await response.json();
 
+            console.log(`✅ [LOGIN][${loginAttemptId}] Login successful for: ${email}`);
+            
             if (data?.requiresVerification) {
+                console.log(`🔐 [LOGIN][${loginAttemptId}] 2FA Required`);
                 return data;
             }
             
@@ -293,6 +332,7 @@ export const GlobalStateProvider = ({ children }) => {
                 const refreshToken = data.refreshToken;
                 
                 await tokenService.setTokens(accessToken, refreshToken);
+                console.log(`✅ [LOGIN][${loginAttemptId}] Tokens stored`);
             }
             
             // Wait a bit to ensure AsyncStorage write is completed
@@ -309,6 +349,19 @@ export const GlobalStateProvider = ({ children }) => {
 
             return data; // Return user data
         } catch (error) {
+            const expectedErrorCodes = ['INVALID_CREDENTIALS', 'FORBIDDEN', 'SESSION_ACTIVE'];
+            const expectedByMessage = String(error?.message || '').toLowerCase().includes('błędny login') ||
+                String(error?.message || '').toLowerCase().includes('bledny login') ||
+                String(error?.message || '').toLowerCase().includes('nieprawidłowy') ||
+                String(error?.message || '').toLowerCase().includes('nieprawidlowy') ||
+                String(error?.message || '').toLowerCase().includes('hasło') ||
+                String(error?.message || '').toLowerCase().includes('haslo');
+
+            if (expectedErrorCodes.includes(error?.code) || expectedByMessage) {
+                console.warn(`⚠️ [LOGIN][${loginAttemptId}] Handled auth error:`, error.message);
+            } else {
+                console.error(`❌ [LOGIN][${loginAttemptId}] Catch Error:`, error.message);
+            }
             throw error;
         } finally {
             setIsLoading(false); // Set loading to false

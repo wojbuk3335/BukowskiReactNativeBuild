@@ -27,6 +27,12 @@ const getBaseUrl = () => {
     if (process.env.NODE_ENV === 'test') {
         return 'http://localhost:3000/api';
     }
+
+    // Release build na telefonie ma zawsze używać backendu produkcyjnego.
+    // Dzięki temu lokalne .env (np. 192.168.x.x) nie zepsuje logowania po buildzie.
+    if (typeof __DEV__ !== 'undefined' && !__DEV__) {
+        return 'https://bukowskiapp.pl/api';
+    }
     
     // Użyj zmiennej środowiskowej jeśli istnieje
     if (process.env.EXPO_PUBLIC_API_URL) {
